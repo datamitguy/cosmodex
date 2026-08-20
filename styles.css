@@ -9340,3 +9340,55 @@ select.atk-inline option { background:#141414; color:#fff; }
   .cns-time { font-size: 48px; }
   .cns-total-row { grid-template-columns: 100px 1fr 44px; }
 }
+
+/* ═══ DASHBOARD — COMMITMENTS BAND ═══
+   Active commitments with their open tasks, sitting under the day grid. */
+.dash-commitments { padding: 16px 18px; margin-top: 14px; }
+.dash-c-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.dash-c-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+
+.dash-c-card { background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.09);
+  border-radius: 12px; padding: 11px 13px 0; transition: border-color .18s var(--ease-glass); }
+.dash-c-card:hover { border-color: rgba(255,255,255,.2); }
+.dash-c-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.dash-c-chevron { font-family: var(--font-mono); font-size: 12px; color: rgba(255,255,255,.35);
+  transition: transform .18s var(--ease-glass); flex-shrink: 0; }
+.dash-c-card.open .dash-c-chevron { transform: rotate(90deg); }
+.dash-c-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cc); flex-shrink: 0;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--cc) 60%, transparent); }
+.dash-c-title { font-family: var(--font-body); font-size: 13px; color: var(--cream);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+/* Meta sits on its own line so the commitment name keeps the full width —
+   these cards are narrow and the title is the part you actually read. */
+.dash-c-meta { display: flex; align-items: center; gap: 8px; padding: 5px 0 0 21px; cursor: pointer; }
+.dash-c-bau { font-family: var(--font-mono); font-size: 8px; letter-spacing: .1em; color: rgba(255,255,255,.5);
+  border: 1px solid rgba(255,255,255,.14); border-radius: 100px; padding: 1px 6px; flex-shrink: 0; }
+.dash-c-count { font-family: var(--font-mono); font-size: 9px; letter-spacing: .06em;
+  color: rgba(255,255,255,.45); flex-shrink: 0; }
+.dash-c-when { font-family: var(--font-mono); font-size: 9px; color: rgba(255,255,255,.3); flex-shrink: 0; }
+.dash-c-when.over { color: var(--neon); }        /* exception: past its end date */
+.dash-c-edit { background: none; border: 0; color: rgba(255,255,255,.3); cursor: pointer;
+  font-size: 12px; padding: 2px 4px; flex-shrink: 0; transition: color .18s var(--ease-glass); }
+.dash-c-edit:hover { color: #fff; }
+
+.dash-c-bar { height: 2px; border-radius: 1px; background: rgba(255,255,255,.07);
+  margin: 8px 0 0; overflow: hidden; }
+.dash-c-fill { display: block; height: 100%; background: var(--cc); opacity: .75; transition: width .3s var(--ease-glass); }
+
+.dash-c-body { max-height: 0; overflow: hidden; transition: max-height .22s var(--ease-glass); }
+.dash-c-card.open .dash-c-body { max-height: 460px; overflow-y: auto; }
+.dash-c-task { display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  border-top: 1px solid rgba(255,255,255,.05); }
+.dash-c-task:first-child { border-top: 0; padding-top: 10px; }
+.dash-c-task-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted-readable);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-c-empty { font-size: 12px; color: rgba(255,255,255,.3); padding: 10px 0 4px; }
+.dash-c-add { display: flex; align-items: center; gap: 7px; padding: 7px 0 11px;
+  border-top: 1px solid rgba(255,255,255,.05); margin-top: 2px; }
+.dash-c-add-plus { font-family: var(--font-mono); font-size: 12px; color: rgba(255,255,255,.3); }
+.dash-c-add-input { flex: 1; background: none; border: 0; color: var(--cream);
+  font-family: var(--font-body); font-size: 12.5px; padding: 2px 0; }
+.dash-c-add-input::placeholder { color: rgba(255,255,255,.25); }
+.dash-c-add-input:focus { outline: none; }
+
+@media (max-width: 640px) { .dash-c-grid { grid-template-columns: 1fr; } }

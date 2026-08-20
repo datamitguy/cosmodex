@@ -13768,6 +13768,7 @@ function renderDashboardBoard() {
   _dashRenderCards();
   _dashRenderRituals();
   _dashRenderTasks();
+  window._dashRenderCommitments?.();
   window._dashRenderNote?.(); // Valerie daily note (desktop → iCloud vault)
   if (navDir) mStagger(document.querySelectorAll('#dash-board .dash-side .dash-card'), navDir);
 }
@@ -18116,3 +18117,168 @@ function initConsolidation() {
   document.getElementById('cns-cat-add')?.addEventListener('click', addCat);
   catInput?.addEventListener('keydown', e => { if (e.key === 'Enter') addCat(); });
 })();
+/* ─────────────────────────────────────────────────────────────
+   COMMITMENTS — dashboard band
+   The Planning page owns the full commitment view; this is the working subset
+   you want in front of you all day: what you're committed to right now, the
+   open tasks inside each one, and a way to add to or edit them without leaving
+   the dashboard.
+
+   A task belongs to a commitment either directly (task.projectId) or through a
+   milestone event's activity list — _buildTaskToProjectMap() already resolves
+   both, so this reads from that rather than re-deriving it.
+───────────────────────────────────────────────────────────── */
+
+const _DASH_C_KEY = 'cdx_dash_commit_open';   // which commitments are expanded
+
+function _dashCommitOpen() {
+  try { return JSON.parse(localStorage.getItem(_DASH_C_KEY) || '{}'); } catch (e) { return {}; }
+}
+function _dashCommitToggle(id) {
+  const s = _dashCommitOpen();
+  s[id] = !s[id];
+  localStorage.setItem(_DASH_C_KEY, JSON.stringify(s));
+  _dashRenderCommitments();
+}
+
+// Every task attached to a commitment, open and done, so progress is honest.
+function _dashCommitTasks() {
+  const map = _buildTaskToProjectMap();
+  const byProj = {};
+  (TASKS || []).forEach(t => {
+    const link = map[t.id];
+    if (!link) return;
+    (byProj[link.projectId] = byProj[link.projectId] || []).push(t);
+  });
+  return byProj;
+}
+
+async function _dashAddCommitTask(projId, title) {
+  if (!title || !title.trim()) return;
+  const proj = (MILESTONE_PROJECTS || []).find(p => p.id === projId);
+  const { addDoc, serverTimestamp } = window.CDX_FB;
+  try {
+    await addDoc(_uc('tasks'), {
+      title: title.trim(), done: false, priority: 'med',
+      dueDate: null, category: proj?.category || null,
+      recurrence: null, energyType: null, people: null,
+      calEventId: null, subtasks: [], scheduleCount: 0,
+      projectId: projId,
+      createdAt: serverTimestamp(),
+    });
+    showToast('Added to ' + (proj?.title || 'commitment'), 'success');
+  } catch (err) {
+    console.error('commitment task add:', err);
+    showToast('Failed to add task', 'error');
+  }
+}
+
+function _dashRenderCommitments() {
+  const el = document.getElementById('dash-commitments');
+  if (!el) return;
+  if (_mainPanel !== 'default') return;
+
+  const active = (MILESTONE_PROJECTS || []).filter(p => !p.isArchived);
+  if (!active.length) {
+    el.innerHTML =
+      `<div class="dash-eyebrow">COMMITMENTS</div>
+       <div class="dash-nn-title muted" style="font-size:14px">Nothing committed yet.</div>
+       <div class="dash-nn-meta">Planning is where commitments are made — they show up here once they exist.</div>`;
+    return;
+  }
+
+  const tasksBy = _dashCommitTasks();
+  const openState = _dashCommitOpen();
+  const today = localDateStr(new Date());
+
+  // Big rocks first, then by the nearest end date — what's most at stake, first.
+  const sorted = [...active].sort((a, b) =>
+    (b.bigRock ? 1 : 0) - (a.bigRock ? 1 : 0) ||
+    String(a.endDate || '9999').localeCompare(String(b.endDate || '9999')));
+
+  const cards = sorted.map(p => {
+    const all = tasksBy[p.id] || [];
+    const open = all.filter(t => !t.done);
+    const done = all.length - open.length;
+    const pct = all.length ? Math.round(done / all.length * 100) : 0;
+    const color = p.color || '#8a8070';
+    const isOpen = !!openState[p.id];
+    const overdue = p.endDate && p.endDate < today;
+    const window_ = p.bigRock ? 'Ongoing · BAU'
+      : p.endDate ? `to ${new Date(p.endDate + 'T00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+      : '';
+
+    const rows = open.length
+      ? open.slice(0, 8).map(t => `
+          <div class="dash-c-task" data-dash-task="${escAttr(t.id)}">
+            <span class="dash-task-check" data-dash-done="${escAttr(t.id)}" title="Mark complete"></span>
+            <span class="dash-c-task-name">${escHtml(t.title)}</span>
+            ${t.dueDate && t.dueDate < today ? '<span class="dash-task-over">OVERDUE</span>' : ''}
+            <span class="dash-task-del" data-dash-del="${escAttr(t.id)}" title="Delete task">✕</span>
+          </div>`).join('')
+      : '<div class="dash-c-empty">No open tasks under this commitment.</div>';
+
+    return `
+      <div class="dash-c-card${isOpen ? ' open' : ''}" style="--cc:${escAttr(color)}">
+        <div class="dash-c-head" data-dash-c-toggle="${escAttr(p.id)}">
+          <span class="dash-c-chevron">›</span>
+          <span class="dash-c-dot"></span>
+          <span class="dash-c-title" title="${escAttr(p.title || 'Untitled')}">${escHtml(p.title || 'Untitled')}</span>
+          <button class="dash-c-edit" data-dash-c-edit="${escAttr(p.id)}" title="Edit commitment">✎</button>
+        </div>
+        <div class="dash-c-meta" data-dash-c-toggle="${escAttr(p.id)}">
+          ${p.bigRock ? '<span class="dash-c-bau">⛰ BAU</span>' : ''}
+          <span class="dash-c-count">${open.length} open${done ? ` · ${done} done` : ''}</span>
+          <span class="dash-c-when${overdue ? ' over' : ''}">${escHtml(window_)}</span>
+        </div>
+        <div class="dash-c-bar"><span class="dash-c-fill" style="width:${pct}%"></span></div>
+        <div class="dash-c-body">
+          ${rows}
+          <div class="dash-c-add">
+            <span class="dash-c-add-plus">＋</span>
+            <input class="dash-c-add-input" data-dash-c-add="${escAttr(p.id)}"
+                   placeholder="Add a task to ${escAttr(p.title || 'this commitment')}…" autocomplete="off" />
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const totalOpen = Object.values(tasksBy).reduce((s, ts) => s + ts.filter(t => !t.done).length, 0);
+  el.innerHTML =
+    `<div class="dash-c-head-row">
+       <div class="dash-eyebrow">COMMITMENTS · ${sorted.length} ACTIVE · ${totalOpen} OPEN TASKS</div>
+       <button class="dash-btn" id="dash-c-plan" title="Open the Planning page">◉ Planning</button>
+     </div>
+     <div class="dash-c-grid">${cards}</div>`;
+
+  el.querySelectorAll('[data-dash-c-toggle]').forEach(h => h.addEventListener('click', e => {
+    if (e.target.closest('[data-dash-c-edit]')) return;
+    _dashCommitToggle(h.dataset.dashCToggle);
+  }));
+  el.querySelectorAll('[data-dash-c-edit]').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    showMainPanel('milestones');
+    openMsProjectModal(b.dataset.dashCEdit);
+  }));
+  el.querySelectorAll('[data-dash-done]').forEach(c => c.addEventListener('click', e => {
+    e.stopPropagation(); toggleTask(c.dataset.dashDone);
+  }));
+  el.querySelectorAll('[data-dash-del]').forEach(d => d.addEventListener('click', e => {
+    e.stopPropagation(); deleteTask(d.dataset.dashDel);
+  }));
+  el.querySelectorAll('[data-dash-c-add]').forEach(inp => {
+    inp.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      const v = inp.value; inp.value = '';
+      _dashAddCommitTask(inp.dataset.dashCAdd, v);
+    });
+    // Typing in the row must not fold the card shut.
+    inp.addEventListener('click', e => e.stopPropagation());
+  });
+  document.getElementById('dash-c-plan')?.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    document.getElementById('nav-planning')?.classList.add('active');
+    showMainPanel('milestones');
+  });
+}
+window._dashRenderCommitments = _dashRenderCommitments;

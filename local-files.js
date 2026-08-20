@@ -42,9 +42,14 @@
   }
   function saveHandle(h) {
     return cfgDB().then(function (db) {
-      // FileSystemDirectoryHandle is structured-cloneable, so IndexedDB can hold
-      // it directly — this is what makes "configure once" possible.
-      db.transaction(CFG_STORE, 'readwrite').objectStore(CFG_STORE).put(h, CFG_KEY);
+      return new Promise(function (res, rej) {
+        // FileSystemDirectoryHandle is structured-cloneable, so IndexedDB can
+        // hold it directly — this is what makes "configure once" possible.
+        var tx = db.transaction(CFG_STORE, 'readwrite');
+        tx.objectStore(CFG_STORE).put(h, CFG_KEY);
+        tx.oncomplete = function () { res(); };
+        tx.onerror = function () { rej(tx.error || new Error('Could not remember the folder')); };
+      });
     });
   }
   function loadHandle() {
@@ -108,7 +113,10 @@
   /* ── connect ─────────────────────────────────────────────────────────── */
   function attach(handle) {
     root = handle;
-    return subdir('data').then(function (d) { dirData = d; return subdir('notes'); })
+    return subdir('data')
+      .catch(function (e) { var w = new Error('subdir'); w.__step = 'subdir'; w.__e = e; throw w; })
+      .then(function (d) { dirData = d; return subdir('notes')
+        .catch(function (e) { var w = new Error('subdir'); w.__step = 'subdir'; w.__e = e; throw w; }); })
       .then(function (n) { dirNotes = n; return loadRecords(); })
       .then(function () {
         needsGesture = false;
@@ -117,19 +125,78 @@
       });
   }
 
+  // Turn a DOMException into something that says what to do about it. The
+  // failures here are all environmental, so a generic message is useless.
+  function explain(step, e) {
+    var name = (e && e.name) || 'Error', msg = (e && e.message) || String(e);
+    if (name === 'SecurityError') {
+      return 'Blocked by browser policy. Managed Chrome/Edge can switch file access off for every site '
+           + '(DefaultFileSystemWriteGuardSetting). No app-side fix exists — ' + name + ': ' + msg;
+    }
+    if (name === 'NotAllowedError' && step === 'pick') {
+      return 'The browser refused to open the folder picker — usually enterprise policy, sometimes a '
+           + 'blocked pop-up. Check chrome://policy for FileSystem settings. ' + name + ': ' + msg;
+    }
+    if (step === 'permission') {
+      return 'Folder access was not granted. Re-pick it and choose "Edit files" in the prompt. ' + name + ': ' + msg;
+    }
+    if (name === 'NotAllowedError' && step === 'subdir') {
+      return 'The folder was opened read-only. Re-pick it and choose "Edit files" (not "View files") '
+           + 'in Chrome\'s permission prompt.';
+    }
+    if (name === 'NotAllowedError') return 'Permission was not granted — ' + name + ': ' + msg;
+    if (name === 'NoModificationAllowedError' || name === 'InvalidStateError') {
+      return 'The folder is locked or syncing. A OneDrive folder set to "Free up space" can do this — '
+           + 'try a normal local folder first. ' + name + ': ' + msg;
+    }
+    if (name === 'TypeMismatchError') return 'That is a file, not a folder. Pick a folder.';
+    return name + ': ' + msg;
+  }
+
+  function fail(step, e) {
+    console.error('cosmodex-lite: folder connect failed at step "' + step + '"', e);
+    var why = explain(step, e);
+    status(why, false);
+    if (window.showToast) showToast(why, 'error', 9000);
+    window.__cdxFsLastError = { step: step, name: e && e.name, message: e && e.message, explain: why };
+  }
+
   function choose() {
     if (!supported) {
-      alert('This browser has no File System Access API. Use Chrome or Edge.');
+      var m = 'This browser has no File System Access API — use Chrome or Edge over http/https (not file://).';
+      status(m, false);
+      if (window.showToast) showToast(m, 'error', 9000);
       return Promise.resolve();
     }
+    var picked = null;
     return window.showDirectoryPicker({ mode: 'readwrite' })
-      .then(function (h) { return saveHandle(h).then(function () { return attach(h); }); })
-      .then(function () { if (window.showToast) showToast('Folder connected', 'success'); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;   // user cancelled the picker
-        console.error('cosmodex-lite: folder connect failed', e);
-        if (window.showToast) showToast('Could not connect that folder', 'error');
-      });
+      .catch(function (e) { if (e && e.name === 'AbortError') { picked = 'abort'; return null; } throw { step: 'pick', e: e }; })
+      .then(function (h) {
+        if (!h) return null;
+        picked = h;
+        // Ask explicitly: the picker can hand back a read-only grant, and we
+        // only find out later when creating a subfolder fails.
+        return h.requestPermission({ mode: 'readwrite' })
+          .catch(function (e) { throw { step: 'permission', e: e }; })
+          .then(function (p) {
+            if (p !== 'granted') throw { step: 'permission', e: { name: 'NotAllowedError', message: 'permission is "' + p + '"' } };
+            return h;
+          });
+      })
+      .then(function (h) {
+        if (!h) return null;
+        return saveHandle(h).catch(function (e) { throw { step: 'remember', e: e }; }).then(function () { return h; });
+      })
+      .then(function (h) {
+        if (!h) return null;
+        return attach(h).catch(function (e) { throw { step: e && e.__step ? e.__step : 'attach', e: e && e.__e ? e.__e : e }; });
+      })
+      .then(function (h) {
+        if (h === null && picked === 'abort') return;      // user cancelled
+        status('Connected', true);
+        if (window.showToast) showToast('Folder connected', 'success');
+      })
+      .catch(function (w) { fail((w && w.step) || 'connect', (w && w.e) || w); });
   }
 
   function reconnect() {
@@ -178,6 +245,19 @@
   };
   // 17-daily-note.js tests this for truthiness to decide filesystem vs hint.
   window.CDX_FILES_READY = function () { return dirNotes ? window.CDX_FILES_INVOKE : null; };
+
+  // Paste-able environment report for debugging a refusal.
+  window.cosmodexLiteDiag = function () {
+    return {
+      origin: location.origin,
+      secureContext: window.isSecureContext,
+      hasPicker: typeof window.showDirectoryPicker === 'function',
+      hasIndexedDB: typeof indexedDB !== 'undefined',
+      userAgent: navigator.userAgent,
+      connected: !!root,
+      lastError: window.__cdxFsLastError || null,
+    };
+  };
 
   /* ── settings UI ─────────────────────────────────────────────────────── */
   function status(text, ok) {

@@ -34,37 +34,6 @@ then open `http://localhost:8000`.
 opaque origin, so IndexedDB is unavailable and nothing will save. The app will
 appear to work and then lose everything.
 
-## Storage folder (recommended)
-
-Settings → **Data & Sync** → **Storage Folder** → *Choose folder…*
-
-Point it at a OneDrive-synced folder. Cosmodex then writes:
-
-```
-<your folder>/
-  data/cosmodex.json      every record, rewritten on change
-  notes/2026-08-20.md     daily notes, plain markdown
-  notes/_template.md      seed for a new day's note
-  notes/_captures.md      the running capture inbox
-```
-
-The folder handle is stored in IndexedDB, so the choice is remembered. Chrome
-may ask you to confirm access once per session — the Settings panel shows a
-*Reconnect folder* button when it does.
-
-This is what makes the build durable: IndexedDB becomes a cache, and the folder
-is the system of record. It also enables the daily-note editor, which is
-otherwise disabled in the browser.
-
-Chrome and Edge only — Firefox and Safari have no File System Access API. It
-also needs an http/https origin, which is another reason not to use `file://`.
-
-### Daily notes
-
-With a folder connected, the daily-note panel on the dashboard reads and writes
-real `.md` files in `notes/`. Nothing touches iCloud, and the files are plain
-markdown — readable by Obsidian later if you ever want, but independent of it.
-
 ## Backing up
 
 Bottom-right of the window: **⤓ Backup** downloads every record as JSON,
@@ -89,6 +58,13 @@ which concatenates `src/*.js` into `app.js`, copies `styles.css`, and rewrites
 CSP. Commit the regenerated files.
 
 ## What does not work here
+
+- **No folder storage.** The File System Access API is blocked by enterprise
+  policy on the target machine (`NotAllowedError` from `showDirectoryPicker`),
+  so writing records or markdown notes to a real folder is not possible from
+  the browser here. Backup/Restore below is the durability story instead.
+- **No daily notes.** They are files, so the same block applies. The panel shows
+  its desktop-only hint.
 
 - No sync of any kind. This install and the Firebase one are separate worlds.
 - No iCloud Reminders / calendar sync (that runs server-side against Firestore).

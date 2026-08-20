@@ -16714,7 +16714,7 @@ window.renderInsightsX = renderInsightsX;
   let _keysHooked = false;  // Cmd/Ctrl+E toggle listener attached once
   let _mode = 'edit';       // 'edit' | 'read' (daily note) | 'captures' (inbox file)
 
-  function _invoke() { return (window.CDX_FILES_READY && window.CDX_FILES_READY()) || null; }
+  function _invoke() { const t = window.__TAURI__; return t && t.core && t.core.invoke; }
 
   function _label(dateStr) {
     const d = new Date(dateStr + 'T00:00');

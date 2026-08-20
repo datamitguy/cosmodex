@@ -23,7 +23,9 @@
 
   var MEM = new Map();      // full path -> plain data object (the working set)
   var LISTENERS = [];       // { path, isColl, fire }
+  var CHANGE_CBS = [];      // mirror hooks (local-files.js)
   var idb = null;
+  var WRITES = 0;
 
   /* ── Firestore Timestamp lookalike ───────────────────────────────────────
      20-backup.js and others read .seconds / .toDate(), so match that shape. */
@@ -250,6 +252,8 @@
 
   /* ── change notification ─────────────────────────────────────────────── */
   function notify(path) {
+    WRITES++;
+    CHANGE_CBS.forEach(function (cb) { try { cb(path); } catch (e) {} });
     var cp = collPathOf(path);
     LISTENERS.slice().forEach(function (l) {
       if (l.isColl ? l.path === cp : l.path === path) {
@@ -354,6 +358,23 @@
       return Object.keys(docs).length;
     });
   }
+  /* Hooks used by local-files.js to mirror the working set to a real folder. */
+  window.__cdxLiteDump = function () {
+    var o = {};
+    MEM.forEach(function (data, path) { o[path] = data; });
+    return o;
+  };
+  window.__cdxLiteLoad = function (docs, replace) {
+    if (replace) MEM.clear();
+    Object.keys(docs).forEach(function (path) { MEM.set(path, docs[path]); persist(path); });
+    LISTENERS.slice().forEach(function (l) { try { l.fire(); } catch (e) {} });
+    return Object.keys(docs).length;
+  };
+  window.__cdxLiteOnChange = function (cb) { CHANGE_CBS.push(cb); };
+  // Non-zero means this session has written something — used to decide whether
+  // a late folder reconnect may safely overwrite memory from the file.
+  window.__cdxLiteWrites = function () { return WRITES; };
+
   window.cosmodexLiteExport = exportJson;
   window.cosmodexLiteImport = importJson;
 

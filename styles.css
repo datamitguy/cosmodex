@@ -8335,9 +8335,17 @@ select.atk-inline option { background:#141414; color:#fff; }
    MINIMALIST DASHBOARD — compact today spine + telemetry cards
    ═══════════════════════════════════════════════════════════════════════════ */
 .dash-board { flex:1; overflow-y:auto; min-height:0; background:#000; }
+/* Dashboard measure. Bumped on wide displays so a big office monitor is used
+   rather than framed with whitespace, but still capped — a full-bleed day grid
+   on an ultrawide stretches the calendar spine past the point of being read. */
+:root { --dash-max: 1240px; --dash-inner: calc(var(--dash-max) - 64px); }
+@media (min-width:1500px) { :root { --dash-max: 1440px; } }
+@media (min-width:1800px) { :root { --dash-max: 1700px; } }
+@media (min-width:2200px) { :root { --dash-max: 2000px; } }
+
 .dash-grid {
   display:grid; grid-template-columns:1.5fr 1fr; gap:18px;
-  padding:28px 32px 40px; max-width:1240px; margin:0 auto;
+  padding:28px 32px 40px; max-width:var(--dash-max); margin:0 auto;
   min-height:100%; box-sizing:border-box; align-items:stretch;
 }
 /* Columns stretch to fill the board; their last flexible child grows to close
@@ -8379,7 +8387,7 @@ select.atk-inline option { background:#141414; color:#fff; }
 .dash-task-check.on { display:flex; align-items:center; justify-content:center; font-size:10px; color:#fff; border-color:rgb(53,249,47); background:rgba(53,249,47,0.18); }
 .dash-task-name.done { text-decoration:line-through; color:rgba(255,255,255,0.42); }
 /* Yesterday / Today / Tomorrow day pills */
-.dash-daynav { display:flex; justify-content:center; max-width:1240px; margin:0 auto; padding:18px 32px 0; }
+.dash-daynav { display:flex; justify-content:center; max-width:var(--dash-max); margin:0 auto; padding:18px 32px 0; }
 .dash-daynav-inner { display:flex; gap:2px; padding:3px; border-radius:100px; background:rgba(255,255,255,0.03);
   border:1px solid rgba(255,255,255,0.08); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
 .dash-pill { font-family:var(--font-mono); font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
@@ -8388,7 +8396,7 @@ select.atk-inline option { background:#141414; color:#fff; }
 .dash-pill:hover { color:#fff; }
 .dash-pill.active { background:rgba(53,249,47,0.12); color:#fff; box-shadow:inset 0 0 0 1px rgba(53,249,47,0.35); }
 /* Valerie — daily note panel at the bottom of the dashboard */
-.dash-note-panel { box-sizing:border-box; max-width:1176px; margin:0 auto 40px; padding:20px 24px; border-radius:16px; }
+.dash-note-panel { box-sizing:border-box; width:calc(100% - 64px); max-width:var(--dash-inner); margin:0 auto 40px; padding:20px 24px; border-radius:16px; }
 .dash-note-panel:empty { display:none; }
 .dash-note-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
 .dash-note-actions { display:flex; align-items:center; gap:12px; }
@@ -9343,7 +9351,9 @@ select.atk-inline option { background:#141414; color:#fff; }
 
 /* ═══ DASHBOARD — COMMITMENTS BAND ═══
    Active commitments with their open tasks, sitting under the day grid. */
-.dash-commitments { padding: 16px 18px; margin-top: 14px; }
+/* Radius is left to .dash-glass so this can never drift from the other cards. */
+.dash-commitments { box-sizing:border-box; width:calc(100% - 64px); max-width:var(--dash-inner);
+  margin:0 auto 18px; padding:20px 24px; }
 .dash-c-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .dash-c-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 
@@ -9356,8 +9366,9 @@ select.atk-inline option { background:#141414; color:#fff; }
 .dash-c-card.open .dash-c-chevron { transform: rotate(90deg); }
 .dash-c-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cc); flex-shrink: 0;
   box-shadow: 0 0 8px color-mix(in srgb, var(--cc) 60%, transparent); }
-.dash-c-title { font-family: var(--font-body); font-size: 13px; color: var(--cream);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.dash-c-title { font-family: var(--font-display); font-weight: 300; font-size: 14px;
+  color: rgba(255,255,255,.9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1; min-width: 0; }
 /* Meta sits on its own line so the commitment name keeps the full width —
    these cards are narrow and the title is the part you actually read. */
 .dash-c-meta { display: flex; align-items: center; gap: 8px; padding: 5px 0 0 21px; cursor: pointer; }
@@ -9377,17 +9388,22 @@ select.atk-inline option { background:#141414; color:#fff; }
 
 .dash-c-body { max-height: 0; overflow: hidden; transition: max-height .22s var(--ease-glass); }
 .dash-c-card.open .dash-c-body { max-height: 460px; overflow-y: auto; }
-.dash-c-task { display: flex; align-items: center; gap: 8px; padding: 6px 0;
-  border-top: 1px solid rgba(255,255,255,.05); }
+.dash-c-task { display: flex; align-items: center; gap: 8px; padding: 6px 2px;
+  border-top: 1px solid rgba(255,255,255,.06); transition: padding .18s var(--ease-glass); }
+.dash-c-task:hover { padding-left: 6px; }
+.dash-c-task .dash-task-del { opacity: 0; }
+.dash-c-task:hover .dash-task-del { opacity: 1; }
 .dash-c-task:first-child { border-top: 0; padding-top: 10px; }
-.dash-c-task-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted-readable);
+.dash-c-task-name { flex: 1; min-width: 0; font-family: var(--font-display); font-weight: 300;
+  font-size: 13px; color: rgba(255,255,255,.9);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dash-c-empty { font-size: 12px; color: rgba(255,255,255,.3); padding: 10px 0 4px; }
+.dash-c-empty { font-family: var(--font-display); font-style: italic; font-weight: 300;
+  font-size: 13px; color: rgba(255,255,255,.35); padding: 10px 0 4px; }
 .dash-c-add { display: flex; align-items: center; gap: 7px; padding: 7px 0 11px;
   border-top: 1px solid rgba(255,255,255,.05); margin-top: 2px; }
 .dash-c-add-plus { font-family: var(--font-mono); font-size: 12px; color: rgba(255,255,255,.3); }
-.dash-c-add-input { flex: 1; background: none; border: 0; color: var(--cream);
-  font-family: var(--font-body); font-size: 12.5px; padding: 2px 0; }
+.dash-c-add-input { flex: 1; background: none; border: 0; color: rgba(255,255,255,.9);
+  font-family: var(--font-display); font-weight: 300; font-size: 13px; padding: 2px 0; }
 .dash-c-add-input::placeholder { color: rgba(255,255,255,.25); }
 .dash-c-add-input:focus { outline: none; }
 

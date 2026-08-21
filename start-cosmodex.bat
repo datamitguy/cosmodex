@@ -35,7 +35,9 @@ if not defined PY (
 )
 
 REM --- open the browser once the server has had a moment to bind ----------
-start "" cmd /c "timeout /t 2 /nobreak >nul & start "" http://localhost:%PORT%/"
+REM  (ping is used as the wait: it works everywhere, timeout does not always.)
+REM  (no quotes around the URL: nested quotes break this line in batch.)
+start "" cmd /c "ping -n 3 127.0.0.1 >nul & start http://localhost:%PORT%/"
 
 echo.
 echo   Cosmodex is running at http://localhost:%PORT%/

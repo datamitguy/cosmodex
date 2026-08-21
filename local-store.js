@@ -334,11 +334,25 @@
   /* ── backup / restore ────────────────────────────────────────────────────
      IndexedDB is per-browser-profile and IT can wipe it without warning, so a
      one-click export is not optional here. */
+  // Records live in IndexedDB, but preferences live in localStorage — categories,
+  // people, settings, consolidation config. A backup without them restores every
+  // task while losing the labels and colours those tasks refer to, so both go in.
+  function collectSettings() {
+    var out = {};
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (/^(cdx_|cosmodex)/.test(k)) out[k] = localStorage.getItem(k);
+    }
+    return out;
+  }
+
   function exportJson() {
     var out = {};
     MEM.forEach(function (data, path) { out[path] = data; });
-    var blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), docs: out }, null, 2)],
-      { type: 'application/json' });
+    var blob = new Blob([JSON.stringify({
+      version: 2, exportedAt: new Date().toISOString(),
+      docs: out, settings: collectSettings(),
+    }, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'cosmodex-lite-' + new Date().toISOString().slice(0, 10) + '.json';
@@ -348,10 +362,15 @@
   function importJson(file) {
     return file.text().then(function (txt) {
       var parsed = JSON.parse(txt);
-      var docs = parsed.docs || parsed;
+      var docs = parsed.docs || parsed;           // version 1 had no wrapper
       Object.keys(docs).forEach(function (path) { MEM.set(path, docs[path]); persist(path); });
+      // Preferences too, when the backup is version 2 or later.
+      var settings = parsed.settings || {};
+      Object.keys(settings).forEach(function (k) {
+        try { localStorage.setItem(k, settings[k]); } catch (e) {}
+      });
       LISTENERS.slice().forEach(function (l) { try { l.fire(); } catch (e) {} });
-      return Object.keys(docs).length;
+      return { docs: Object.keys(docs).length, settings: Object.keys(settings).length };
     });
   }
   window.cosmodexLiteExport = exportJson;
@@ -373,8 +392,11 @@
     picker.onchange = function () {
       if (!picker.files[0]) return;
       importJson(picker.files[0]).then(function (n) {
-        if (window.showToast) showToast('Restored ' + n + ' records', 'success');
-        else alert('Restored ' + n + ' records');
+        var msg = 'Restored ' + n.docs + ' records and ' + n.settings + ' settings — reloading…';
+        if (window.showToast) showToast(msg, 'success');
+        // Categories, people and settings are read into memory at startup, so
+        // reload rather than leave half the app on the old values.
+        setTimeout(function () { location.reload(); }, 1200);
       }).catch(function (e) { alert('Restore failed: ' + e.message); });
     };
     im.onclick = function () { picker.click(); };

@@ -36,6 +36,20 @@ then open `http://localhost:8000`.
 opaque origin, so IndexedDB is unavailable and nothing will save. The app will
 appear to work and then lose everything.
 
+## Moving to another machine
+
+Backup carries everything: records *and* preferences (categories, people,
+settings). Restore on the new machine, which reloads once it lands.
+
+The two machines are separate stores — there is no sync. Whichever you export
+from last is the one that wins, so export on the old machine the same day you
+import on the new one.
+
+## Starting it
+
+`start-cosmodex.bat` on Windows, `start-cosmodex.command` on macOS. Both find
+Python, serve this folder on port 8765, and open the browser.
+
 ## start-cosmodex.bat (Windows)
 
 Put the folder anywhere and double-click the batch file. It finds Python

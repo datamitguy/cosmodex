@@ -7962,6 +7962,48 @@ async function deleteHoliday(docId) {
   await deleteDoc(_ud('holidays', docId));
 }
 
+/* ══ CALENDAR OVERLAP LAYOUT ══
+   Outlook-style side-by-side columns for events that share a time range.
+   Give it items carrying _start/_end in minutes; it sets _lane (which column)
+   and _lanes (how many columns that overlap cluster needs). Touching events —
+   one ending exactly when the next begins — are NOT treated as overlapping.
+
+   Shared by the dashboard day grid, the day calendar and the week grid so the
+   three cannot drift apart. 15-calendar-x.js carries its own hour-based copy of
+   the same algorithm. */
+function calAssignLanes(items) {
+  const list = items.slice().sort((a, b) => a._start - b._start || a._end - b._end);
+  let i = 0;
+  while (i < list.length) {
+    const cluster = [list[i]];
+    let clusterEnd = list[i]._end, j = i + 1;
+    while (j < list.length && list[j]._start < clusterEnd) {
+      cluster.push(list[j]);
+      clusterEnd = Math.max(clusterEnd, list[j]._end);
+      j++;
+    }
+    const laneEnds = [];
+    cluster.forEach(e => {
+      let lane = 0;
+      while (lane < laneEnds.length && e._start < laneEnds[lane]) lane++;
+      e._lane = lane;
+      laneEnds[lane] = e._end;
+    });
+    cluster.forEach(e => { e._lanes = laneEnds.length; });
+    i = j;
+  }
+  return list;
+}
+
+// Inline left/width for one lane. Empty when an event has the row to itself,
+// so the stylesheet's default left/right insets still apply.
+function calLaneStyle(item, padL, padR) {
+  const lanes = item._lanes || 1;
+  if (lanes < 2) return '';
+  const w = 100 / lanes;
+  return `left:calc(${(item._lane || 0) * w}% + ${padL}px);width:calc(${w}% - ${padL + padR}px);right:auto;`;
+}
+
 /* ══ RENDER TASKS ══ */
 // → future file: cosmodex-tasks.js
 function _buildTaskToProjectMap() {
@@ -9228,6 +9270,17 @@ function renderDayView(date) {
     }
   }
 
+  // Lanes are computed across the whole day, not per hour row: two events can
+  // overlap while starting in different hours (15:30–16:30 vs 16:00–16:30).
+  // Every hour slot spans the same width, so percentage lanes still line up.
+  const _dayLanes = {};
+  calAssignLanes(dayEvents.map(ev => {
+    const sh = ev.startTime ? parseInt(ev.startTime.split(':')[0]) : (ev.startHour || 9);
+    const sm = ev.startTime ? parseInt(ev.startTime.split(':')[1] || '0') : 0;
+    const start = sh * 60 + sm;
+    return { id: ev.id, _start: start, _end: start + (ev.duration || 60) };
+  })).forEach(x => { _dayLanes[x.id] = x; });
+
   dayEvents.forEach(ev => {
     const startH = ev.startTime ? parseInt(ev.startTime.split(':')[0]) : (ev.startHour || 9);
     const startM = ev.startTime ? parseInt(ev.startTime.split(':')[1] || '0') : 0;
@@ -9246,7 +9299,8 @@ function renderDayView(date) {
     // top = startM px (1 minute = 1px), height = durationMins px
     const topPx = startM;
     const heightPx = Math.max(durationMins, 20);
-    chip.style.cssText = `border-left-color:${color};background:${color}18;top:${topPx}px;height:${heightPx}px;`;
+    const lane = _dayLanes[ev.id] || {};
+    chip.style.cssText = `border-left-color:${color};background:${color}18;top:${topPx}px;height:${heightPx}px;${calLaneStyle(lane, 6, 12)}`;
     const startTimeStr = fmtTimeSched(ev.startTime || `${String(startH).padStart(2,'0')}:00`);
     chip.innerHTML = `
       <span class="cal-event-title">${escHtml(ev.title)} <span class="cal-event-time" style="display:inline;margin-top:0">${startTimeStr}–${fmtTimeSched(endTimeStr)}</span></span>`;
@@ -9340,6 +9394,21 @@ function renderWeekView(date) {
   // Reposition multi-hour chips to span correct duration height
   const weekBodyEl = weekView.querySelector('.week-body');
   const WEEK_CELL_H = 44; // px per hour slot (min-height of .week-cell)
+  // Overlapping events share a day column here too, so lane them per day.
+  const _weekLanes = {};
+  const _byDay = {};
+  weekView.querySelectorAll('.week-event-chip[data-event-id]').forEach(chip => {
+    const ev = CAL_EVENTS.find(e => e.id === chip.dataset.eventId);
+    if (!ev || !ev.startTime) return;
+    (_byDay[ev.date] = _byDay[ev.date] || []).push(ev);
+  });
+  Object.values(_byDay).forEach(evs => {
+    calAssignLanes(evs.map(ev => {
+      const [h, m] = ev.startTime.split(':').map(Number);
+      const start = h * 60 + (m || 0);
+      return { id: ev.id, _start: start, _end: start + (ev.duration || 60) };
+    })).forEach(x => { _weekLanes[x.id] = x; });
+  });
   weekView.querySelectorAll('.week-event-chip[data-event-id]').forEach(chip => {
     const ev = CAL_EVENTS.find(e => e.id === chip.dataset.eventId);
     if (!ev || !weekBodyEl) return;
@@ -9348,8 +9417,10 @@ function renderWeekView(date) {
     const durationMins = ev.duration || 60;
     const startM = ev.startTime ? parseInt(ev.startTime.split(':')[1] || '0') : 0;
     const topPx    = cell.offsetTop  + Math.round(startM / 60 * WEEK_CELL_H);
-    const leftPx   = cell.offsetLeft + 2;
-    const widthPx  = cell.offsetWidth - 6;
+    const _ln = _weekLanes[ev.id] || {}, _lanes = _ln._lanes || 1, _lane = _ln._lane || 0;
+    const _fullW   = cell.offsetWidth - 6;
+    const leftPx   = cell.offsetLeft + 2 + Math.round(_lane * (_fullW / _lanes));
+    const widthPx  = Math.round(_fullW / _lanes) - (_lanes > 1 ? 2 : 0);
     const heightPx = Math.max(Math.round(durationMins / 60 * WEEK_CELL_H), 18);
     chip.style.position  = 'absolute';
     chip.style.top       = topPx  + 'px';
@@ -13387,20 +13458,24 @@ function _dashRenderTodayLine() {
   }
 
   // 3. Timed events → positioned chips (draggable to move)
-  const events = (CAL_EVENTS || []).filter(e => e.date === viewDate && !e.allDay && e.startTime);
+  const laid = calAssignLanes((CAL_EVENTS || [])
+    .filter(e => e.date === viewDate && !e.allDay && e.startTime)
+    .map(ev => {
+      const [h, m] = ev.startTime.split(':').map(Number);
+      const start = h * 60 + (m || 0);
+      return { ev, _start: start, _end: start + (ev.duration || 30) };
+    })
+    .filter(x => x._start < gridEnd));
   let chips = '';
-  events.forEach(ev => {
-    const [h, m] = ev.startTime.split(':').map(Number);
-    const startMins = h * 60 + (m || 0);
-    if (startMins >= gridEnd) return;
-    const dur = ev.duration || 30;
+  laid.forEach(item => {
+    const ev = item.ev, startMins = item._start, dur = ev.duration || 30;
     const top = Math.max(0, (startMins - gridStart) / 30) * DASH_SLOT_H;
     const height = Math.max((dur / 30) * DASH_SLOT_H - 2, 22);
     const task = ev.taskId ? TASKS.find(t => t.id === ev.taskId) : null;
     const color = getCatColor(task?.category);
-    const past = isToday && (startMins + dur <= nowMins);
-    chips += `<div class="dash-chip${task?.done ? ' done' : ''}${past ? ' past' : ''}" draggable="true"
-        data-ev-chip="${escAttr(ev.id)}" style="top:${top}px;height:${height}px;--nc:${color}">
+    const past = isToday && (item._end <= nowMins);
+    chips += `<div class="dash-chip${task?.done ? ' done' : ''}${past ? ' past' : ''}${item._lanes > 1 ? ' shared' : ''}" draggable="true"
+        data-ev-chip="${escAttr(ev.id)}" style="top:${top}px;height:${height}px;${calLaneStyle(item, 4, 10)}--nc:${color}">
         <span class="dash-chip-time">${escHtml(_dashFmtTime(ev.startTime))}</span>
         <span class="dash-chip-title">${escHtml(ev.title)}</span>
       </div>`;

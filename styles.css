@@ -9408,3 +9408,61 @@ select.atk-inline option { background:#141414; color:#fff; }
 .dash-c-add-input:focus { outline: none; }
 
 @media (max-width: 640px) { .dash-c-grid { grid-template-columns: 1fr; } }
+
+/* ═══ DAILY NOTE — markdown elements added to the preview ═══
+   Tables, fenced code, nested lists, strikethrough, highlight, images,
+   embeds, footnotes and inline math. Neon stays as the app's accent for
+   links and markers; these are quieter so a note reads as a document. */
+.dash-note-preview ol { margin:0 0 12px; padding-left:24px; }
+.dash-note-preview ol li::marker { color:var(--neon); font-family:var(--font-mono); font-size:13px; }
+/* Nested lists sit tighter than the top level and lose the outer margin. */
+.dash-note-preview li > ul, .dash-note-preview li > ol { margin:4px 0 2px; }
+.dash-note-preview .md-tasks .md-tasks { padding-left:18px; }
+
+.dash-note-preview .md-pre {
+  margin:0 0 14px; padding:12px 14px; border-radius:10px; overflow-x:auto;
+  background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.09);
+  position:relative;
+}
+.dash-note-preview .md-pre code {
+  font-family:var(--font-mono); font-size:12.5px; line-height:1.6;
+  color:rgba(255,255,255,0.85); background:none; padding:0; border-radius:0;
+  white-space:pre; display:block;
+}
+.dash-note-preview .md-pre[data-lang]::before {
+  content:attr(data-lang); position:absolute; top:6px; right:10px;
+  font-family:var(--font-mono); font-size:9px; letter-spacing:0.12em;
+  text-transform:uppercase; color:rgba(255,255,255,0.28);
+}
+
+.dash-note-preview .md-table {
+  border-collapse:collapse; width:100%; margin:0 0 14px;
+  font-family:var(--font-body); font-size:13.5px; display:block; overflow-x:auto;
+}
+.dash-note-preview .md-table th, .dash-note-preview .md-table td {
+  border:1px solid rgba(255,255,255,0.10); padding:7px 11px; text-align:left; vertical-align:top;
+}
+.dash-note-preview .md-table th {
+  font-family:var(--font-mono); font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+  color:rgba(255,255,255,0.6); background:rgba(255,255,255,0.04); font-weight:400;
+}
+.dash-note-preview .md-table tbody tr:nth-child(even) { background:rgba(255,255,255,0.02); }
+
+.dash-note-preview del { color:rgba(255,255,255,0.4); }
+.dash-note-preview mark { background:rgba(57,255,20,0.18); color:#fff; padding:0 3px; border-radius:3px; }
+.dash-note-preview .md-img { max-width:100%; border-radius:10px; margin:4px 0; display:block; }
+.dash-note-preview .md-embed {
+  font-family:var(--font-mono); font-size:12px; color:var(--neon);
+  border:1px dashed var(--neon-dim); border-radius:6px; padding:1px 7px;
+}
+.dash-note-preview .md-fn {
+  font-family:var(--font-mono); font-size:9px; color:var(--neon);
+  vertical-align:super; margin-left:1px;
+}
+.dash-note-preview .md-math {
+  font-family:var(--font-mono); font-size:13px; color:rgba(255,255,255,0.8);
+  background:rgba(255,255,255,0.05); padding:1px 5px; border-radius:4px;
+}
+.dash-note-preview blockquote blockquote {
+  margin-top:8px; border-left-color:rgba(255,255,255,0.18);
+}

@@ -16802,60 +16802,207 @@ window.renderInsightsX = renderInsightsX;
 
   function _status(t) { const s = document.getElementById('dash-note-status'); if (s) s.textContent = t; }
 
-  // Minimal, safe markdown → HTML for the live preview. Renders enough Obsidian
-  // syntax to look like reading mode: headings, bold/italic/code, lists, task
-  // checkboxes, blockquotes, rules, links, [[wikilinks]], > [!callouts], and it
-  // hides %%comment%% blocks. Never used to write back — display only.
+  /* Markdown -> HTML for the live preview. Renders enough Obsidian syntax to
+     look like reading mode. Display only — never used to write back, so the
+     raw text in the textarea stays exactly as typed.
+
+     Order matters: fenced code is lifted out first so nothing inside it is
+     interpreted, then escapes, then inline code, then everything else. */
   function _md(src) {
     src = String(src || '').replace(/%%[\s\S]*?%%/g, '');   // hide Obsidian comments
-    // Escape HTML inside inline() only — structure is detected on the raw line,
-    // so `>` (callouts/blockquotes) survives instead of becoming &gt; up front.
+
     const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const inline = s => esc(s)
-      .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '<span class="md-wl">$2</span>')
-      .replace(/\[\[([^\]]+)\]\]/g, '<span class="md-wl">$1</span>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|[^*])\*(?!\s)([^*]+?)\*/g, '$1<em>$2</em>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    const lines = src.split('\n');
-    let html = '', inList = false, i = 0;
-    const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
-    const taskLine = cl => {
-      const done = /\[[xX]\]/.test(cl);
-      return `<span class="md-check">${done ? '☑' : '☐'}</span> ${inline(cl.replace(/^\s*[-*]\s+\[[ xX]\]\s/, ''))}`;
+
+    // Protected spans are parked behind a token no note would contain, so the
+    // inline rules below cannot reach inside them.
+    let vault = [];
+    const stash = html => '«md:' + (vault.push(html) - 1) + '»';
+    const unstash = s => s.replace(/«md:(\d+)»/g, (_, i) => vault[+i]);
+
+    const inline = raw => {
+      // Backslash escapes taken out before any rule can see them.
+      let s = raw.replace(/\\([\\`*_{}\[\]()#+\-.!~=|])/g, (_, c) => stash(esc(c)));
+      s = esc(s);
+      s = s.replace(/`([^`]+)`/g, (_, c) => stash('<code>' + c + '</code>'));
+      // Images and embeds before links, or the link rule eats them.
+      s = s.replace(/!\[\[([^\]]+)\]\]/g, (_, t) => stash('<span class="md-embed">⧉ ' + t + '</span>'));
+      s = s.replace(/!\[([^\]]*)\]\((https?:[^)\s]+)\)/g,
+        (_, a, u) => stash('<img class="md-img" src="' + u + '" alt="' + a + '">'));
+      s = s.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, (_, a, b) => stash('<span class="md-wl">' + b + '</span>'));
+      s = s.replace(/\[\[([^\]]+)\]\]/g, (_, t) => stash('<span class="md-wl">' + t + '</span>'));
+      s = s.replace(/\[\^([^\]]+)\]/g, (_, n) => stash('<sup class="md-fn">' + n + '</sup>'));
+      s = s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+        (_, t, u) => stash('<a href="' + u + '" target="_blank" rel="noopener">' + t + '</a>'));
+      // Bare URLs — real links are already stashed, so nothing double-wraps.
+      s = s.replace(/(^|[\s(])(https?:\/\/[^\s<>"')]+)/g,
+        (m, pre, u) => pre + stash('<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>'));
+      s = s.replace(/\$([^$\n]+)\$/g, (_, m) => stash('<span class="md-math">' + m + '</span>'));
+      s = s.replace(/~~(.+?)~~/g, '<del>$1</del>');
+      s = s.replace(/==(.+?)==/g, '<mark>$1</mark>');
+      s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+      s = s.replace(/(^|[^*\w])\*(?!\s)([^*]+?)\*/g, '$1<em>$2</em>');
+      s = s.replace(/(^|[^_\w])_(?!\s)([^_]+?)_/g, '$1<em>$2</em>');
+      return unstash(s);
     };
+
+    const isTask   = l => /^\s*[-*+]\s+\[[ xX]\]\s/.test(l);
+    const isBullet = l => /^\s*[-*+]\s+/.test(l);
+    const isNum    = l => /^\s*\d+[.)]\s+/.test(l);
+    const indentOf = l => l.match(/^\s*/)[0].replace(/\t/g, '    ').length;
+    const taskHtml = cl => {
+      const done = /\[[xX]\]/.test(cl);
+      return '<span class="md-check">' + (done ? '☑' : '☐') + '</span> '
+           + inline(cl.replace(/^\s*[-*+]\s+\[[ xX]\]\s/, ''));
+    };
+
+    const lines = src.split('\n');
+    let html = '', i = 0;
+    // Open lists, innermost last. liOpen matters: a nested list belongs INSIDE
+    // its parent <li>, so that item is left open until the sublist closes —
+    // otherwise the sublist becomes a sibling, which is invalid HTML and
+    // indents wrongly.
+    const stack = [];
+    const closeTo = toIndent => {
+      while (stack.length && stack[stack.length - 1].indent >= toIndent) {
+        const lvl = stack.pop();
+        if (lvl.liOpen) html += '</li>';
+        html += lvl.tag === 'ol' ? '</ol>' : '</ul>';
+        const parent = stack[stack.length - 1];
+        if (parent && parent.liOpen) { html += '</li>'; parent.liOpen = false; }
+      }
+    };
+    const closeAll = () => closeTo(0);
+    const openList = (tag, cls, indent) => {
+      html += '<' + tag + cls + '>';
+      stack.push({ indent: indent, tag: tag, liOpen: false });
+    };
+
     while (i < lines.length) {
       const l = lines[i].replace(/\s+$/, '');
-      // Obsidian callout: > [!Type]±  Title  followed by its > content lines.
+
+      // -- fenced code --------------------------------------------------
+      const fence = l.match(/^\s*```+\s*(\S*)\s*$/);
+      if (fence) {
+        closeAll();
+        const lang = fence[1] || '';
+        let code = ''; i++;
+        while (i < lines.length && !/^\s*```+\s*$/.test(lines[i])) { code += lines[i] + '\n'; i++; }
+        i++;                                            // closing fence
+        html += '<pre class="md-pre"' + (lang ? ' data-lang="' + esc(lang) + '"' : '') + '><code>'
+              + esc(code.replace(/\n$/, '')) + '</code></pre>';
+        continue;
+      }
+
+      // -- table: header, |---| separator, then rows ---------------------
+      if (/^\s*\|.*\|\s*$/.test(l) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+        closeAll();
+        const cells = r => r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+        const align = cells(lines[i + 1]).map(c =>
+          /^:.*:$/.test(c) ? 'center' : /:$/.test(c) ? 'right' : /^:/.test(c) ? 'left' : '');
+        const head = cells(l);
+        i += 2;
+        let body = '';
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+          body += '<tr>' + cells(lines[i]).map((c, n) =>
+            '<td' + (align[n] ? ' style="text-align:' + align[n] + '"' : '') + '>' + inline(c) + '</td>').join('') + '</tr>';
+          i++;
+        }
+        html += '<table class="md-table"><thead><tr>'
+              + head.map((c, n) => '<th' + (align[n] ? ' style="text-align:' + align[n] + '"' : '') + '>' + inline(c) + '</th>').join('')
+              + '</tr></thead><tbody>' + body + '</tbody></table>';
+        continue;
+      }
+
+      // -- Obsidian callout ----------------------------------------------
       const cm = l.match(/^>\s*\[!(\w+)\]([-+]?)\s*(.*)$/);
       if (cm) {
-        closeList();
+        closeAll();
         const title = cm[3] || cm[1];
         let inner = ''; i++;
         while (i < lines.length && /^>/.test(lines[i])) {
           const cl = lines[i].replace(/^>\s?/, '').replace(/\s+$/, '');
-          if (/^\s*[-*]\s+\[[ xX]\]\s/.test(cl)) inner += `<div class="md-task">${taskLine(cl)}</div>`;
-          else if (/^\s*[-*]\s+/.test(cl)) inner += `<div>• ${inline(cl.replace(/^\s*[-*]\s+/, ''))}</div>`;
+          if (isTask(cl))        inner += '<div class="md-task">' + taskHtml(cl) + '</div>';
+          else if (isBullet(cl)) inner += '<div>• ' + inline(cl.replace(/^\s*[-*+]\s+/, '')) + '</div>';
           else if (cl.trim() === '') inner += '<br>';
-          else inner += `<div>${inline(cl)}</div>`;
+          else inner += '<div>' + inline(cl) + '</div>';
           i++;
         }
-        html += `<div class="md-callout"><div class="md-callout-t">${inline(title)}</div>${inner}</div>`;
+        html += '<div class="md-callout"><div class="md-callout-t">' + inline(title) + '</div>' + inner + '</div>';
         continue;
       }
-      if (/^#{1,6}\s/.test(l)) { closeList(); const lvl = l.match(/^#+/)[0].length; html += `<h${lvl}>${inline(l.replace(/^#+\s/, ''))}</h${lvl}>`; }
-      else if (/^\s*[-*]\s+\[[ xX]\]\s/.test(l)) { if (!inList) { html += '<ul class="md-tasks">'; inList = true; } html += `<li class="${/\[[xX]\]/.test(l) ? 'done' : ''}">${taskLine(l)}</li>`; }
-      else if (/^\s*[-*]\s+/.test(l)) { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${inline(l.replace(/^\s*[-*]\s+/, ''))}</li>`; }
-      else if (/^>\s?/.test(l)) { closeList(); html += `<blockquote>${inline(l.replace(/^>\s?/, ''))}</blockquote>`; }
-      else if (/^(-{3,}|\*{3,})$/.test(l)) { closeList(); html += '<hr>'; }
-      else if (l.trim() === '') { closeList(); }
-      else { closeList(); html += `<p>${inline(l)}</p>`; }
-      i++;
+
+      // -- blockquote, including nested >> --------------------------------
+      if (/^>\s?/.test(l)) {
+        closeAll();
+        let depth = 0; const body = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) {
+          const m = lines[i].match(/^(>+)\s?(.*)$/);
+          depth = Math.max(depth, m[1].length);
+          body.push(m[2]);
+          i++;
+        }
+        html += '<blockquote>'.repeat(depth) + inline(body.join(' ')) + '</blockquote>'.repeat(depth);
+        continue;
+      }
+
+      // -- headings / rules ----------------------------------------------
+      if (/^#{1,6}\s/.test(l)) {
+        closeAll();
+        const lvl = l.match(/^#+/)[0].length;
+        html += '<h' + lvl + '>' + inline(l.replace(/^#+\s/, '')) + '</h' + lvl + '>';
+        i++; continue;
+      }
+      if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(l)) { closeAll(); html += '<hr>'; i++; continue; }
+
+      // -- lists, nested by indentation -----------------------------------
+      if (isTask(l) || isBullet(l) || isNum(l)) {
+        const indent = indentOf(l);
+        const tag = isNum(l) ? 'ol' : 'ul';
+        const cls = isTask(l) ? ' class="md-tasks"' : '';
+        closeTo(indent + 1);                             // close deeper levels
+        let top = stack[stack.length - 1];
+        if (!top || top.indent < indent) {
+          openList(tag, cls, indent);                    // nested: parent <li> stays open
+        } else {
+          if (top.tag !== tag) {                         // bullets -> numbers at one level
+            if (top.liOpen) html += '</li>';
+            html += top.tag === 'ol' ? '</ol>' : '</ul>';
+            stack.pop();
+            openList(tag, cls, indent);
+          } else if (top.liOpen) {
+            html += '</li>';                             // close the previous sibling
+            top.liOpen = false;
+          }
+        }
+        if (isTask(l))      html += '<li class="' + (/\[[xX]\]/.test(l) ? 'done' : '') + '">' + taskHtml(l);
+        else if (isNum(l))  html += '<li>' + inline(l.replace(/^\s*\d+[.)]\s+/, ''));
+        else                html += '<li>' + inline(l.replace(/^\s*[-*+]\s+/, ''));
+        stack[stack.length - 1].liOpen = true;
+        i++; continue;
+      }
+
+      if (l.trim() === '') { closeAll(); i++; continue; }
+
+      // -- paragraph: consecutive lines are one block, soft-wrapped -------
+      closeAll();
+      const para = [];
+      while (i < lines.length) {
+        const pl = lines[i];
+        if (pl.trim() === '' || /^\s*(#{1,6}\s|>|\||```|-{3,})/.test(pl)
+            || isTask(pl) || isBullet(pl) || isNum(pl)) break;
+        // Two trailing spaces is markdown's hard line break.
+        para.push(inline(pl.replace(/\s+$/, '')) + (/\s\s$/.test(pl) ? '<br>' : ''));
+        i++;
+      }
+      html += '<p>' + para.join(' ') + '</p>';
     }
-    closeList();
+    closeAll();
     return html;
   }
+
+  // Exposed so the renderer can be tested without driving the editor UI.
+  window._cdxMd = _md;
 
   async function _save(dateStr) {
     const invoke = _invoke(); if (!invoke) return;

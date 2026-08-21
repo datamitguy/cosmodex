@@ -22,7 +22,9 @@ The Content-Security-Policy in `index.html` is narrowed to `connect-src 'self'`
 **GitHub Pages** — serve this repo's root. Nothing to build on their side; the
 generated files are committed.
 
-**Locally** — anything that serves over http will do:
+**On Windows** — double-click `start-cosmodex.bat` (see below).
+
+**Locally, by hand** — anything that serves over http will do:
 
 ```bash
 python3 -m http.server 8000
@@ -33,6 +35,21 @@ then open `http://localhost:8000`.
 **Do not open `index.html` with `file://`.** Chrome treats file URLs as an
 opaque origin, so IndexedDB is unavailable and nothing will save. The app will
 appear to work and then lose everything.
+
+## start-cosmodex.bat (Windows)
+
+Put the folder anywhere and double-click the batch file. It finds Python
+(`py`, `python` or `python3`), serves this folder on port 8765, and opens the
+browser at `http://localhost:8765/`. Close the window to stop it.
+
+To get an icon: right-click the .bat -> Send to -> Desktop (create shortcut),
+then right-click the shortcut -> Properties, set **Run: Minimized**, and use
+**Change Icon...** to pick something. Pin it to the taskbar from there.
+
+To start it at login, press Win+R, run `shell:startup`, and drop the shortcut
+in that folder.
+
+Change `PORT` at the top of the .bat if 8765 is taken.
 
 ## Backing up
 

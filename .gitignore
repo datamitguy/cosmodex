@@ -2,3 +2,8 @@
 node_modules/
 *.log
 .claude/settings.local.json
+
+# Local data — yours, not the repo's
+data/
+notes/
+backups/

@@ -27,7 +27,7 @@ src = open(sys.argv[1]).read()
 start = src.index('<!-- Firebase (ESM CDN)')
 end   = src.index('</script>', src.index('onAuthStateChanged(auth, user =>')) + len('</script>')
 src = src[:start] + '''<!-- Cosmodex Lite: Firebase replaced by a local IndexedDB store. No network, no login. -->
-<script src="local-store.js"></script>''' + src[end:]
+<script src="sqlite-store.js"></script>''' + src[end:]
 
 # The service worker pre-caches './cosmodex-v2.html', which does not exist in
 # this build. Offline shell caching is not worth a broken fetch handler here.
@@ -64,5 +64,19 @@ src = src.replace('<div id="signin-overlay">', '<div id="signin-overlay" style="
 open('index.html', 'w').write(src)
 print('  index.html written')
 PY
+
+# ── app.js: the daily-note module writes through the server ──────────────
+# 17-daily-note.js reaches the filesystem via Tauri on the desktop. In this
+# build the local server does the file I/O instead. Only this module is
+# repointed — the Reminders and Calendar mirrors must stay disabled, so faking
+# window.__TAURI__ wholesale is not an option.
+python3 - <<'PY2'
+src = open('app.js').read()
+old = "function _invoke() { const t = window.__TAURI__; return t && t.core && t.core.invoke; }"
+assert src.count(old) == 1, "daily-note _invoke() not found exactly once (%d)" % src.count(old)
+src = src.replace(old, "function _invoke() { return window.CDX_NOTES_INVOKE || null; }")
+open('app.js', 'w').write(src)
+print('  daily notes repointed to the server')
+PY2
 
 echo "Built cosmodex-lite: $(wc -c < app.js | tr -d ' ') bytes of app.js"

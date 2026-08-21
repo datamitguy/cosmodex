@@ -1,21 +1,38 @@
 # Cosmodex Lite
 
-Cosmodex with the Firebase layer removed. No sign-in, no network, no backend —
-everything lives in the browser's IndexedDB on the machine you open it on.
+Cosmodex without Firebase. A small Python server stores everything in a SQLite
+file and writes your daily notes as real markdown. No sign-in, no cloud, no
+install — Python's standard library already contains SQLite and a web server.
 
-Built for a locked-down work laptop: no install, no admin rights, no Google
-login. Open a URL, use the app.
+Built for a locked-down work laptop: no admin rights, no approved-library
+request, no Google login.
 
 ## What it is
 
-`local-store.js` reimplements the exact slice of the Firestore API Cosmodex
-uses (18 functions) on top of IndexedDB, and fakes an always-signed-in local
-user. Because every Firestore call in the app goes through the single
-`window.CDX_FB` object, swapping that object leaves ~118 call sites across 11
-modules working untouched.
+`cosmodex-server.py` serves the app *and* owns its data. Serving both from one
+origin avoids cross-origin rules, mixed-content rules and Chrome's
+private-network preflight — three places corporate policy can say no.
 
-The Content-Security-Policy in `index.html` is narrowed to `connect-src 'self'`
-— the policy is the proof that nothing leaves the machine.
+`sqlite-store.js` reimplements the slice of the Firestore API Cosmodex uses (18
+functions) against that server. Every call in the app goes through one
+`window.CDX_FB` object, so ~118 call sites across 11 modules are untouched.
+
+## Where things live
+
+    data/cosmodex.db        every record
+    notes/2026-08/2026-08-21.md   daily notes, one folder per month
+    notes/_template.md      seeds a new day, if present
+    notes/_captures.md      the running capture inbox
+    backups/                dated copies, written on every start
+
+Override with environment variables before launching:
+
+    COSMODEX_DB      COSMODEX_NOTES      COSMODEX_BACKUPS      COSMODEX_PORT
+
+Keep the live database on a local disk, not inside OneDrive — SQLite writes
+`-wal` and `-shm` files alongside it and a sync client can upload them out of
+step. Point `COSMODEX_BACKUPS` at OneDrive instead; those copies are made with
+SQLite's own backup API and are safe to sync.
 
 ## Running it
 
@@ -24,13 +41,13 @@ generated files are committed.
 
 **On Windows** — double-click `start-cosmodex.bat` (see below).
 
-**Locally, by hand** — anything that serves over http will do:
+**By hand:**
 
 ```bash
-python3 -m http.server 8000
+python3 cosmodex-server.py
 ```
 
-then open `http://localhost:8000`.
+then open `http://localhost:8765`.
 
 **Do not open `index.html` with `file://`.** Chrome treats file URLs as an
 opaque origin, so IndexedDB is unavailable and nothing will save. The app will
@@ -38,12 +55,14 @@ appear to work and then lose everything.
 
 ## Moving to another machine
 
-Backup carries everything: records *and* preferences (categories, people,
-settings). Restore on the new machine, which reloads once it lands.
+Copy the whole folder — `data/cosmodex.db` and `notes/` come with it. Start the
+server on the new machine and everything is there, preferences included.
 
-The two machines are separate stores — there is no sync. Whichever you export
-from last is the one that wins, so export on the old machine the same day you
-import on the new one.
+The JSON Backup button still works and is a reasonable belt-and-braces export,
+but the database file is the real answer now.
+
+Data left in the old browser-only build is migrated automatically the first
+time the server starts with an empty database.
 
 ## Starting it
 

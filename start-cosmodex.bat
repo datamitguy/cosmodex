@@ -1,6 +1,9 @@
 @echo off
 REM ===========================================================================
-REM  Cosmodex — start a local server and open the app.
+REM  Cosmodex — start the local server and open the app.
+REM
+REM  This runs cosmodex-server.py, which stores everything in a SQLite file and
+REM  writes your daily notes as markdown. Closing this window stops it.
 REM
 REM  Put this file next to index.html and double-click it (or use a shortcut).
 REM  Serving over http://localhost avoids every problem that comes with opening
@@ -39,11 +42,8 @@ REM  (ping is used as the wait: it works everywhere, timeout does not always.)
 REM  (no quotes around the URL: nested quotes break this line in batch.)
 start "" cmd /c "ping -n 3 127.0.0.1 >nul & start http://localhost:%PORT%/"
 
-echo.
-echo   Cosmodex is running at http://localhost:%PORT%/
-echo   Keep this window open. Close it to stop.
-echo.
-%PY% -m http.server %PORT%
+set "COSMODEX_PORT=%PORT%"
+%PY% cosmodex-server.py
 
 REM --- if the server exits immediately, the port is probably in use -------
 if errorlevel 1 (

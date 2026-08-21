@@ -32,11 +32,7 @@ fi
 # Open the browser once the server has had a moment to bind.
 ( sleep 2; open "http://localhost:${PORT}/" ) &
 
-echo
-echo "  Cosmodex is running at http://localhost:${PORT}/"
-echo "  Keep this window open. Close it to stop."
-echo
-"$PY" -m http.server "$PORT" || {
+COSMODEX_PORT="$PORT" "$PY" cosmodex-server.py || {
   echo
   echo "  The server stopped. Port ${PORT} may be in use —"
   echo "  edit this file and change PORT to 8766."

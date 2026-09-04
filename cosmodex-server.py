@@ -138,6 +138,16 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=HERE, **kw)
 
+    def end_headers(self):
+        # SimpleHTTPRequestHandler sends only Last-Modified for static files, no
+        # Cache-Control and no ETag, so Chrome applies heuristic freshness and
+        # keeps serving a stale app.js after an edit -- the page looks unchanged
+        # and there is nothing on screen to say why. The API responses set this
+        # header themselves, in _send.
+        if not (self.path or "").startswith("/api/"):
+            self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def log_message(self, fmt, *args):
         if "/api/" not in (self.path or ""):
             return

@@ -7300,9 +7300,9 @@ function _tdDrawTimeline(now){
         // rather than painting over them.
         ctx.beginPath();
         ctx.arc(cx,cy_arc,innerR-5,-Math.PI/2+cS,-Math.PI/2+cE);
-        ctx.strokeStyle=col+(sess.paused?'0.75)':'1)');
-        ctx.lineWidth=2.4; ctx.lineCap='round';
-        if(!sess.paused){ ctx.shadowColor=col+'0.85)'; ctx.shadowBlur=9; }
+        ctx.strokeStyle=col+(sess.paused?'0.55)':'0.78)');
+        ctx.lineWidth=1.5; ctx.lineCap='round';
+        if(!sess.paused){ ctx.shadowColor=col+'0.45)'; ctx.shadowBlur=5; }
         ctx.stroke();
         ctx.restore();
       }
@@ -7327,10 +7327,9 @@ function _tdDrawTimeline(now){
   const mm=String(now.getMinutes()).padStart(2,'0');
   ctx.font="300 20px 'DM Mono',monospace";
   ctx.textAlign='center'; ctx.textBaseline='top';
-  ctx.fillStyle='rgba(255,255,255,0.92)';
-  ctx.shadowColor='rgba(255,255,255,0.4)'; ctx.shadowBlur=8;
-  ctx.fillText(hh+':'+mm,cx,tY);
+  ctx.fillStyle='rgba(255,255,255,0.9)';
   ctx.shadowBlur=0;
+  ctx.fillText(hh+':'+mm,cx,tY);
 
   // ── Upcoming events (next 30 mins) ───────────────────────
   const nowMins=now.getHours()*60+now.getMinutes();
@@ -7348,35 +7347,42 @@ function _tdDrawTimeline(now){
   ctx.textBaseline='top'; ctx.textAlign='center';
   let ey=tY+32;
   const maxY=H-8; // clamp to canvas height
+  /* One quiet block under the marker: a letterspaced label saying what kind of
+     thing this is, the event's own name at the only weight that carries, and a
+     dim line of detail. Colour is not doing the work here -- spacing and weight
+     are -- so nothing on this readout competes with the session line. */
+  const _eyebrow=(t,y)=>{
+    ctx.font="300 8.5px 'DM Mono',monospace";
+    if('letterSpacing' in ctx) ctx.letterSpacing='0.22em';
+    ctx.fillStyle='rgba(255,255,255,0.30)';
+    ctx.fillText(t.toUpperCase(),cx,y);
+    if('letterSpacing' in ctx) ctx.letterSpacing='0em';
+  };
+  const _subject=(t,y)=>{
+    ctx.font="400 12px 'DM Mono',monospace";
+    ctx.fillStyle='rgba(255,255,255,0.82)';
+    ctx.fillText(t,cx,y);
+  };
+  const _detail=(t,y)=>{
+    ctx.font="300 9px 'DM Mono',monospace";
+    ctx.fillStyle='rgba(255,255,255,0.28)';
+    ctx.fillText(t,cx,y);
+  };
+  const _clip=(t,n)=>t?(t.length>n?t.slice(0,n-1)+'…':t):'event';
+
   if(ongoing && ey<maxY){
-    const label=ongoing.title?(ongoing.title.length>20?ongoing.title.slice(0,19)+'…':ongoing.title):'event';
-    ctx.font="300 10px 'DM Mono',monospace";
-    ctx.fillStyle='rgba(57,255,20,0.60)';
-    ctx.fillText('ongoing · '+label,cx,ey); ey+=15;
-    if(ey<maxY){
-      ctx.font="300 9px 'DM Mono',monospace";
-      ctx.fillStyle='rgba(57,255,20,0.38)';
-      ctx.fillText('continues '+(ongoing.eMins-nowMins)+'m more',cx,ey); ey+=20;
-    }
+    _eyebrow('ongoing',ey); ey+=14;
+    if(ey<maxY){ _subject(_clip(ongoing.title,22),ey); ey+=15; }
+    if(ey<maxY){ _detail((ongoing.eMins-nowMins)+'m remaining',ey); ey+=20; }
   }
   if(soon.length>0 && ey<maxY){
     soon.slice(0,2).forEach(ev=>{
       if(ey>=maxY) return;
-      const delta=ev.sMins-nowMins;
-      const label=ev.title?(ev.title.length>22?ev.title.slice(0,21)+'…':ev.title):'event';
-      ctx.font="400 11px 'DM Mono',monospace";
-      ctx.fillStyle='rgba(255,255,255,0.88)';
-      ctx.fillText(label,cx,ey); ey+=15;
-      if(ey<maxY){
-        ctx.font="300 9px 'DM Mono',monospace";
-        ctx.fillStyle='rgba(57,255,20,0.65)';
-        ctx.fillText('in '+delta+'m',cx,ey); ey+=20;
-      }
+      _eyebrow('in '+(ev.sMins-nowMins)+' min',ey); ey+=14;
+      if(ey<maxY){ _subject(_clip(ev.title,22),ey); ey+=19; }
     });
   } else if(!ongoing && ey<maxY){
-    ctx.font="300 10px 'DM Mono',monospace";
-    ctx.fillStyle='rgba(255,255,255,0.22)';
-    ctx.fillText('nothing in next 30m',cx,ey);
+    _eyebrow('clear for 30 min',ey);
   }
 
   // Drift indicator — shown while the rings are scrubbed away from now
@@ -7445,30 +7451,6 @@ function _tdInit(){
     defs.appendChild(rg);
   })();
 
-
-  // Soft-edge mask for the session gauge (see where it is applied, below).
-  (()=>{
-    const lg=_tdMk('linearGradient');
-    lg.setAttribute('id','td-gauge-fade-g');
-    lg.setAttribute('x1','0'); lg.setAttribute('y1','0');
-    lg.setAttribute('x2','1'); lg.setAttribute('y2','0');
-    [[0,'#000'],[0.16,'#fff'],[0.84,'#fff'],[1,'#000']].forEach(([off,c])=>{
-      const st=_tdMk('stop');
-      st.setAttribute('offset',String(off)); st.setAttribute('stop-color',c);
-      lg.appendChild(st);
-    });
-    defs.appendChild(lg);
-    const m=_tdMk('mask');
-    m.setAttribute('id','td-gauge-fade');
-    m.setAttribute('maskUnits','userSpaceOnUse');
-    m.setAttribute('x',String(_TD_CX-_TD_VB_R)); m.setAttribute('y',String(_TD_CY-12));
-    m.setAttribute('width',String(_TD_VB_R*2)); m.setAttribute('height',String(_TD_VB_R+24));
-    const r=_tdMk('rect');
-    r.setAttribute('x',String(_TD_CX-_TD_VB_R)); r.setAttribute('y',String(_TD_CY-12));
-    r.setAttribute('width',String(_TD_VB_R*2)); r.setAttribute('height',String(_TD_VB_R+24));
-    r.setAttribute('fill','url(#td-gauge-fade-g)');
-    m.appendChild(r); defs.appendChild(m);
-  })();
 
   const gBg=_tdMk('g'); _tdSvg.appendChild(gBg);
   const gRings=_tdMk('g'); _tdSvg.appendChild(gRings);
@@ -7585,16 +7567,13 @@ function _tdInit(){
     p.setAttribute('stroke-width',String(w)); p.setAttribute('stroke-linecap','round');
     sg.appendChild(p); return p;
   };
-  // Hairline track and spent span; the remaining span is the thicker, glowing
-  // line, so the moving edge is the only bright thing on the dial.
-  const track=mkArc(1.2,0.07), spent=mkArc(1.2,0.07), remain=mkArc(3.2,0.07);
+  /* One dull white line at an even weight the whole way round -- no gradient,
+     nothing to read as a bar at either end -- and time fills it with the
+     glowing line as it passes. The filled length is the elapsed session. */
+  const track=mkArc(1.6,0.16), fill=mkArc(3,0.9);
   gOver.appendChild(sg);
-  _tdSessionEls={root:sg,track,spent,remain};
+  _tdSessionEls={root:sg,track,fill};
   track.setAttribute('d',_tdArcD(_TD_GAUGE_R,_TD_ARC0,_TD_ARC1));
-  // Both ends of the gauge run to the screen edge, where a hard stop reads as a
-  // bar stuck on the rim. Fade them out instead — the arc dissolves rather than
-  // ending. A horizontal gradient does it: the ends are the x extremes.
-  sg.setAttribute('mask','url(#td-gauge-fade)');
   sg.style.display='none';
 }
 
@@ -7622,6 +7601,8 @@ function _tdDrawSession(){
   g.root.style.display=S?'':'none';
   if(!S) return;
   const span=_TD_ARC1-_TD_ARC0;
+  // The head starts at the left end and travels right as the session burns down,
+  // so the glow grows behind it in the same direction the timeline below reads.
   const head=_TD_ARC1-span*S.spent;
   /* The dial stays monochrome: the arc is dull white and the head -- the one
      thing that moves -- is bright white with a glow, so the eye goes to the
@@ -7631,12 +7612,11 @@ function _tdDrawSession(){
   const warm='rgba(180,168,144,';
   const white='rgba(255,255,255,';
   const base=S.paused?warm:white;
-  g.spent.setAttribute('d', S.spent>0.002 ? _tdArcD(_TD_GAUGE_R,head,_TD_ARC1) : '');
-  g.spent.setAttribute('stroke', base+'0.16)');
-  g.remain.setAttribute('d', S.spent<0.998 ? _tdArcD(_TD_GAUGE_R,_TD_ARC0,head) : '');
+  g.track.setAttribute('stroke', base+(S.paused?'0.20':'0.16')+')');
+  g.fill.setAttribute('d', S.spent>0.002 ? _tdArcD(_TD_GAUGE_R,head,_TD_ARC1) : '');
   // Armed sits well below running, so a preview is visibly not a session.
-  g.remain.setAttribute('stroke', S.paused ? warm+'0.60)' : base+(S.running?'0.92':'0.34')+')');
-  g.remain.setAttribute('filter', S.running ? 'url(#td-sglow)' : '');
+  g.fill.setAttribute('stroke', S.paused ? warm+'0.65)' : base+(S.running?'0.95':'0.45')+')');
+  g.fill.setAttribute('filter', S.running ? 'url(#td-sglow)' : '');
 }
 
 /* Glass depth: backdrop-filter can't apply inside SVG, and blur over pure

@@ -7299,7 +7299,7 @@ function _tdDrawTimeline(now){
         // Under the arc, not on it: the block brackets the events it spans
         // rather than painting over them.
         ctx.beginPath();
-        ctx.arc(cx,cy_arc,innerR-5,-Math.PI/2+cS,-Math.PI/2+cE);
+        ctx.arc(cx,cy_arc,innerR+2,-Math.PI/2+cS,-Math.PI/2+cE);
         ctx.strokeStyle=col+(sess.paused?'0.55)':'0.78)');
         ctx.lineWidth=1.5; ctx.lineCap='round';
         if(!sess.paused){ ctx.shadowColor=col+'0.45)'; ctx.shadowBlur=5; }
@@ -7370,19 +7370,24 @@ function _tdDrawTimeline(now){
   };
   const _clip=(t,n)=>t?(t.length>n?t.slice(0,n-1)+'…':t):'event';
 
-  if(ongoing && ey<maxY){
-    _eyebrow('ongoing',ey); ey+=14;
-    if(ey<maxY){ _subject(_clip(ongoing.title,22),ey); ey+=15; }
-    if(ey<maxY){ _detail((ongoing.eMins-nowMins)+'m remaining',ey); ey+=20; }
-  }
-  if(soon.length>0 && ey<maxY){
-    soon.slice(0,2).forEach(ev=>{
-      if(ey>=maxY) return;
-      _eyebrow('in '+(ev.sMins-nowMins)+' min',ey); ey+=14;
-      if(ey<maxY){ _subject(_clip(ev.title,22),ey); ey+=19; }
-    });
-  } else if(!ongoing && ey<maxY){
-    _eyebrow('clear for 30 min',ey);
+  /* Build the blocks first, then draw only the ones that actually fit. Laying
+     them out as we go let the stack run past the bottom of the canvas and
+     collide with whatever sat there. At most two: what you are in, and what is
+     next. */
+  const blocks=[];
+  if(ongoing) blocks.push(['ongoing',_clip(ongoing.title,22),(ongoing.eMins-nowMins)+'m remaining']);
+  soon.slice(0,ongoing?1:2).forEach(ev=>
+    blocks.push(['in '+(ev.sMins-nowMins)+' min',_clip(ev.title,22),null]));
+  if(!blocks.length) blocks.push(['clear for 30 min',null,null]);
+
+  const BLOCK_H=b=>14+(b[1]?15:0)+(b[2]?14:0);
+  const bottom=H-6;
+  for(const b of blocks){
+    if(ey+BLOCK_H(b)>bottom) break;
+    _eyebrow(b[0],ey); ey+=14;
+    if(b[1]){ _subject(b[1],ey); ey+=15; }
+    if(b[2]){ _detail(b[2],ey); ey+=14; }
+    ey+=12;   // breathing room between blocks
   }
 
   // Drift indicator — shown while the rings are scrubbed away from now

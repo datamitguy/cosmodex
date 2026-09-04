@@ -533,15 +533,6 @@
           <div id="pomo-time">25:00</div>
           <div id="td-clock-date">&mdash;</div>
           <div id="pomo-focusname">No task &mdash; free focus</div>
-          <div id="pomo-complete-prompt">
-            <div class="tds-prompt-lbl">SESSION COMPLETE &mdash; TASK DONE?</div>
-            <div class="tds-prompt-btns">
-              <button id="pomo-done-yes" class="tds-btn tds-primary">&check; Yes, mark done</button>
-              <button id="pomo-done-no" class="tds-btn">No, keep open</button>
-            </div>
-          </div>
-        </div>
-
         <!-- Session controls — present only while a session is armed, gone once
              it runs. Same ids as the old Focus page, so the timer wiring in
              app.js is untouched. -->
@@ -556,16 +547,25 @@
             </div>
             <button type="button" id="pomo-sw-plus" class="tds-step" title="Longer">+</button>
           </div>
+          <span class="tds-sep"></span>
           <div id="pomo-presets" class="tds-presets">
             <button type="button" class="pomo-preset" data-preset="30">30</button>
             <button type="button" class="pomo-preset" data-preset="45">45</button>
             <button type="button" class="pomo-preset" data-preset="90">90</button>
           </div>
+          <span class="tds-sep"></span>
           <div class="tds-btns">
             <button id="pomo-start" class="tds-btn tds-primary">Start</button>
             <button id="pomo-reset" class="tds-btn">Reset</button>
             <button id="pomo-rest-btn" class="tds-btn" title="Start a post-learning rest">Rest 8m</button>
-            <button id="pomo-close" class="tds-btn tds-leave">Leave</button>
+          </div>
+        </div>
+          <div id="pomo-complete-prompt">
+            <div class="tds-prompt-lbl">SESSION COMPLETE &mdash; TASK DONE?</div>
+            <div class="tds-prompt-btns">
+              <button id="pomo-done-yes" class="tds-btn tds-primary">&check; Yes, mark done</button>
+              <button id="pomo-done-no" class="tds-btn">No, keep open</button>
+            </div>
           </div>
         </div>
 
@@ -587,7 +587,6 @@
           </div>
         </aside>
 
-        <div id="td-session-lock">SESSION LOCKED &middot; ESC TO LEAVE</div>
       </div>
     </div>
 

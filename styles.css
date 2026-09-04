@@ -7805,7 +7805,7 @@ select.sched-input { background: #181818; }
   font-weight: 500; color: rgba(255,255,255,0.72);
   max-width: 42ch; text-align: center;
 }
-#td-session-bar, #td-session-rail, #td-session-lock { display: none; }
+#td-session-bar, #td-session-rail { display: none; }
 
 /* — armed / running — */
 .td-session #td-clock-above { display: flex; }
@@ -7827,92 +7827,113 @@ select.sched-input { background: #181818; }
    gauge, number, name and nothing else. */
 .td-session-live #td-session-bar,
 .td-session-live #td-session-rail { display: none; }
-.td-session-live #td-session-lock {
-  display: block; position: absolute; left: 0; right: 0; bottom: 14px;
-  text-align: center; font-family: var(--font-mono); font-size: 9px;
-  letter-spacing: 0.18em; color: rgba(255,255,255,0.25); pointer-events: none;
-}
 /* The dial is locked while a session runs, so it should not offer a grab. */
 .td-session-live #td-svg, .td-session-paused #td-svg { cursor: default; }
 
-/* — the control bar — */
+/* — the control bar —
+   No box: a row of quiet controls separated by hairlines, with exactly one
+   emphasised action. The number sits centred over its own scale, so the value
+   and the tick that marks it line up. */
 #td-session-bar {
-  position: absolute; left: 50%; transform: translateX(-50%);
-  top: calc(53% + 132px); z-index: 3;
-  align-items: center; gap: 18px;
-  padding: 9px 16px; border-radius: 100px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.16);
-  backdrop-filter: var(--glass-blur-panel); -webkit-backdrop-filter: var(--glass-blur-panel);
-  white-space: nowrap;
+  /* In the centre stack's flow, under the task name, so it tracks the readout
+     instead of floating at a percentage that drifts into the horizon canvas. */
+  margin-top: 20px; align-items: center; gap: 24px;
+  padding: 0; background: none; border: none; white-space: nowrap;
+  pointer-events: auto;   /* #td-clock is pointer-events:none */
 }
-.tds-dur { display: flex; align-items: center; gap: 10px; }
+.tds-sep { width: 1px; height: 20px; background: rgba(255,255,255,0.10); }
+.tds-dur { display: flex; align-items: center; gap: 8px; }
 .tds-step {
-  background: none; border: none; cursor: pointer; padding: 2px 6px;
-  font-family: var(--font-mono); font-size: 14px; line-height: 1;
-  color: rgba(255,255,255,0.55);
+  background: none; border: none; cursor: pointer; padding: 3px 5px;
+  font-family: var(--font-mono); font-size: 13px; line-height: 1;
+  color: rgba(255,255,255,0.4); transition: color .15s var(--ease-glass);
 }
 .tds-step:hover { color: #fff; }
-.tds-track { cursor: ew-resize; user-select: none; min-width: 74px; text-align: center; }
-.tds-val-row { display: flex; align-items: baseline; justify-content: center; gap: 4px; }
+.tds-track { position: relative; width: 92px; cursor: ew-resize; user-select: none; }
+/* The unit rides alongside so the numeral itself is what is centred. */
+.tds-val-row { position: relative; display: block; text-align: center; }
 #pomo-sw-val {
-  font-family: var(--font-body); font-size: 17px; font-weight: 600;
+  font-family: var(--font-body); font-size: 18px; font-weight: 600;
   color: rgba(255,255,255,0.92); font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
-.tds-unit { font-family: var(--font-mono); font-size: 9px; color: var(--muted); }
-.tds-ticks { display: flex; align-items: flex-end; justify-content: center; gap: 2px; height: 9px; margin-top: 3px; }
-.tds-ticks > div { width: 1px; background: rgba(255,255,255,0.28); }
-.tds-ticks > .pomo-tick.current { background: #fff; width: 1.5px; }
-.tds-ticks > .pomo-tick.major { background: rgba(255,255,255,0.5); }
-.tds-presets { display: flex; gap: 5px; }
+.tds-unit {
+  position: absolute; left: calc(50% + 15px); bottom: 2px;
+  font-family: var(--font-mono); font-size: 8.5px; color: rgba(255,255,255,0.35);
+}
+.tds-ticks {
+  display: flex; align-items: flex-end; justify-content: center;
+  gap: 2px; height: 8px; margin-top: 4px;
+}
+.tds-ticks > div { width: 1px; background: rgba(255,255,255,0.2); }
+.tds-ticks > .pomo-tick.current { background: #fff; width: 1px; }
+.tds-ticks > .pomo-tick.major { background: rgba(255,255,255,0.4); }
+.tds-presets { display: flex; gap: 14px; }
 #td-session-bar .pomo-preset {
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
-  color: rgba(255,255,255,0.6); border-radius: 100px; padding: 4px 11px;
-  font-family: var(--font-mono); font-size: 10px; cursor: pointer;
-  transition: all .15s var(--ease-glass);
+  background: none; border: none; padding: 2px 0; cursor: pointer;
+  color: rgba(255,255,255,0.34);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em;
+  transition: color .15s var(--ease-glass);
 }
-#td-session-bar .pomo-preset:hover { color: #fff; border-color: rgba(255,255,255,0.32); }
-#td-session-bar .pomo-preset.active {
-  background: rgba(255,255,255,0.13); border-color: rgba(255,255,255,0.4); color: #fff;
-}
-.tds-btns { display: flex; gap: 6px; }
+#td-session-bar .pomo-preset:hover { color: rgba(255,255,255,0.8); }
+#td-session-bar .pomo-preset.active { color: #fff; }
+.tds-btns { display: flex; align-items: center; gap: 16px; }
 .tds-btn {
-  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.16);
-  color: rgba(255,255,255,0.8); border-radius: 100px; padding: 6px 15px;
-  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em;
-  cursor: pointer; transition: all .15s var(--ease-glass);
+  background: none; border: none; padding: 4px 2px; cursor: pointer;
+  color: rgba(255,255,255,0.42);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase; transition: color .15s var(--ease-glass);
 }
-.tds-btn:hover { background: rgba(255,255,255,0.11); color: #fff; }
+.tds-btn:hover { color: #fff; }
+/* The one thing you are here to press. */
 .tds-btn.tds-primary {
-  background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.45); color: #fff;
+  border: 1px solid rgba(255,255,255,0.38); border-radius: 100px;
+  padding: 7px 22px; color: #fff; letter-spacing: 0.16em;
 }
-.tds-btn.tds-primary:hover { background: rgba(255,255,255,0.22); color: #fff; }
-.tds-btn.tds-leave { color: rgba(224,85,85,0.85); border-color: rgba(224,85,85,0.32); }
-.tds-btn.tds-leave:hover { background: rgba(224,85,85,0.12); color: rgb(224,85,85); }
+.tds-btn.tds-primary:hover { background: rgba(255,255,255,0.09); }
 
-/* — the task rail — */
+/* — the task rail —
+   Sized to its content with a ceiling, so it stops being a full-height slab
+   with an empty bottom half. The task list is the part that scrolls. */
 #td-session-rail {
-  position: absolute; right: 22px; top: 12%; bottom: 16%; width: 268px; z-index: 3;
+  position: absolute; right: 26px; top: 13%; bottom: auto;
+  width: 250px; max-height: min(56vh, 430px); z-index: 3;
   flex-direction: column; gap: 10px;
-  padding: 16px; border-radius: 14px;
-  background: rgba(255,255,255,0.035);
-  border: 1px solid rgba(255,255,255,0.12);
+  padding: 15px; border-radius: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.10);
   backdrop-filter: var(--glass-blur-panel); -webkit-backdrop-filter: var(--glass-blur-panel);
 }
-.tds-rail-head { display: flex; flex-direction: column; gap: 3px; }
-.tds-rail-title { font-family: var(--font-display); font-size: 16px; font-weight: 300; color: #fff; }
+.tds-rail-head { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
+.tds-rail-title { font-family: var(--font-display); font-size: 15px; font-weight: 300; color: #fff; }
 .tds-eyebrow {
-  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em;
-  text-transform: uppercase; color: rgba(255,255,255,0.42);
+  font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: rgba(255,255,255,0.38);
 }
 .tds-search {
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
   border-radius: 8px; padding: 7px 10px; color: var(--cream);
   font-family: var(--font-mono); font-size: 11px; outline: none;
 }
-.tds-search:focus { border-color: rgba(255,255,255,0.35); }
-.tds-task-list { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
-.tds-check { display: flex; flex-direction: column; gap: 7px; border-top: 1px solid rgba(255,255,255,0.09); padding-top: 12px; }
+.tds-search:focus { border-color: rgba(255,255,255,0.32); }
+.tds-task-list {
+  flex: 1 1 auto; min-height: 44px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.tds-check {
+  flex-shrink: 0; display: flex; flex-direction: column; gap: 7px;
+  border-top: 1px solid rgba(255,255,255,0.08); padding-top: 11px;
+  max-height: 168px; overflow-y: auto;
+}
+/* a hairline scrollbar, so the overflow is legible without being furniture */
+#td-session-rail *::-webkit-scrollbar { width: 3px; }
+#td-session-rail *::-webkit-scrollbar-track { background: transparent; }
+#td-session-rail *::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.16); border-radius: 3px;
+}
+#td-session-rail *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+#td-session-rail * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.16) transparent; }
 
 /* — completion prompt — */
 #pomo-complete-prompt {
@@ -7929,12 +7950,11 @@ select.sched-input { background: #181818; }
 @media (max-width: 900px) {
   #td-session-rail { display: none !important; }
   #td-session-bar {
-    gap: 8px 12px; padding: 8px 14px; top: calc(53% + 104px);
-    max-width: calc(100% - 20px); border-radius: 20px;
+    gap: 10px 16px; margin-top: 16px;
+    max-width: calc(100vw - 28px);
     flex-wrap: wrap; justify-content: center; white-space: normal;
   }
-  .tds-btn { padding: 6px 11px; }
-  #td-session-bar .tds-presets { display: none; }
+  #td-session-bar .tds-sep { display: none; }
   /* the tick strip is an affordance for a drag there is no room for here */
   #td-session-bar .tds-ticks { display: none; }
 }

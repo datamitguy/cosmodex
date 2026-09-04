@@ -7703,8 +7703,8 @@ select.sched-input { background: #181818; }
   position: absolute; inset: 0; z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(600px 420px at 30% 15%, var(--neon-glow), transparent 70%),
-    radial-gradient(520px 520px at 74% 55%, var(--gold-glow), transparent 70%),
+    radial-gradient(calc(var(--td-r, 360px) * 1.75) calc(var(--td-r, 360px) * 1.25) at 50% -4%, var(--neon-glow), transparent 72%),
+    radial-gradient(calc(var(--td-r, 360px) * 1.45) calc(var(--td-r, 360px) * 1.10) at 50% 6%,  var(--gold-glow), transparent 72%),
     radial-gradient(1.5px 1.5px at 18% 40%, rgba(255,255,255,0.35), transparent 100%),
     radial-gradient(1px 1px at 52% 22%, rgba(255,255,255,0.28), transparent 100%),
     radial-gradient(1.5px 1.5px at 68% 72%, rgba(255,255,255,0.30), transparent 100%),
@@ -7727,6 +7727,187 @@ select.sched-input { background: #181818; }
   mask: radial-gradient(circle, transparent 0 17.5%, #000 18.5% 100%);
 }
 #td-svg { position: relative; z-index: 1; }
+
+/* ══ TIMEDRIFT CENTRE READOUT ══
+   Sits in the clear band between the dial (hung off the top edge) and the
+   horizon arc, as on timedrift.live. */
+#td-clock {
+  position: absolute; left: 0; right: 0; top: 53%;
+  z-index: 2; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+#td-clock-time {
+  font-family: var(--font-body);
+  font-size: clamp(34px, 5.6vh, 60px);
+  font-weight: 600; letter-spacing: -0.035em; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,0.9);
+}
+#td-clock-date {
+  font-family: var(--font-body);
+  font-size: clamp(12px, 1.7vh, 18px); font-weight: 500;
+  color: rgba(255,255,255,0.9);
+}
+@media (max-width: 640px) {
+  #td-clock { gap: 8px; }
+}
+
+/* ══ TIMEDRIFT SESSION MODE (Focus, merged into the dial) ══
+   The composition never moves between states: the countdown takes the wall
+   clock's slot in the same face and size, the wall clock demotes to the mono
+   line above, and the task name takes the date line. Only what changes,
+   changes. */
+#td-clock-above {
+  display: none; align-items: baseline; gap: 10px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: rgba(255,255,255,0.45);
+}
+#pomo-time {
+  display: none;
+  font-family: var(--font-body);
+  font-size: clamp(34px, 5.6vh, 60px);
+  font-weight: 600; letter-spacing: -0.035em; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,0.9);
+}
+#pomo-focusname {
+  display: none;
+  font-family: var(--font-body); font-size: clamp(12px, 1.7vh, 18px);
+  font-weight: 500; color: rgba(255,255,255,0.72);
+  max-width: 42ch; text-align: center;
+}
+#td-session-bar, #td-session-rail, #td-session-lock { display: none; }
+
+/* — armed / running — */
+.td-session #td-clock-above { display: flex; }
+.td-session #td-clock-time  { display: none; }
+.td-session #pomo-time      { display: block; }
+.td-session #td-clock-date  { display: none; }
+.td-session #pomo-focusname { display: block; }
+.td-session #td-session-bar   { display: flex; }
+.td-session #td-session-rail  { display: flex; }
+
+/* Neon marks the live session and nothing else on the screen. */
+.td-session-live #pomo-time { color: rgb(57,255,20); text-shadow: 0 0 26px rgba(57,255,20,.35); }
+.td-session-live #pomo-phase { color: rgb(57,255,20); }
+.td-session-paused #pomo-time { color: rgba(180,168,144,0.95); }
+.td-session-done #pomo-time { color: rgba(255,255,255,0.9); }
+
+/* Running: the controls and the rail get out of the way — a session is rings,
+   gauge, number, name and nothing else. */
+.td-session-live #td-session-bar,
+.td-session-live #td-session-rail { display: none; }
+.td-session-live #td-session-lock {
+  display: block; position: absolute; left: 0; right: 0; bottom: 14px;
+  text-align: center; font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 0.18em; color: rgba(255,255,255,0.25); pointer-events: none;
+}
+/* The dial is locked while a session runs, so it should not offer a grab. */
+.td-session-live #td-svg, .td-session-paused #td-svg { cursor: default; }
+
+/* — the control bar — */
+#td-session-bar {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: calc(53% + 132px); z-index: 3;
+  align-items: center; gap: 18px;
+  padding: 9px 16px; border-radius: 100px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.16);
+  backdrop-filter: var(--glass-blur-panel); -webkit-backdrop-filter: var(--glass-blur-panel);
+  white-space: nowrap;
+}
+.tds-dur { display: flex; align-items: center; gap: 10px; }
+.tds-step {
+  background: none; border: none; cursor: pointer; padding: 2px 6px;
+  font-family: var(--font-mono); font-size: 14px; line-height: 1;
+  color: rgba(255,255,255,0.55);
+}
+.tds-step:hover { color: #fff; }
+.tds-track { cursor: ew-resize; user-select: none; min-width: 74px; text-align: center; }
+.tds-val-row { display: flex; align-items: baseline; justify-content: center; gap: 4px; }
+#pomo-sw-val {
+  font-family: var(--font-body); font-size: 17px; font-weight: 600;
+  color: rgba(255,255,255,0.92); font-variant-numeric: tabular-nums;
+}
+.tds-unit { font-family: var(--font-mono); font-size: 9px; color: var(--muted); }
+.tds-ticks { display: flex; align-items: flex-end; justify-content: center; gap: 2px; height: 9px; margin-top: 3px; }
+.tds-ticks > div { width: 1px; background: rgba(255,255,255,0.28); }
+.tds-ticks > .pomo-tick.current { background: rgb(57,255,20); width: 1.5px; }
+.tds-ticks > .pomo-tick.major { background: rgba(255,255,255,0.5); }
+.tds-presets { display: flex; gap: 5px; }
+#td-session-bar .pomo-preset {
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.6); border-radius: 100px; padding: 4px 11px;
+  font-family: var(--font-mono); font-size: 10px; cursor: pointer;
+  transition: all .15s var(--ease-glass);
+}
+#td-session-bar .pomo-preset:hover { color: #fff; border-color: rgba(255,255,255,0.32); }
+#td-session-bar .pomo-preset.active {
+  background: rgba(57,255,20,0.12); border-color: rgba(57,255,20,0.45); color: rgb(57,255,20);
+}
+.tds-btns { display: flex; gap: 6px; }
+.tds-btn {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.16);
+  color: rgba(255,255,255,0.8); border-radius: 100px; padding: 6px 15px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em;
+  cursor: pointer; transition: all .15s var(--ease-glass);
+}
+.tds-btn:hover { background: rgba(255,255,255,0.11); color: #fff; }
+.tds-btn.tds-primary {
+  background: rgba(57,255,20,0.13); border-color: rgba(57,255,20,0.5); color: rgb(57,255,20);
+}
+.tds-btn.tds-primary:hover { background: rgba(57,255,20,0.22); color: rgb(57,255,20); }
+.tds-btn.tds-leave { color: rgba(224,85,85,0.85); border-color: rgba(224,85,85,0.32); }
+.tds-btn.tds-leave:hover { background: rgba(224,85,85,0.12); color: rgb(224,85,85); }
+
+/* — the task rail — */
+#td-session-rail {
+  position: absolute; right: 22px; top: 12%; bottom: 16%; width: 268px; z-index: 3;
+  flex-direction: column; gap: 10px;
+  padding: 16px; border-radius: 14px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: var(--glass-blur-panel); -webkit-backdrop-filter: var(--glass-blur-panel);
+}
+.tds-rail-head { display: flex; flex-direction: column; gap: 3px; }
+.tds-rail-title { font-family: var(--font-display); font-size: 16px; font-weight: 300; color: #fff; }
+.tds-eyebrow {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: rgba(255,255,255,0.42);
+}
+.tds-search {
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px; padding: 7px 10px; color: var(--cream);
+  font-family: var(--font-mono); font-size: 11px; outline: none;
+}
+.tds-search:focus { border-color: rgba(255,255,255,0.35); }
+.tds-task-list { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+.tds-check { display: flex; flex-direction: column; gap: 7px; border-top: 1px solid rgba(255,255,255,0.09); padding-top: 12px; }
+
+/* — completion prompt — */
+#pomo-complete-prompt {
+  display: none; margin-top: 6px; padding: 12px 16px; border-radius: 10px;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.22);
+  text-align: center;
+}
+.tds-prompt-lbl {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em;
+  color: #fff; margin-bottom: 10px;
+}
+.tds-prompt-btns { display: flex; gap: 8px; justify-content: center; }
+
+@media (max-width: 900px) {
+  #td-session-rail { display: none !important; }
+  #td-session-bar {
+    gap: 8px 12px; padding: 8px 14px; top: calc(53% + 104px);
+    max-width: calc(100% - 20px); border-radius: 20px;
+    flex-wrap: wrap; justify-content: center; white-space: normal;
+  }
+  .tds-btn { padding: 6px 11px; }
+  #td-session-bar .tds-presets { display: none; }
+  /* the tick strip is an affordance for a drag there is no room for here */
+  #td-session-bar .tds-ticks { display: none; }
+}
 
 /* ══ PLANNING CALENDAR (Month / Week) ══ */
 .pcal { display:flex; flex-direction:column; gap:14px; }
@@ -9356,6 +9537,17 @@ select.atk-inline option { background:#141414; color:#fff; }
   margin:0 auto 18px; padding:20px 24px; }
 .dash-c-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .dash-c-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+
+/* Cadence bands — big rocks, then quarterly / monthly / weekly */
+.dash-c-band + .dash-c-band { margin-top: 20px; }
+.dash-c-band-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px;
+  padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.dash-c-band-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em;
+  color: rgba(255,255,255,.72); }
+.dash-c-band-note { font-family: var(--font-body); font-size: 10px; font-style: italic;
+  color: rgba(255,255,255,.3); }
+.dash-c-band-count { margin-left: auto; font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: .08em; color: rgba(255,255,255,.35); }
 
 .dash-c-card { background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.09);
   border-radius: 12px; padding: 11px 13px 0; transition: border-color .18s var(--ease-glass); }

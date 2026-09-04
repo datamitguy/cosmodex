@@ -124,7 +124,7 @@
     </div>
   </div>
 
-  <div class="nav-section nav-tools-section" style="padding:0 8px 4px;border-top:1px solid rgba(255,255,255,0.07)">
+  <div class="nav-section nav-tools-section collapsed" style="padding:0 8px 4px;border-top:1px solid rgba(255,255,255,0.07)">
     <div class="nav-section-label nav-tools-toggle" id="tools-toggle" title="Toggle tools">Tools <span class="tools-chevron">›</span></div>
     <div class="nav-tools-items">
       <div class="nav-item" id="btn-notes">
@@ -518,6 +518,74 @@
         <div id="td-bottom" style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
           <canvas id="td-tl-cvs" style="display:block;flex:1;width:100%;min-height:0;"></canvas>
         </div>
+        <!-- Centre readout — the dial hangs off the top edge, the clock sits
+             in the clear band between it and the horizon arc. In session mode
+             the countdown takes the wall clock's slot and the wall clock
+             demotes to the mono line above it. -->
+        <div id="td-clock">
+          <div id="td-clock-above">
+            <span id="pomo-phase">Ready</span>
+            <span id="td-wall"></span>
+          </div>
+          <div id="td-clock-time">--:--:--</div>
+          <div id="pomo-time">25:00</div>
+          <div id="td-clock-date">&mdash;</div>
+          <div id="pomo-focusname">No task &mdash; free focus</div>
+          <div id="pomo-complete-prompt">
+            <div class="tds-prompt-lbl">SESSION COMPLETE &mdash; TASK DONE?</div>
+            <div class="tds-prompt-btns">
+              <button id="pomo-done-yes" class="tds-btn tds-primary">&check; Yes, mark done</button>
+              <button id="pomo-done-no" class="tds-btn">No, keep open</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Session controls — present only while a session is armed, gone once
+             it runs. Same ids as the old Focus page, so the timer wiring in
+             app.js is untouched. -->
+        <div id="td-session-bar">
+          <div class="tds-dur">
+            <button type="button" id="pomo-sw-minus" class="tds-step" title="Shorter">&minus;</button>
+            <div id="pomo-sw-track" class="tds-track" title="Drag to set the session length">
+              <div class="tds-val-row">
+                <span id="pomo-sw-val">25</span><span class="tds-unit">min</span>
+              </div>
+              <div id="pomo-ticks" class="tds-ticks"></div>
+            </div>
+            <button type="button" id="pomo-sw-plus" class="tds-step" title="Longer">+</button>
+          </div>
+          <div id="pomo-presets" class="tds-presets">
+            <button type="button" class="pomo-preset" data-preset="30">30</button>
+            <button type="button" class="pomo-preset" data-preset="45">45</button>
+            <button type="button" class="pomo-preset" data-preset="90">90</button>
+          </div>
+          <div class="tds-btns">
+            <button id="pomo-start" class="tds-btn tds-primary">Start</button>
+            <button id="pomo-reset" class="tds-btn">Reset</button>
+            <button id="pomo-rest-btn" class="tds-btn" title="Start a post-learning rest">Rest 8m</button>
+            <button id="pomo-close" class="tds-btn tds-leave">Leave</button>
+          </div>
+        </div>
+
+        <!-- Task picker + session checklist — slides in while arming, away on Start -->
+        <aside id="td-session-rail">
+          <div class="tds-rail-head">
+            <span class="tds-rail-title">Tasks</span>
+            <span class="tds-eyebrow" id="pomo-tasks-lbl">FOCUS TASK &middot; TODAY</span>
+          </div>
+          <input id="pomo-task-search" class="tds-search" placeholder="&#8981; search all tasks&hellip;" autocomplete="off">
+          <div class="pomo-task-list tds-task-list" id="pomo-task-list"></div>
+          <div class="tds-check">
+            <div class="tds-eyebrow">Session checklist</div>
+            <div class="pomo-check-items" id="pomo-check-items"></div>
+            <div class="pomo-check-add">
+              <input type="text" id="pomo-check-input" placeholder="Add item&hellip;" autocomplete="off" />
+              <button class="pomo-check-add-btn" id="pomo-check-add-btn">+</button>
+            </div>
+          </div>
+        </aside>
+
+        <div id="td-session-lock">SESSION LOCKED &middot; ESC TO LEAVE</div>
       </div>
     </div>
 
@@ -543,85 +611,11 @@
     <!-- Calendar Panel (design-system calendar — day/week/month, wired to calEvents + tasks) -->
     <div id="panel-calendarx" style="display:none;flex:1;min-height:0;flex-direction:column;overflow-y:auto;background:#000000"></div>
 
-    <!-- Focus Panel (design-system commit page — real page, not a modal) -->
-    <div id="panel-focus" style="display:none;flex:1;min-height:0;flex-direction:column;overflow-y:auto;background:#000000">
-      <div class="focus-page">
-        <div class="focus-eyebrow">FOCUS · COMMIT MODE</div>
-        <div class="focus-headline">One focus that cannot slip…</div>
-        <div class="focus-cols">
-          <!-- LEFT: ring + timer + controls -->
-          <div class="focus-card">
-            <div class="focus-ring-wrap">
-              <!-- Design-system timedrift rings: concentric dashed circles, spin/spinRev never in sync -->
-              <svg class="focus-rings" viewBox="0 0 320 320" aria-hidden="true">
-                <circle class="focus-ring" cx="160" cy="160" r="150" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="1" stroke-dasharray="2 6"  style="animation:spin 60s linear infinite"/>
-                <circle class="focus-ring" cx="160" cy="160" r="120" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1" stroke-dasharray="1 4"  style="animation:focusSpinRev 40s linear infinite"/>
-                <circle class="focus-ring" cx="160" cy="160" r="90"  fill="none" stroke="rgba(255,255,255,.30)" stroke-width="1" stroke-dasharray="6 10" style="animation:spin 90s linear infinite"/>
-                <circle class="focus-ring" cx="160" cy="160" r="60"  fill="none" stroke="rgba(255,255,255,.50)" stroke-width="1" stroke-dasharray="3 3"  style="animation:focusSpinRev 20s linear infinite"/>
-              </svg>
-              <canvas id="pomo-ring" width="320" height="320"></canvas>
-              <div class="focus-center">
-                <div class="focus-elapsed" id="pomo-phase">Ready</div>
-                <div class="focus-time" id="pomo-time">25:00</div>
-                <div class="focus-focusname" id="pomo-focusname">—</div>
-              </div>
-            </div>
-            <div class="pomo-swipe-section">
-              <div class="pomo-swipe-ctrl">
-                <button class="pomo-swipe-minus" id="pomo-sw-minus">−</button>
-                <div class="pomo-swipe-track" id="pomo-sw-track">
-                  <div class="pomo-swipe-inner">
-                    <div style="position:relative;display:flex;align-items:baseline;justify-content:center;margin-bottom:6px">
-                      <div class="pomo-swipe-val" id="pomo-sw-val">25</div>
-                      <div style="position:absolute;left:calc(50% + 16px);bottom:0;font-family:var(--font-mono);font-size:10px;color:var(--muted)">min</div>
-                    </div>
-                    <div class="pomo-ticks" id="pomo-ticks"></div>
-                  </div>
-                </div>
-                <button class="pomo-swipe-plus" id="pomo-sw-plus">+</button>
-              </div>
-              <div class="pomo-presets" id="pomo-presets">
-                <button type="button" class="pomo-preset" data-preset="30">30 min</button>
-                <button type="button" class="pomo-preset" data-preset="45">45 min</button>
-                <button type="button" class="pomo-preset" data-preset="90">90 min</button>
-              </div>
-            </div>
-            <div class="focus-btns">
-              <button class="focus-liquid focus-primary" id="pomo-start">Start</button>
-              <button class="focus-liquid" id="pomo-reset">Reset</button>
-              <button class="focus-liquid" id="pomo-rest-btn" title="Start a post-learning rest">Rest 8m</button>
-              <button class="focus-leave" id="pomo-close">Leave</button>
-            </div>
-            <div id="pomo-complete-prompt" style="display:none;margin-top:14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.25);border-radius:10px;padding:12px 16px;text-align:center">
-              <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;color:#fff;margin-bottom:10px">SESSION COMPLETE — TASK DONE?</div>
-              <div style="display:flex;gap:8px;justify-content:center">
-                <button id="pomo-done-yes" style="background:rgba(255,255,255,0.9);color:#000;border:none;border-radius:8px;padding:7px 18px;font-family:var(--font-mono);font-size:11px;cursor:pointer;font-weight:500">✓ Yes, mark done</button>
-                <button id="pomo-done-no" style="background:none;border:1px solid var(--border);color:var(--muted-readable);border-radius:8px;padding:7px 18px;font-family:var(--font-mono);font-size:11px;cursor:pointer">No, keep open</button>
-              </div>
-            </div>
-            <div class="focus-lockline">SESSION LOCKED · ESC TO LEAVE</div>
-          </div>
-          <!-- RIGHT: task selector + session checklist -->
-          <div class="focus-side">
-            <div class="focus-side-head">
-              <div class="focus-side-title">Tasks</div>
-              <div class="focus-eyebrow" id="pomo-tasks-lbl">FOCUS TASK · TODAY</div>
-            </div>
-            <input id="pomo-task-search" class="focus-search" placeholder="⌕ search all tasks…" autocomplete="off">
-            <div class="pomo-task-list focus-task-list" id="pomo-task-list"></div>
-            <div class="focus-checklist">
-              <div class="focus-checklist-lbl">Session checklist</div>
-              <div class="pomo-check-items" id="pomo-check-items"></div>
-              <div class="pomo-check-add">
-                <input type="text" id="pomo-check-input" placeholder="Add item…" autocomplete="off" />
-                <button class="pomo-check-add-btn" id="pomo-check-add-btn">+</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <!-- hidden helpers kept for the timer JS -->
-      <span id="pomo-ev-title" style="display:none">—</span>
+    <!-- Focus Panel — retired. Focus is now a state of the Timedrift dial
+         (see #td-session-bar / #td-session-rail); nothing routes here any more.
+         The hidden helpers below are still read by the timer code in app.js. -->
+    <div id="panel-focus" style="display:none">
+      <span id="pomo-ev-title" style="display:none">&mdash;</span>
       <button id="pomo-del-event-btn" style="display:none"></button>
       <div id="pomo-lock-msg" style="display:none"><span class="pomo-lock-text"></span><button id="pomo-withdraw"></button></div>
     </div>

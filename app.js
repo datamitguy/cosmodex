@@ -391,7 +391,24 @@ document.querySelectorAll('.nav-item[data-panel]').forEach(item => {
 
 /* ══ PANEL SWITCHING (Calendar/Tasks ↔ Milestones) ══ */
 // → future file: cosmodex-shell.js  (nav, routing, overlay open/close)
+/* Focus is no longer its own page: it is Timedrift with a session armed, so
+   every existing showMainPanel('focus') call site keeps working.
+   Declared here rather than in the Timedrift block below because showMainPanel
+   reads them, and it is defined long before that block is evaluated. */
+var _tdSessionOpen = false, _tdChromeSig = '';
+function _tdSetSessionOpen(open) {
+  const S = window.CDX_SESSION;
+  const busy = !!(S && (S.running || (S.remainSecs > 0 && S.remainSecs < S.totalSecs)));
+  _tdSessionOpen = open || busy;
+  _tdChromeSig = '';           // force the chrome classes to reapply
+}
+
 function showMainPanel(name) {
+  let armSession = false;
+  if (name === 'focus') { name = 'timedrift'; armSession = true; }
+  else if (name !== 'timedrift') _tdSetSessionOpen(false);
+  if (name === 'timedrift') _tdSetSessionOpen(armSession);
+  if (armSession) window.initPomoOverlay?.();
   // _mainPanel is assigned HERE, not just inside the repaint, because
   // startViewTransition defers its callback to the next rendering step —
   // callers that read _mainPanel on the line after calling us (the "n"
@@ -416,8 +433,7 @@ function _showMainPanelPaint(name) {
   document.getElementById('panel-alltasks').style.display    = name === 'alltasks' ? 'flex' : 'none';
   const calxPanel = document.getElementById('panel-calendarx');
   if (calxPanel) calxPanel.style.display = name === 'calendarx' ? 'flex' : 'none';
-  const focusPanel = document.getElementById('panel-focus');
-  if (focusPanel) focusPanel.style.display = name === 'focus' ? 'flex' : 'none';
+  // #panel-focus is retired; it only holds hidden helpers the timer still reads.
   document.getElementById('panel-milestones').style.display  = name === 'milestones' ? 'flex' : 'none';
   document.getElementById('panel-archived').style.display    = name === 'archived' ? 'flex' : 'none';
   document.getElementById('panel-lists').style.display       = name === 'lists' ? 'flex' : 'none';
@@ -432,14 +448,13 @@ function _showMainPanelPaint(name) {
   if (notesPanel) notesPanel.style.display = name === 'notes' ? 'flex' : 'none';
   const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Timedrift', mindmap:'Mind Map', notes:'Notes' };
   const titleEl = document.getElementById('page-title');
-  if (titleEl) titleEl.textContent = titles[name] || 'Today';
+  if (titleEl) titleEl.textContent = (name === 'timedrift' && _tdSessionOpen) ? 'Focus' : (titles[name] || 'Today');
   if (name === 'default') { window.renderDashboardBoard?.(); }
   if (name === 'milestones') { renderMilestones(); window.initPlanningWidgets?.(); }
   if (name === 'archived') { renderArchivedPage(); }
   if (name === 'lists') { renderLists(); if (!_listView && LISTS.length) openListDetail(LISTS[0].id); }
   if (name === 'alltasks') { renderTasksPage(); }
   if (name === 'calendarx') { window.renderCalendarX?.(); }
-  if (name === 'focus') { window.initPomoOverlay?.(); }
   if (name === 'habits') {
     // New design-system habits UI (14-habits-x.js). Ensure data subscriptions are
     // live (subscribe-once guards make these cheap), then render.
@@ -7002,6 +7017,32 @@ function _tdDlv2IsFocusGoalMet() {
 const _TD_NS = 'http://www.w3.org/2000/svg';
 const _tdMk = t => document.createElementNS(_TD_NS, t);
 const _TD_CX = 500, _TD_CY = 500;
+/* Dial geometry, following timedrift.live: a disc centred on the top edge of
+   the panel, only its lower half visible. _TD_RING_R is the outermost calendar
+   ring plus its ticks; _TD_GAUGE_R is the session gauge that sits outside them
+   all; _TD_VB_R is the viewBox bound that has to contain both. _TD_R_MAX caps
+   the on-screen radius so a large office display gets the same dial as a laptop.
+   The ring scale is pinned to _TD_RING_R, so reserving room for the gauge makes
+   the drawing wider without shrinking the rings. */
+const _TD_RING_R = 240;
+const _TD_GAUGE_R = 262;
+const _TD_VB_R = 272;
+const _TD_R_MAX = 380;
+const _TD_R_OF_BAND = 0.72;   // ring radius as a fraction of the top band's height
+
+/* The visible span of any ring: SVG's y axis points down, so the on-screen
+   lower half is 0..180 degrees and six o'clock — where every ring shows its
+   current value — is 90. */
+const _TD_ARC0 = 3, _TD_ARC1 = 177;
+const _tdPt = (r,deg) => {
+  const a = deg*Math.PI/180;
+  return [_TD_CX + r*Math.cos(a), _TD_CY + r*Math.sin(a)];
+};
+function _tdArcD(r,a0,a1){
+  const p0=_tdPt(r,a0), p1=_tdPt(r,a1);
+  const large=Math.abs(a1-a0)>180?1:0, sweep=a1>a0?1:0;
+  return `M${p0[0].toFixed(2)} ${p0[1].toFixed(2)} A${r} ${r} 0 ${large} ${sweep} ${p1[0].toFixed(2)} ${p1[1].toFixed(2)}`;
+}
 const _tdClamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
 const _tdWa = a => `rgba(255,255,255,${+a.toFixed(3)})`;
 const _tdLerp2 = (a,b,t) => a+(b-a)*t;
@@ -7039,6 +7080,10 @@ let _tdAnimT0=null;
 let _tdMinSnapT0=-Infinity, _tdLastMin=-1, _tdMinSnapFrac=0;
 let _tdHrSnapT0=-Infinity, _tdLastHr=-1, _tdHrSnapFrac=0;
 let _tdTlCvs=null, _tdTlCtx=null;
+
+function _tdDayStart(d){
+  const x=new Date(d); x.setHours(0,0,0,0); return x.getTime();
+}
 
 function _tdInitTimeline(){
   _tdTlCvs=document.getElementById('td-tl-cvs');
@@ -7210,6 +7255,32 @@ function _tdDrawTimeline(now){
     }
   });
 
+  /* ── Session band ────────────────────────────────────────
+     The gauge says how much is left; this says what it is left before. The
+     session is one more span on the arc, drawn over the events so a block is
+     read against the meetings on either side. */
+  if(_tdSessionOpen){
+    const sess=_tdSessionState();
+    const S=window.CDX_SESSION;
+    if(sess && S && (sess.running||sess.paused)){
+      const endFrac=((S.endAt-_tdDayStart(now))/86400000)%1;
+      const startFrac=endFrac-(S.totalSecs/86400);
+      const sT=toTheta(startFrac<0?startFrac+1:startFrac), eT=toTheta(endFrac);
+      const cS=Math.max(sT,-HALF_SPAN), cE=Math.min(eT,HALF_SPAN);
+      if(cS<cE){
+        const col=sess.paused?'rgba(180,168,144,':'rgba(57,255,20,';
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx,cy_arc,midR,-Math.PI/2+cS,-Math.PI/2+cE);
+        ctx.strokeStyle=col+(sess.paused?'0.7)':'0.95)');
+        ctx.lineWidth=Math.max(3,bandH*0.28); ctx.lineCap='butt';
+        if(!sess.paused){ ctx.shadowColor=col+'0.8)'; ctx.shadowBlur=10; }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
   // ── Current-time arrow below arc ─────────────────────────
   const arrowY=arcTopY+bandH/2+4;
   // Tiny upward arrow (▲)
@@ -7358,7 +7429,7 @@ function _tdInit(){
   _tdElYear.setAttribute('text-anchor','middle'); _tdElYear.setAttribute('dominant-baseline','middle');
   _tdElYear.setAttribute('font-family',"'DM Mono',monospace");
   _tdElYear.setAttribute('font-size','9'); _tdElYear.setAttribute('font-weight','300');
-  _tdElYear.setAttribute('fill','rgba(255,255,255,0.50)'); _tdElYear.setAttribute('letter-spacing','1.5');
+  _tdElYear.setAttribute('fill','rgba(255,255,255,0.70)'); _tdElYear.setAttribute('letter-spacing','1.5');
   _tdElYear.textContent=String(new Date().getFullYear());
   gOver.appendChild(_tdElYear);
 
@@ -7398,7 +7469,7 @@ function _tdInit(){
      with a crisper stroke + subtle inner shadow-like double-ring for the frosted
      bezel effect. Revert by setting _TD_DLV2_ENABLED = false. */
   if (_TD_DLV2_ENABLED) {
-    hubCirc.setAttribute('fill','rgba(0,0,0,0.45)');
+    hubCirc.setAttribute('fill','rgba(0,0,0,0.12)');
     hubCirc.setAttribute('stroke','rgba(255,255,255,0.28)');
     hubCirc.setAttribute('stroke-width','0.7');
     gBg.appendChild(hubCirc);
@@ -7450,6 +7521,70 @@ function _tdInit(){
     });
     _tdRingGroups[ring.id]={g,ring,textEls};
   });
+
+  /* Session gauge — the outermost band. It is scaled to the session, not to the
+     clock: the whole visible span is the whole block, so it can never wrap out
+     of view the way a 45-minute arc on the minute ring would. Built once and
+     updated per frame; hidden entirely when no session is on screen. */
+  const sg=_tdMk('g'); sg.setAttribute('id','td-session-g');
+  const mkArc=(w,a)=>{
+    const p=_tdMk('path');
+    p.setAttribute('fill','none'); p.setAttribute('stroke',_tdWa(a));
+    p.setAttribute('stroke-width',String(w)); p.setAttribute('stroke-linecap','butt');
+    sg.appendChild(p); return p;
+  };
+  const track=mkArc(5,0.10), spent=mkArc(5,0.10), remain=mkArc(5,0.10);
+  const head=_tdMk('line');
+  head.setAttribute('stroke-width','1.6'); head.setAttribute('stroke-linecap','round');
+  sg.appendChild(head);
+  gOver.appendChild(sg);
+  _tdSessionEls={root:sg,track,spent,remain,head};
+  track.setAttribute('d',_tdArcD(_TD_GAUGE_R,_TD_ARC0,_TD_ARC1));
+  sg.style.display='none';
+}
+
+/* Session state published by the Focus timer (see the FOCUS / POMODORO block).
+   Timedrift only ever reads it. */
+let _tdSessionEls=null;
+
+function _tdSessionState(){
+  const S=window.CDX_SESSION;
+  if(!S || !(S.totalSecs>0)) return null;
+  const spent=_tdClamp(1-(S.remainSecs/S.totalSecs),0,1);
+  return {
+    spent,
+    running:!!S.running,
+    done:S.remainSecs<=0,
+    paused:!S.running && S.remainSecs>0 && S.remainSecs<S.totalSecs,
+    busy:S.running || (S.remainSecs>0 && S.remainSecs<S.totalSecs),
+  };
+}
+
+function _tdDrawSession(){
+  const g=_tdSessionEls;
+  if(!g) return;
+  const S=_tdSessionOpen ? _tdSessionState() : null;
+  g.root.style.display=S?'':'none';
+  if(!S) return;
+  const span=_TD_ARC1-_TD_ARC0;
+  const head=_TD_ARC1-span*S.spent;
+  // A paused block drops to the warm grey used for rest, so it is visibly not
+  // a running one — the gauge is scaled to the session and has no other rest
+  // position to fall back to.
+  const warm='rgba(180,168,144,';
+  const neon='rgba(57,255,20,';
+  const base=S.paused?warm:neon;
+  g.spent.setAttribute('d', S.spent>0.002 ? _tdArcD(_TD_GAUGE_R,head,_TD_ARC1) : '');
+  g.spent.setAttribute('stroke', base+(S.running?'0.26':'0.14')+')');
+  g.remain.setAttribute('d', S.spent<0.998 ? _tdArcD(_TD_GAUGE_R,_TD_ARC0,head) : '');
+  // Armed sits well below running: "neon means live" only reads if a preview
+  // is visibly not a session.
+  g.remain.setAttribute('stroke', S.running ? 'rgb(57,255,20)' : base+(S.paused?'0.55':'0.28')+')');
+  const h0=_tdPt(_TD_GAUGE_R-7,head), h1=_tdPt(_TD_GAUGE_R+7,head);
+  g.head.setAttribute('x1',h0[0].toFixed(2)); g.head.setAttribute('y1',h0[1].toFixed(2));
+  g.head.setAttribute('x2',h1[0].toFixed(2)); g.head.setAttribute('y2',h1[1].toFixed(2));
+  g.head.setAttribute('stroke', S.running ? 'rgb(57,255,20)' : base+'0.6)');
+  g.head.style.display=S.done?'none':'';
 }
 
 /* Glass depth: backdrop-filter can't apply inside SVG, and blur over pure
@@ -7477,24 +7612,38 @@ function _tdLayout(){
   const container=document.getElementById('td-top');
   if(!container||!_tdSvg) return;
   const vw=container.clientWidth||window.innerWidth;
-  // On a phone the dial would otherwise shrink to a thin band at the top, so
-  // scale it up and reveal a taller slice of the rings to fill the space.
+  const vh=container.clientHeight||Math.round(window.innerHeight/2);
   const narrow=vw<640;
-  const scale=vw/1000*(narrow?2.35:1.28);
-  const CROP=narrow?430:530, VBH=845-CROP;
-  const pw=Math.round(1000*scale), ph=Math.round(VBH*scale);
-  _tdSvg.setAttribute('viewBox',`0 ${CROP} 1000 ${VBH}`);
+  // The dial is a disc whose centre sits ON the top edge, so exactly its lower
+  // half is on screen. Its radius is capped: without a cap it tracked viewport
+  // width and swallowed a wide office monitor.
+  const R=narrow
+    ? Math.min(vw*0.55, vh*0.98)
+    : Math.min(vh*_TD_R_OF_BAND, vw*0.30, _TD_R_MAX);
+  // px per viewBox unit, pinned to the calendar rings so the session gauge can
+  // be given room outside them without the rings themselves changing size.
+  const U=R/_TD_RING_R;
+  // The drawing is _TD_VB_R wide in units, not _TD_RING_R — on a narrow screen
+  // the gauge would hang off both edges unless the whole box is made to fit.
+  const fitU=(vw*0.98)/(_TD_VB_R*2);
+  const U2=Math.min(U,fitU);
+  const pw=Math.round(_TD_VB_R*2*U2), ph=Math.round(_TD_VB_R*U2);
+  // The nebula glow is sized off the rings, not the panel, so it stays a halo
+  // around the dial on a phone and on a wide monitor alike.
+  container.style.setProperty('--td-r', (_TD_RING_R*U2)+'px');
+  // viewBox starts at the ring centre, so the top half is cropped away.
+  _tdSvg.setAttribute('viewBox',`${_TD_CX-_TD_VB_R} ${_TD_CY} ${_TD_VB_R*2} ${_TD_VB_R}`);
   _tdSvg.style.width=pw+'px'; _tdSvg.style.height=ph+'px';
   const stage=document.getElementById('td-stage');
   if(stage){ stage.style.width=pw+'px'; stage.style.height=ph+'px'; }
-  // Glass disc tracks the outer ring (r=234 in viewBox units, centre 500,500)
+  // Glass disc tracks the outer ring (r=234 in viewBox units); its centre is
+  // the stage's top-centre, so the upper half hangs above the crop.
   const disc=_tdEnsureGlassLayers();
   if(disc){
-    const r=234*pw/1000;
-    const cy=((500-CROP)/VBH)*ph; // centre sits above the visible crop
+    const r=234*U2;
     disc.style.width=disc.style.height=(r*2)+'px';
     disc.style.left=(pw/2-r)+'px';
-    disc.style.top=(cy-r)+'px';
+    disc.style.top=(-r)+'px';
   }
 }
 
@@ -7543,14 +7692,48 @@ function _tdUpdateRing(info,now,animEase){
   });
 }
 
+let _tdElClockT=null, _tdElClockD=null, _tdElWall=null, _tdLastClockStr='';
 function _tdUpdateCenter(now){
   if(_tdElYear) _tdElYear.textContent=String(now.getFullYear());
+  if(!_tdElClockT){
+    _tdElClockT=document.getElementById('td-clock-time');
+    _tdElClockD=document.getElementById('td-clock-date');
+    _tdElWall=document.getElementById('td-wall');
+  }
+  if(!_tdElClockT) return;
+  const p2=n=>String(n).padStart(2,'0');
+  // 24h to match the rest of Cosmodex; the reference site uses 12h.
+  const t=`${p2(now.getHours())}:${p2(now.getMinutes())}:${p2(now.getSeconds())}`;
+  if(t===_tdLastClockStr) return;   // once a second, not every frame
+  _tdLastClockStr=t;
+  _tdElClockT.textContent=t;
+  // While a session owns the big slot the wall clock keeps ticking up here.
+  if(_tdElWall) _tdElWall.textContent=t;
+  if(_tdElClockD) _tdElClockD.textContent=
+    now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+
+/* Which readout owns the big slot, and whether the controls are on screen.
+   Written as classes on the panel so the swap is one CSS rule, not a pile of
+   inline styles — and so nothing moves except what changes. */
+function _tdApplySessionChrome(){
+  const panel=document.getElementById('panel-timedrift');
+  if(!panel) return;
+  const S=_tdSessionOpen ? _tdSessionState() : null;
+  const sig=S?`1|${S.running}|${S.paused}|${S.done}`:'0';
+  if(sig===_tdChromeSig) return;
+  _tdChromeSig=sig;
+  panel.classList.toggle('td-session', !!S);
+  panel.classList.toggle('td-session-live', !!(S && S.running));
+  panel.classList.toggle('td-session-paused', !!(S && S.paused));
+  panel.classList.toggle('td-session-done', !!(S && S.done));
 }
 
 /* ── Time scrub — drag any ring to drift through time ─────
    The whole panel renders from `now`, so offsetting `now` time-travels
    everything: rings, horizon arc, that day's events. Release springs back. */
 let _tdScrubOffset=0, _tdScrubDrag=null, _tdScrubReleaseT0=0, _tdScrubReleaseFrom=0;
+let _tdDurDrag=null;   // ring drag that sets session length rather than drift
 
 function _tdFmtOffset(ms){
   const m=Math.round(ms/60000);
@@ -7577,12 +7760,22 @@ function _tdInitScrub(){
   const BANDS=[['dom',42,74],['mon',74,106],['dow',106,138],['hr',138,170],['min',170,202],['sec',202,234]];
   const center=()=>{
     const r=_tdSvg.getBoundingClientRect();
-    // viewBox "0 530 1000 315" — ring centre (500,500) sits above the visible crop
-    return { x:r.left+r.width*0.5, y:r.top+((500-530)/315)*r.height, scale:r.width/1000 };
+    // The viewBox starts at the ring centre, so the centre is the box's top edge.
+    return { x:r.left+r.width*0.5, y:r.top, scale:r.width/(_TD_VB_R*2) };
   };
   _tdSvg.addEventListener('pointerdown',e=>{
     const c=center();
     const d=Math.hypot(e.clientX-c.x,e.clientY-c.y)/c.scale;
+    // A locked session must not time-travel; while it is merely armed, the same
+    // drag sets the session's length instead of drifting the clock.
+    const sess=_tdSessionOpen?_tdSessionState():null;
+    if(sess && (sess.running||sess.paused)) return;
+    if(sess){
+      e.preventDefault();
+      _tdDurDrag={x:e.clientX, from:window.CDX_SESSION?.durMins||25};
+      try{_tdSvg.setPointerCapture(e.pointerId);}catch{}
+      return;
+    }
     const band=BANDS.find(([,ri,ro])=>d>=ri&&d<=ro+8);
     if(!band) return;
     e.preventDefault();
@@ -7592,6 +7785,10 @@ function _tdInitScrub(){
     _tdSvg.classList.add('td-scrubbing');
   });
   _tdSvg.addEventListener('pointermove',e=>{
+    if(_tdDurDrag){
+      window.setPomoDuration?.(_tdDurDrag.from+Math.round((e.clientX-_tdDurDrag.x)/10));
+      return;
+    }
     if(!_tdScrubDrag) return;
     const {c,id}=_tdScrubDrag;
     const a=Math.atan2(e.clientY-c.y,e.clientX-c.x);
@@ -7605,6 +7802,7 @@ function _tdInitScrub(){
     _tdScrubOffset=_tdClamp(_tdScrubOffset,-31557600e3,31557600e3);
   });
   const endScrub=()=>{
+    if(_tdDurDrag){ _tdDurDrag=null; return; }
     if(!_tdScrubDrag) return;
     _tdScrubDrag=null;
     _tdSvg.classList.remove('td-scrubbing');
@@ -7635,6 +7833,8 @@ function _tdFrame(){
   _tdHrSnapFrac=(hrAge<500) ? -(1-Math.pow(1-hrAge/500,3)) : 0;
   Object.values(_tdRingGroups).forEach(info=>_tdUpdateRing(info,now,animEase));
   _tdUpdateCenter(now);
+  _tdApplySessionChrome();
+  _tdDrawSession();
   _tdDrawTimeline(now);
   _tdRaf=requestAnimationFrame(_tdFrame);
 }
@@ -11255,7 +11455,7 @@ document.getElementById('btn-notes')?.addEventListener('click', openNotesPage);
 document.getElementById('btn-focus')?.addEventListener('click', () => {
   document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
   document.getElementById('btn-focus')?.classList.add('active');
-  showMainPanel('focus');
+  showMainPanel('focus');   // arms a session on the Timedrift dial
 });
 document.getElementById('btn-cosmodex-bubble')?.addEventListener('click', () => openOrb());
 document.getElementById('btn-cosmos')?.addEventListener('click', () => openOverlay('claude-panel'));
@@ -11544,8 +11744,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const chart = document.getElementById('kb-chart');
     if (chart) { chart.remove(); return; }
-    // Focus is a page now — ESC leaves it back to the dashboard.
-    if (_mainPanel === 'focus') { showMainPanel('default'); return; }
+    // Focus is a state of Timedrift now — ESC leaves the session.
+    if (_mainPanel === 'timedrift' && _tdSessionOpen) { showMainPanel('default'); return; }
     if (document.querySelector('.task-row.kb-selected')) { _kbSelect(null); return; }
     if (document.getElementById('cmd-palette').classList.contains('open')) {
       closeCmdPalette(); return;
@@ -12476,6 +12676,10 @@ const SCRIB_SIZES  = [1, 2, 4, 8, 16];
 
   function clamp(v) { return Math.max(PMIN, Math.min(PMAX, Math.round(v))); }
 
+  // Dragging a ring on the Timedrift dial while a session is armed sets its
+  // length; the dial has no other way to reach this module's state.
+  window.setPomoDuration = v => { if (!pomo.running) setDuration(v); };
+
   function setDuration(v) {
     pomoDur = clamp(v);
     if (!pomo.running) { pomo.totalSecs = pomoDur * 60; pomo.remainSecs = pomoDur * 60; }
@@ -12531,6 +12735,16 @@ const SCRIB_SIZES  = [1, 2, 4, 8, 16];
     if (sw) { sw.style.opacity = pomo.running ? '0.4' : '1'; sw.style.pointerEvents = pomo.running ? 'none' : 'auto'; }
     if (!pomo.running) document.getElementById('pomo-lock-msg')?.classList.remove('show');
     drawPomoRing();
+    /* The Timedrift dial draws the session gauge from this. Read-only there —
+       this module stays the only writer. */
+    window.CDX_SESSION = {
+      running: pomo.running,
+      totalSecs: pomo.totalSecs,
+      remainSecs: pomo.remainSecs,
+      durMins: pomoDur,
+      endAt: pomo.running ? pomo._endTarget : Date.now() + pomo.remainSecs * 1000,
+      title: _pomoEvent?.title || '',
+    };
     _pomoBroadcast();
   }
 
@@ -12756,7 +12970,10 @@ const SCRIB_SIZES  = [1, 2, 4, 8, 16];
 
   // Leave — pomo is a page now; return to the dashboard.
   document.getElementById('pomo-close')?.addEventListener('click', () => {
-    stopBreathing(); showMainPanel('default');
+    clearInterval(pomo.interval); pomo.running = false;
+    pomo.totalSecs = pomoDur * 60; pomo.remainSecs = pomoDur * 60;
+    renderPomo(); stopBreathing();
+    showMainPanel('default');
   });
   // Withdraw: reset timer state without closing any overlay
   document.getElementById('pomo-withdraw')?.addEventListener('click', () => {
@@ -18413,12 +18630,12 @@ function _dashRenderCommitments() {
   const openState = _dashCommitOpen();
   const today = localDateStr(new Date());
 
-  // Big rocks first, then by the nearest end date — what's most at stake, first.
-  const sorted = [...active].sort((a, b) =>
-    (b.bigRock ? 1 : 0) - (a.bigRock ? 1 : 0) ||
-    String(a.endDate || '9999').localeCompare(String(b.endDate || '9999')));
+  // Nearest end date first — what's most at stake, first.
+  const byEnd = (a, b) =>
+    String(a.endDate || '9999').localeCompare(String(b.endDate || '9999'));
+  const sorted = [...active].sort(byEnd);
 
-  const cards = sorted.map(p => {
+  const card = p => {
     const all = tasksBy[p.id] || [];
     const open = all.filter(t => !t.done);
     const done = all.length - open.length;
@@ -18449,7 +18666,7 @@ function _dashRenderCommitments() {
           <button class="dash-c-edit" data-dash-c-edit="${escAttr(p.id)}" title="Edit commitment">✎</button>
         </div>
         <div class="dash-c-meta" data-dash-c-toggle="${escAttr(p.id)}">
-          ${p.bigRock ? '<span class="dash-c-bau">⛰ BAU</span>' : ''}
+          <span class="dash-c-bau">${escHtml(commitmentCadence(p).toUpperCase())}</span>
           <span class="dash-c-count">${open.length} open${done ? ` · ${done} done` : ''}</span>
           <span class="dash-c-when${overdue ? ' over' : ''}">${escHtml(window_)}</span>
         </div>
@@ -18463,7 +18680,40 @@ function _dashRenderCommitments() {
           </div>
         </div>
       </div>`;
-  }).join('');
+  };
+
+  /* Cadence is what makes a commitment readable at a glance — a big rock is a
+     different kind of promise from a weekly one, so they get their own bands
+     rather than one flat grid. A big rock is its own band whatever its cadence. */
+  const BANDS = [
+    { key: 'bigrock',   label: '⛰ BIG ROCKS',  note: 'ongoing · BAU',
+      test: p => !!p.bigRock },
+    { key: 'quarterly', label: '◆ QUARTERLY',  note: 'the quarter',
+      test: p => commitmentCadence(p) === 'quarterly' },
+    { key: 'monthly',   label: '◈ MONTHLY',    note: 'the month',
+      test: p => commitmentCadence(p) === 'monthly' },
+    { key: 'weekly',    label: '◇ WEEKLY',     note: 'the week',
+      test: p => commitmentCadence(p) === 'weekly' },
+  ];
+
+  const claimed = new Set();
+  const groups = BANDS.map(b => {
+    const members = sorted.filter(p => !claimed.has(p.id) && b.test(p));
+    members.forEach(p => claimed.add(p.id));
+    return { ...b, members };
+  }).filter(g => g.members.length);
+
+  const openIn = ps => ps.reduce((n, p) => n + (tasksBy[p.id] || []).filter(t => !t.done).length, 0);
+
+  const bandsHtml = groups.map(g => `
+      <div class="dash-c-band">
+        <div class="dash-c-band-head">
+          <span class="dash-c-band-label">${g.label}</span>
+          <span class="dash-c-band-note">${escHtml(g.note)}</span>
+          <span class="dash-c-band-count">${g.members.length} · ${openIn(g.members)} open</span>
+        </div>
+        <div class="dash-c-grid">${g.members.map(card).join('')}</div>
+      </div>`).join('');
 
   const totalOpen = Object.values(tasksBy).reduce((s, ts) => s + ts.filter(t => !t.done).length, 0);
   el.innerHTML =
@@ -18471,7 +18721,7 @@ function _dashRenderCommitments() {
        <div class="dash-eyebrow">COMMITMENTS · ${sorted.length} ACTIVE · ${totalOpen} OPEN TASKS</div>
        <button class="dash-btn" id="dash-c-plan" title="Open the Planning page">◉ Planning</button>
      </div>
-     <div class="dash-c-grid">${cards}</div>`;
+     ${bandsHtml}`;
 
   el.querySelectorAll('[data-dash-c-toggle]').forEach(h => h.addEventListener('click', e => {
     if (e.target.closest('[data-dash-c-edit]')) return;

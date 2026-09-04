@@ -121,10 +121,6 @@
         <span class="nav-item-icon">◌</span>
         Timedrift
       </div>
-      <div class="nav-item" id="btn-focus">
-        <span class="nav-item-icon">◎</span>
-        Focus
-      </div>
     </div>
   </div>
 
@@ -509,6 +505,12 @@
         <!-- Focus Timer lives in the #pomo-overlay overlay (opened from the Focus
              nav item), not in this panel. -->
         <!-- Top 50%: timedrift visualization -->
+        <!-- Focus toggle — the whole session function is off until this is on.
+             Sits at the top centre of the dial, above the year label, where the
+             rings leave a clear band. -->
+        <button type="button" id="td-focus-toggle" aria-pressed="false" title="Arm a focus session (F)">
+          <span class="tdf-dot"></span><span class="tdf-label">Focus</span>
+        </button>
         <div id="td-top" style="position:relative;height:50%;overflow:hidden;flex-shrink:0;">
           <div id="td-stage" style="position:absolute;left:50%;transform:translateX(-50%);top:0;">
             <svg id="td-svg" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible"></svg>
@@ -1873,6 +1875,11 @@
               <div class="settings-section-title">Backup &amp; Export</div>
               <div class="settings-desc">Write a full snapshot — tasks, commitments, events, habit log and a daily roll-up — as one markdown file you can read in Obsidian and mine for patterns. Saves to <code style="font-family:var(--font-mono);font-size:11px">060 ▲ Star logs/Cosmodex Backups/</code> on desktop; downloads in the browser.</div>
               <button class="btn-secondary" id="settings-backup-btn" style="font-size:11px;padding:8px 16px;color:var(--neon);border-color:var(--neon-dim);">◆ Export backup (.md)</button>
+              <div class="settings-desc" style="margin-top:14px">Records live in <code style="font-family:var(--font-mono);font-size:11px">data/cosmodex.db</code> and the server copies it to <code style="font-family:var(--font-mono);font-size:11px">backups/</code> on every start, so this is for moving between machines rather than for safety. Restore replaces every record and preference, then reloads.</div>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn-secondary" id="settings-json-export" style="font-size:11px;padding:8px 16px">⤓ Export data (.json)</button>
+                <button class="btn-secondary" id="settings-json-restore" style="font-size:11px;padding:8px 16px">⤒ Restore from .json</button>
+              </div>
             </div>
             <div class="settings-section">
               <div class="settings-section-title">Local Cache</div>

@@ -401,6 +401,24 @@ function _tdSetSessionOpen(open) {
   const busy = !!(S && (S.running || (S.remainSecs > 0 && S.remainSecs < S.totalSecs)));
   _tdSessionOpen = open || busy;
   _tdChromeSig = '';           // force the chrome classes to reapply
+  const t = document.getElementById('td-focus-toggle');
+  if (t) {
+    t.classList.toggle('on', _tdSessionOpen);
+    t.setAttribute('aria-pressed', _tdSessionOpen ? 'true' : 'false');
+  }
+}
+
+/* The toggle owns the whole session function: off means the dial is a clock and
+   nothing else. Turning it off mid-session ends that session rather than hiding
+   a timer that is still counting. */
+function _tdToggleSession() {
+  if (_tdSessionOpen) {
+    document.getElementById('pomo-close')?.click();   // resets the timer, leaves
+    showMainPanel('timedrift');
+    _tdSetSessionOpen(false);
+  } else {
+    showMainPanel('focus');
+  }
 }
 
 function showMainPanel(name) {
@@ -7568,22 +7586,24 @@ function _tdDrawSession(){
   if(!S) return;
   const span=_TD_ARC1-_TD_ARC0;
   const head=_TD_ARC1-span*S.spent;
-  // A paused block drops to the warm grey used for rest, so it is visibly not
-  // a running one — the gauge is scaled to the session and has no other rest
-  // position to fall back to.
+  /* The dial stays monochrome: the arc is dull white and the head -- the one
+     thing that moves -- is bright white with a glow, so the eye goes to the
+     moving edge rather than to a band of colour. The horizon arc below keeps
+     its greens. A paused block drops to the warm grey used for rest, so it is
+     visibly not a running one. */
   const warm='rgba(180,168,144,';
-  const neon='rgba(57,255,20,';
-  const base=S.paused?warm:neon;
+  const white='rgba(255,255,255,';
+  const base=S.paused?warm:white;
   g.spent.setAttribute('d', S.spent>0.002 ? _tdArcD(_TD_GAUGE_R,head,_TD_ARC1) : '');
-  g.spent.setAttribute('stroke', base+(S.running?'0.26':'0.14')+')');
+  g.spent.setAttribute('stroke', base+(S.running?'0.20':'0.12')+')');
   g.remain.setAttribute('d', S.spent<0.998 ? _tdArcD(_TD_GAUGE_R,_TD_ARC0,head) : '');
-  // Armed sits well below running: "neon means live" only reads if a preview
-  // is visibly not a session.
-  g.remain.setAttribute('stroke', S.running ? 'rgb(57,255,20)' : base+(S.paused?'0.55':'0.28')+')');
-  const h0=_tdPt(_TD_GAUGE_R-7,head), h1=_tdPt(_TD_GAUGE_R+7,head);
+  // Armed sits well below running, so a preview is visibly not a session.
+  g.remain.setAttribute('stroke', base+(S.running?'0.55':S.paused?'0.42':'0.24')+')');
+  const h0=_tdPt(_TD_GAUGE_R-8,head), h1=_tdPt(_TD_GAUGE_R+8,head);
   g.head.setAttribute('x1',h0[0].toFixed(2)); g.head.setAttribute('y1',h0[1].toFixed(2));
   g.head.setAttribute('x2',h1[0].toFixed(2)); g.head.setAttribute('y2',h1[1].toFixed(2));
-  g.head.setAttribute('stroke', S.running ? 'rgb(57,255,20)' : base+'0.6)');
+  g.head.setAttribute('stroke', S.paused ? warm+'0.75)' : '#ffffff');
+  g.head.setAttribute('filter', S.running ? 'url(#td-wglow)' : '');
   g.head.style.display=S.done?'none':'';
 }
 
@@ -11452,10 +11472,11 @@ function openNotesPage() {
 }
 window.openNotesPage = openNotesPage;
 document.getElementById('btn-notes')?.addEventListener('click', openNotesPage);
-document.getElementById('btn-focus')?.addEventListener('click', () => {
-  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-  document.getElementById('btn-focus')?.classList.add('active');
-  showMainPanel('focus');   // arms a session on the Timedrift dial
+/* Focus has no nav item of its own any more — it is a toggle on the dial.
+   showMainPanel('focus') still works, so the calendar's play button, the commit
+   ritual and the task hand-off all keep their entry points. */
+document.getElementById('td-focus-toggle')?.addEventListener('click', () => {
+  _tdToggleSession();
 });
 document.getElementById('btn-cosmodex-bubble')?.addEventListener('click', () => openOrb());
 document.getElementById('btn-cosmos')?.addEventListener('click', () => openOverlay('claude-panel'));
@@ -11468,7 +11489,7 @@ const CMD_COMMANDS_BASE = [
   { label: 'Today',            icon: '◈', action: () => {}, keys: '' },
   { label: 'Open Calendar',    icon: '◻', action: () => {}, keys: '' },
   { label: 'New Task',         icon: '+', action: () => {}, keys: 'N' },
-  { label: 'Focus — Timedrift', icon: '◎', action: () => { showMainPanel('timedrift'); document.getElementById('left-nav')?.classList.add('collapsed'); }, keys: 'F' },
+  { label: 'Focus — Timedrift', icon: '◎', action: () => { showMainPanel('focus'); document.getElementById('left-nav')?.classList.add('collapsed'); }, keys: 'F' },
   { label: 'Open Notes',       icon: '✎', action: () => openNotesPage(), keys: '' },
   { label: 'Ask Cosmos',       icon: '✦', action: () => openOverlay('claude-panel'), keys: '' },
   { label: 'Insights',         icon: '◈', action: () => showMainPanel('insights'), keys: '' },
@@ -17001,11 +17022,9 @@ window.renderInsightsX = renderInsightsX;
   let _saveTimer = null;
   let _content = '';        // in-memory daily-note markdown
   let _noteExists = false;  // does today's daily note file exist yet
-  let _capContent = '';     // in-memory capture-inbox markdown
-  let _capSaveTimer = null;
   let _focusHooked = false; // window focus/visibility listener attached once
   let _keysHooked = false;  // Cmd/Ctrl+E toggle listener attached once
-  let _mode = 'edit';       // 'edit' | 'read' (daily note) | 'captures' (inbox file)
+  let _mode = 'edit';       // 'edit' | 'read' — the daily note, nothing else
 
   function _invoke() { return window.CDX_NOTES_INVOKE || null; }
 
@@ -17257,7 +17276,6 @@ window.renderInsightsX = renderInsightsX;
   function _renderBody(dateStr) {
     const body = document.getElementById('dash-note-body'); if (!body) return;
 
-    if (_mode === 'captures') { _renderCaptures(body); return; }
 
     if (!_noteExists) {
       // No daily note for this day yet — offer to create it (Edit/Read need one).
@@ -17307,36 +17325,13 @@ window.renderInsightsX = renderInsightsX;
     });
   }
 
-  // Captures view: the single "Capture Inbox" file (all iPhone captures land
-  // here and stay — no daily fold). Editable so it can be triaged/cleaned; saves
-  // straight back to that one file.
-  async function _renderCaptures(body) {
-    const invoke = _invoke();
-    body.innerHTML =
-      `<div class="dash-note-caps-hint">One running inbox for every capture — clean it out as you go.</div>
-       <textarea class="dash-note-textarea dash-note-caps" id="dash-cap-text" spellcheck="true" placeholder="Nothing captured yet. Use the iPhone Action Button to add here."></textarea>`;
-    const ta = body.querySelector('#dash-cap-text');
-    let content = '';
-    try { content = (await invoke('read_capture_file')) || ''; } catch (e) {}
-    _capContent = content;
-    ta.value = content;
-    ta.addEventListener('input', () => {
-      _capContent = ta.value; _status('Saving…');
-      clearTimeout(_capSaveTimer);
-      _capSaveTimer = setTimeout(async () => {
-        try { await invoke('write_capture_file', { content: _capContent }); _status('Saved'); }
-        catch (e) { _status('Save failed'); console.warn('capture save:', e); }
-      }, 600);
-    });
-  }
-
   function _setEyebrow(label) {
     const eb = document.getElementById('dash-note-eyebrow');
-    if (eb) eb.innerHTML = _mode === 'captures' ? '📥 CAPTURES · running inbox' : `✒ VALERIE · ${escHtml(label)}`;
+    if (eb) eb.innerHTML = `✒ VALERIE · ${escHtml(label)}`;
   }
 
-  // Cmd+E / the pills flip Edit ⇄ Read on the daily note. From Captures it
-  // returns to Edit. No-ops unless the note panel is on screen.
+  // Cmd+E / the pills flip Edit ⇄ Read on the daily note.
+  // No-ops unless the note panel is on screen.
   function _toggleMode() {
     const el = document.getElementById('dash-note-panel');
     if (!el || !el.querySelector('#dash-note-body')) return;
@@ -17397,9 +17392,8 @@ window.renderInsightsX = renderInsightsX;
     _noteExists = content != null;
     _content = content || '';
 
-    // Pills always render (so Captures is reachable even before today's note
-    // exists). Body switches on the active mode.
-    const eyebrow = _mode === 'captures' ? '📥 CAPTURES · running inbox' : `✒ VALERIE · ${escHtml(label)}`;
+    // Pills always render, even before today's note exists.
+    const eyebrow = `✒ VALERIE · ${escHtml(label)}`;
     el.innerHTML =
       `<div class="dash-note-head"><span class="dash-eyebrow" id="dash-note-eyebrow">${eyebrow}</span>
          <div class="dash-note-actions">
@@ -17407,7 +17401,6 @@ window.renderInsightsX = renderInsightsX;
            <div class="dash-note-pills" id="dash-note-pills" title="⌘E toggles Edit / Read">
              <button type="button" data-mode="edit"${_mode === 'edit' ? ' class="active"' : ''}>Edit</button>
              <button type="button" data-mode="read"${_mode === 'read' ? ' class="active"' : ''}>Read</button>
-             <button type="button" data-mode="captures"${_mode === 'captures' ? ' class="active"' : ''}>📥 Captures</button>
            </div>
          </div>
        </div>

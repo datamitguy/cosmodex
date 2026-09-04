@@ -356,8 +356,10 @@
   var noAuth = function () { return Promise.reject(new Error('Cosmodex Lite runs local-only — there is no sign-in.')); };
 
   /* ── backup / restore ────────────────────────────────────────────────────
-     IndexedDB is per-browser-profile and IT can wipe it without warning, so a
-     one-click export is not optional here. */
+     This guarded against a browser profile being wiped, back when the records
+     lived in IndexedDB. They live in data/cosmodex.db now and the server takes
+     a dated copy on every start, so the export is a portability tool rather
+     than a safety net -- it belongs in Settings, not pinned over every page. */
   // Records live in IndexedDB, but preferences live in localStorage — categories,
   // people, settings, consolidation config. A backup without them restores every
   // task while losing the labels and colours those tasks refer to, so both go in.
@@ -401,16 +403,10 @@
   window.cosmodexLiteImport = importJson;
 
   function mountBackupControl() {
-    var wrap = document.createElement('div');
-    wrap.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9998;display:flex;gap:6px;opacity:.35;transition:opacity .2s';
-    wrap.onmouseenter = function () { wrap.style.opacity = '1'; };
-    wrap.onmouseleave = function () { wrap.style.opacity = '.35'; };
-    var btn = 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.16);color:#fff;' +
-              'border-radius:7px;padding:5px 11px;font-family:"DM Mono",monospace;font-size:10px;' +
-              'letter-spacing:.1em;text-transform:uppercase;cursor:pointer';
-    var ex = document.createElement('button'); ex.textContent = '⤓ Backup'; ex.style.cssText = btn;
+    var ex = document.getElementById('settings-json-export');
+    var im = document.getElementById('settings-json-restore');
+    if (!ex || !im) return;
     ex.onclick = exportJson;
-    var im = document.createElement('button'); im.textContent = '⤒ Restore'; im.style.cssText = btn;
     var picker = document.createElement('input');
     picker.type = 'file'; picker.accept = 'application/json'; picker.style.display = 'none';
     picker.onchange = function () {
@@ -424,8 +420,7 @@
       }).catch(function (e) { alert('Restore failed: ' + e.message); });
     };
     im.onclick = function () { picker.click(); };
-    wrap.appendChild(ex); wrap.appendChild(im); wrap.appendChild(picker);
-    document.body.appendChild(wrap);
+    im.parentNode.appendChild(picker);
   }
 
   /* ── preference mirroring ─────────────────────────────────────────────

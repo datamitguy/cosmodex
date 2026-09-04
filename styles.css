@@ -7752,36 +7752,34 @@ select.sched-input { background: #181818; }
   #td-clock { gap: 8px; }
 }
 
-/* Focus toggle — top centre of the dial, in the clear band above the year
-   label. Quiet when off so it reads as part of the instrument's bezel; a lit
-   dot when on. It is the only control on an idle dial, so it stays small. */
+/* Focus toggle — set like the dial's own ring labels (same mono face, size and
+   tracking as the year) and sitting on the centre axis just above it, so it
+   reads as another etched marking rather than a chip pasted over the
+   instrument. No box, no fill: only the dot changes state. */
 #td-focus-toggle {
   position: absolute; left: 50%; transform: translateX(-50%);
-  top: 10px; z-index: 4;
-  display: flex; align-items: center; gap: 7px;
-  padding: 5px 13px 5px 10px; border-radius: 100px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: rgba(255,255,255,0.42);
-  font-family: var(--font-mono); font-size: 9.5px;
-  letter-spacing: 0.16em; text-transform: uppercase;
-  cursor: pointer; transition: all .18s var(--ease-glass);
-  backdrop-filter: var(--glass-blur-panel); -webkit-backdrop-filter: var(--glass-blur-panel);
+  top: 14px; z-index: 4;
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 6px; border: none; background: none;
+  color: rgba(255,255,255,0.34);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 300;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  cursor: pointer; transition: color .2s var(--ease-glass);
 }
-#td-focus-toggle:hover { color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.3); }
+#td-focus-toggle:hover { color: rgba(255,255,255,0.72); }
+#td-focus-toggle:hover .tdf-dot { border-color: rgba(255,255,255,0.55); }
 .tdf-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: rgba(255,255,255,0.22);
-  transition: all .18s var(--ease-glass);
+  width: 5px; height: 5px; border-radius: 50%;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.3);
+  transition: all .2s var(--ease-glass);
 }
-#td-focus-toggle.on {
-  color: #fff; border-color: rgba(255,255,255,0.42);
-  background: rgba(255,255,255,0.08);
-}
+#td-focus-toggle.on { color: rgba(255,255,255,0.9); }
 #td-focus-toggle.on .tdf-dot {
-  background: #fff; box-shadow: 0 0 10px rgba(255,255,255,0.85);
+  background: #fff; border-color: #fff;
+  box-shadow: 0 0 9px rgba(255,255,255,0.9);
 }
-@media (max-width: 640px) { #td-focus-toggle { top: 6px; } }
+@media (max-width: 640px) { #td-focus-toggle { top: 8px; } }
 
 /* ══ TIMEDRIFT SESSION MODE (Focus, merged into the dial) ══
    The composition never moves between states: the countdown takes the wall

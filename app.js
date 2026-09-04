@@ -7007,36 +7007,13 @@ setInterval(updateDashboardHero, 30 * 1000); // update every 30s
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TIMEDRIFT DESIGN LANGUAGE V2 — FEATURE FLAG
-   Set to false to revert all three V2 enhancements:
+   Set to false to revert both V2 enhancements:
      1. Specular top-edge on horizon arc (CSS — remove the `.td-dlv2` block too)
      2. Glass center hub instead of solid black
-     3. Neon-green current-hour tick when weekly focus goal is met
+   A third — a neon-green current-hour tick once the weekly focus goal was met —
+   is gone: green on this screen means a running session and nothing else.
    ═══════════════════════════════════════════════════════════════════════════ */
 const _TD_DLV2_ENABLED = true;
-const _TD_DLV2_FOCUS_THRESHOLD_SECS = 4 * 3600; // 4h/week matches Insights page
-let _tdDlv2FocusGoalMet = false;
-let _tdDlv2LastFocusCheck = 0;
-function _tdDlv2IsFocusGoalMet() {
-  if (!_TD_DLV2_ENABLED) return false;
-  const now = performance.now();
-  // Recompute at most once per 5s to keep per-frame cost near zero
-  if (now - _tdDlv2LastFocusCheck < 5000) return _tdDlv2FocusGoalMet;
-  _tdDlv2LastFocusCheck = now;
-  try {
-    if (typeof TASKS === 'undefined' || typeof localDateStr !== 'function') return _tdDlv2FocusGoalMet;
-    const weekAgo = localDateStr(new Date(Date.now() - 6 * 86400000));
-    let weekSecs = 0;
-    TASKS.forEach(t => {
-      const taskSecs = taskEffortSecs(t);
-      if (taskSecs <= 0) return;
-      const dd = t.doneDate || t.dueDate || '';
-      if (dd >= weekAgo) weekSecs += taskSecs;
-    });
-    _tdDlv2FocusGoalMet = weekSecs >= _TD_DLV2_FOCUS_THRESHOLD_SECS;
-  } catch {}
-  return _tdDlv2FocusGoalMet;
-}
-
 const _TD_NS = 'http://www.w3.org/2000/svg';
 const _tdMk = t => document.createElementNS(_TD_NS, t);
 const _TD_CX = 500, _TD_CY = 500;
@@ -7703,13 +7680,8 @@ function _tdUpdateRing(info,now,animEase){
     txt.setAttribute('transform',`rotate(${-rot},${lx},${ly})`);
   });
   const vis=n*0.28;
-  /* Design Language V2: when the user has met their weekly focus goal (4h),
-     the active tick on the hour ring glows neon green instead of white —
-     ties Timedrift into the cross-app threshold reward system.
-     Revert by setting _TD_DLV2_ENABLED = false. */
-  const dlv2Green = _TD_DLV2_ENABLED && ring.id === 'hr' && _tdDlv2IsFocusGoalMet();
-  const activeStroke = dlv2Green ? 'rgba(57,255,20,1)' : 'rgba(255,255,255,1)';
-  const activeFill   = dlv2Green ? 'rgba(57,255,20,1)' : 'rgba(255,255,255,1)';
+  const activeStroke = 'rgba(255,255,255,1)';
+  const activeFill   = 'rgba(255,255,255,1)';
   g.querySelectorAll('.td-ri').forEach(item=>{
     const i=+item.dataset.i, maj=item.dataset.maj==='1';
     let dist=i-exact;

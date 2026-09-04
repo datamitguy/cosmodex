@@ -7702,14 +7702,22 @@ select.sched-input { background: #181818; }
 #td-nebula {
   position: absolute; inset: 0; z-index: 0;
   pointer-events: none;
+  /* Neutral, and stepped rather than smooth — timedrift.live builds its glow
+     from concentric discs that each get a little brighter towards the centre,
+     so the falloff lands on the same radii as the rings instead of washing
+     across them. The band edges below are that site's disc radii, scaled to
+     the ring radius; the alphas are far lower because this sits on black
+     rather than on their photograph. No hue: the only colour on this screen
+     is a running session. */
   background:
-    radial-gradient(calc(var(--td-r, 360px) * 1.75) calc(var(--td-r, 360px) * 1.25) at 50% -4%, var(--neon-glow), transparent 72%),
-    radial-gradient(calc(var(--td-r, 360px) * 1.45) calc(var(--td-r, 360px) * 1.10) at 50% 6%,  var(--gold-glow), transparent 72%),
-    radial-gradient(1.5px 1.5px at 18% 40%, rgba(255,255,255,0.35), transparent 100%),
-    radial-gradient(1px 1px at 52% 22%, rgba(255,255,255,0.28), transparent 100%),
-    radial-gradient(1.5px 1.5px at 68% 72%, rgba(255,255,255,0.30), transparent 100%),
-    radial-gradient(1px 1px at 87% 30%, rgba(255,255,255,0.25), transparent 100%),
-    radial-gradient(1px 1px at 40% 80%, rgba(255,255,255,0.22), transparent 100%);
+    radial-gradient(circle calc(var(--td-r, 360px) * 1.39) at 50% 0%,
+      rgba(255,255,255,0.10)  0     13.2%,
+      rgba(255,255,255,0.085) 13.2% 27.9%,
+      rgba(255,255,255,0.062) 27.9% 37.3%,
+      rgba(255,255,255,0.042) 37.3% 57.3%,
+      rgba(255,255,255,0.026) 57.3% 61.9%,
+      rgba(255,255,255,0.012) 61.9% 100%,
+      transparent 100%);
   /* Fade the glow to transparent before #td-top's clipped bottom edge so the
      nebula doesn't cut off into a hard horizontal "horizon" line at the seam. */
   -webkit-mask: linear-gradient(180deg, #000 74%, transparent 100%);

@@ -151,6 +151,11 @@ function _habitWithDefaults(h) {
     valueTags:        [],
     tinyBehavior:     '',
     fullBehavior:     '',
+    /* The explicit pair. `tinyBehavior`/`fullBehavior` are kept for every
+       existing reader, but the two builders wrote them with opposite meanings,
+       so these two are the ones habitActions() trusts. */
+    standardBehavior: '',
+    mveBehavior:      '',
     anchor:           { type: 'anytime', value: '', linkedHabitId: null },
     schedule:         { days: 'daily', frequency: 1 },
     stackId:          null,
@@ -1369,16 +1374,30 @@ function _todayRenderHabits(todayDs, isRestDay) {
       const done = !!_habitLogs[todayDs]?.completions?.[h.id];
       const streak = _todayStreakDays(h.id);
       const streakClass = streak >= 7 ? 'hot' : '';
-      const name = h.tinyBehavior || h.name;
+      /* The standard is what the row shows. This view used to render the
+         minimum and call it the habit, which quietly made the safety net the
+         everyday ask. The minimum is still one tap away. */
+      const onMve = _habitEffortToday(h.id, todayDs) === 'mve';
+      const acts = habitActions(h);
+      const full = acts.standard, tiny = acts.mve;
+      const name = onMve && tiny ? tiny : full;
       const identity = h.identityTag ? `<span class="today-habit-identity">${escHtml(h.identityTag)}</span>` : '';
       const anchor = h.anchor?.value ? `<span class="today-habit-anchor">after ${escHtml(h.anchor.value)}</span>` : '';
       const meta = identity || anchor ? `<div class="today-habit-meta">${identity}${identity && anchor ? '<span>·</span>' : ''}${anchor}</div>` : '';
-      return `<div class="today-habit ${done ? 'done' : ''}" data-habit-id="${escAttr(h.id)}">
+      // No tiny version defined means no toggle: offering one that silently
+      // changes nothing would be worse than not offering it.
+      const mveBtn = tiny && tiny !== full
+        ? `<button class="today-habit-mve${onMve ? ' on' : ''}" data-mve-toggle="${escAttr(h.id)}"
+             title="${onMve ? 'Back to the full version' : 'Low-energy day — drop to the minimum'}">◐ MVE</button>`
+        : '';
+      return `<div class="today-habit ${done ? 'done' : ''}${onMve ? ' mve' : ''}" data-habit-id="${escAttr(h.id)}">
         <div class="today-habit-check ${done ? 'done' : ''}" data-today-toggle="${escAttr(h.id)}">${done ? '✓' : ''}</div>
         <div class="today-habit-body">
           <div class="today-habit-name">${escHtml(name)}</div>
           ${meta}
         </div>
+        ${mveBtn}
+        ${!done ? `<button class="today-habit-friction" data-friction-log="${escAttr(h.id)}" title="Log what got in the way">⚑</button>` : ''}
         ${streak > 0 ? `<span class="today-habit-streak ${streakClass}">${streak}d</span>` : ''}
         <div class="today-habit-burst"></div>
         <div class="today-habit-vote"></div>
@@ -1393,6 +1412,166 @@ function _todayRenderHabits(todayDs, isRestDay) {
       <div class="today-anchor-body">${rows}</div>
     </div>`;
   }).join('');
+}
+
+/* ══ WHICH TEXT IS THE STANDARD, AND WHICH IS THE MINIMUM ════════════════
+   The two habit builders in this app write the SAME two fields with OPPOSITE
+   meanings, and nothing in a habit's data says which convention it was saved
+   under:
+
+     legacy wizard (03-habits)   tinyBehavior = "Read 1 page"    ← the minimum
+                                 fullBehavior = "Read 15 pages"  ← the standard
+     current builder (14-habits) tinyBehavior = "Write a line"   ← the standard
+                                 fullBehavior = "open the book"  ← the minimum
+
+   An MVE toggle built on either field name alone would therefore show the
+   minimum as the standard for roughly half the habits — the exact inversion it
+   exists to fix. So the pair is resolved here, once, and everything else asks
+   this function rather than reading the fields.
+
+   New and edited habits get `standardBehavior` / `mveBehavior`, which say what
+   they mean. The legacy pair is still written alongside them so every other
+   reader in the app keeps working; this resolver just stops trusting it when
+   the explicit fields are present. The fallback splits on the id, because the
+   current builder mints ids as 'h_'+timestamp and Firestore's auto-ids never
+   look like that. It is a heuristic, and it is only ever reached by habits
+   created before this field existed. */
+function habitActions(h) {
+  if (!h) return { standard: '', mve: '' };
+  if (h.standardBehavior || h.mveBehavior) {
+    return {
+      standard: h.standardBehavior || h.name || h.tinyBehavior || 'Habit',
+      mve: h.mveBehavior || '',
+    };
+  }
+  const fromCurrentBuilder = typeof h.id === 'string' && /^h_\d/.test(h.id);
+  return fromCurrentBuilder
+    ? { standard: h.tinyBehavior || h.name || 'Habit', mve: h.fullBehavior || '' }
+    : { standard: h.fullBehavior || h.name || h.tinyBehavior || 'Habit', mve: h.tinyBehavior || '' };
+}
+
+/* ══ EFFORT LEVEL — the MVE safety net, recorded ═════════════════════════
+   One value per habit per day: 'full' or 'mve'. Without it the log is binary
+   and the heatmap cannot tell a day you carried from a day you protected,
+   which is exactly the distinction the safety net exists to make. Absent means
+   full, so every day logged before this existed reads as a full day rather
+   than being retroactively demoted. */
+function _habitEffortToday(habitId, ds) {
+  return _habitLogs[ds]?.efforts?.[habitId] || 'full';
+}
+
+async function _habitSetEffort(habitId, ds, level) {
+  const uid = getHabitsUid();
+  if (!uid) return;
+  if (!_habitLogs[ds]) _habitLogs[ds] = { date: ds, completions: {} };
+  if (!_habitLogs[ds].efforts) _habitLogs[ds].efforts = {};
+  const prev = _habitLogs[ds].efforts[habitId];
+  _habitLogs[ds].efforts[habitId] = level;
+  renderToday();
+  try {
+    const { doc, setDoc } = window.CDX_FB;
+    await setDoc(doc(window.CDX_DB, 'users', uid, 'habitLogs', ds),
+      { date: ds, efforts: { [habitId]: level } }, { merge: true });
+  } catch (e) {
+    console.warn('habit effort:', e);
+    if (prev) _habitLogs[ds].efforts[habitId] = prev; else delete _habitLogs[ds].efforts[habitId];
+    renderToday();
+  }
+}
+
+/* ══ FRICTION LOG — captured at the miss, not remembered on Friday ═══════
+   The habit wizard has always collected friction *predictions* as chips, and
+   the Reflect tab compared them in aggregate. Nothing ever recorded what
+   actually happened on the day, so the weekly review asked a question the app
+   already had no answer to.
+
+   The patch is written back onto the habit's own frictionFallbacks map as well
+   as the day's log. That field has been declared in the habit schema since the
+   beginning and written as an empty object ever since — this is the use it was
+   shaped for: per-cause, what I do instead. */
+const FRICTION_CAUSES = [
+  { id: 'low-energy', label: '🔋 Low energy' },
+  { id: 'no-time',    label: '⏱ No time' },
+  { id: 'meetings',   label: '📞 Meetings ran over' },
+  { id: 'travel',     label: '✈ Travel' },
+  { id: 'distraction',label: '📱 Distraction' },
+  { id: 'vague',      label: '🌫 Task was vague' },
+  { id: 'scheduling', label: '📅 Scheduled badly' },
+  { id: 'illness',    label: '🤒 Illness' },
+];
+
+function _frictionLabel(id) {
+  return (FRICTION_CAUSES.find(c => c.id === id) || {}).label || id;
+}
+
+function openFrictionLog(habitId) {
+  const h = _habits.find(x => x.id === habitId);
+  if (!h) return;
+  const ds = localDateStr(new Date());
+  const back = document.createElement('div');
+  back.className = 'friction-back';
+  back.innerHTML = `<div class="friction-panel" role="dialog" aria-label="Friction log">
+    <div class="friction-eyebrow">FRICTION LOG · ${escHtml(fmtDate(ds))}</div>
+    <div class="friction-title">${escHtml(habitActions(h).standard)}</div>
+    <div class="friction-sub">A missed day is a system bug, not a character flaw. What was the bug?</div>
+    <div class="friction-chips" id="friction-chips">
+      ${FRICTION_CAUSES.map(c => `<button class="friction-chip" data-cause="${c.id}">${escHtml(c.label)}</button>`).join('')}
+    </div>
+    <div class="friction-field">
+      <label class="form-label">System patch — what change stops this tomorrow?</label>
+      <textarea id="friction-patch" class="form-input" rows="2" placeholder="Move the session to 7am, before the first meeting…"></textarea>
+    </div>
+    <div class="friction-acts">
+      <button class="btn-ghost" id="friction-cancel">Cancel</button>
+      <button class="btn-primary" id="friction-save">Log it</button>
+    </div>
+  </div>`;
+  document.body.appendChild(back);
+
+  let cause = '';
+  back.querySelectorAll('[data-cause]').forEach(b => b.onclick = () => {
+    cause = b.dataset.cause;
+    back.querySelectorAll('[data-cause]').forEach(x => x.classList.toggle('on', x === b));
+    // Offer the patch this cause got last time — the point of keeping them.
+    const prior = (h.frictionFallbacks || {})[cause];
+    const ta = back.querySelector('#friction-patch');
+    if (prior && ta && !ta.value.trim()) ta.value = prior;
+  });
+  const close = () => back.remove();
+  back.addEventListener('click', e => { if (e.target === back) close(); });
+  back.querySelector('#friction-cancel').onclick = close;
+  back.querySelector('#friction-save').onclick = async () => {
+    if (!cause) { showToast('Pick what got in the way.', 'error'); return; }
+    const patch = back.querySelector('#friction-patch').value.trim();
+    close();
+    await _frictionSave(habitId, ds, cause, patch);
+  };
+}
+
+async function _frictionSave(habitId, ds, cause, patch) {
+  const uid = getHabitsUid();
+  if (!uid) return;
+  const entry = { habitId, cause, patch, at: Date.now() };
+  if (!_habitLogs[ds]) _habitLogs[ds] = { date: ds, completions: {} };
+  _habitLogs[ds].friction = [...(_habitLogs[ds].friction || []), entry];
+  try {
+    const { doc, setDoc, updateDoc } = window.CDX_FB;
+    await setDoc(doc(window.CDX_DB, 'users', uid, 'habitLogs', ds),
+      { date: ds, friction: _habitLogs[ds].friction }, { merge: true });
+    if (patch) {
+      const h = _habits.find(x => x.id === habitId);
+      const fallbacks = { ...(h?.frictionFallbacks || {}), [cause]: patch };
+      if (h) h.frictionFallbacks = fallbacks;
+      await updateDoc(doc(window.CDX_DB, 'users', uid, 'habits', habitId), { frictionFallbacks: fallbacks });
+    }
+    showToast('Logged. That is data, not failure.', 'success');
+  } catch (e) {
+    console.warn('friction save:', e);
+    _habitLogs[ds].friction = (_habitLogs[ds].friction || []).filter(f => f !== entry);
+    showToast('Could not save the friction log.', 'error');
+  }
+  renderToday();
+  window._refreshPlanDesign?.();
 }
 
 async function _todaySaveCheckin(field, value) {
@@ -1490,6 +1669,20 @@ function _todayInit() {
 
   // Rest day toggle
   document.getElementById('today-rest-btn')?.addEventListener('click', _todayToggleRestDay);
+
+  // MVE toggle and friction flag — delegated, because the habit rows are
+  // re-rendered on every change.
+  document.getElementById('today-habits')?.addEventListener('click', e => {
+    const mve = e.target.closest('[data-mve-toggle]');
+    if (mve) {
+      e.stopPropagation();
+      const id = mve.dataset.mveToggle, ds = localDateStr(new Date());
+      _habitSetEffort(id, ds, _habitEffortToday(id, ds) === 'mve' ? 'full' : 'mve');
+      return;
+    }
+    const fric = e.target.closest('[data-friction-log]');
+    if (fric) { e.stopPropagation(); openFrictionLog(fric.dataset.frictionLog); }
+  });
 
   // Non-negotiable save on blur
   document.getElementById('today-nonneg-input')?.addEventListener('blur', _todayNonNegSave);
@@ -2061,6 +2254,11 @@ async function _habitsWizardSave() {
         valueTags: d.valueTags,
         tinyBehavior: d.tinyBehavior,
         fullBehavior: d.fullBehavior,
+        // This wizard's "30-second version" is the minimum and its "good day"
+        // version is the standard — the opposite of the other builder. Name
+        // them so nothing downstream has to work that out.
+        standardBehavior: d.fullBehavior || d.tinyBehavior,
+        mveBehavior: d.tinyBehavior,
         anchor: d.anchor,
         frictionTags: d.frictionTags,
         restDaysPlanned: d.restDaysPlanned,
@@ -2077,6 +2275,8 @@ async function _habitsWizardSave() {
         valueTags: d.valueTags,
         tinyBehavior: d.tinyBehavior,
         fullBehavior: d.fullBehavior,
+        standardBehavior: d.fullBehavior || d.tinyBehavior,
+        mveBehavior: d.tinyBehavior,
         anchor: d.anchor,
         schedule: { days: 'daily', frequency: 1 },
         stackId: null,
@@ -2596,25 +2796,40 @@ function _hinsDrawHeatmap() {
         continue;
       }
       const ds = localDateStr(new Date(Date.now() - daysBack * 86400000));
-      const comps = _habitLogs[ds]?.completions || {};
-      const doneCnt = habits.reduce((s, h) => s + (comps[h.id] ? 1 : 0), 0);
+      const log = _habitLogs[ds] || {};
+      const comps = log.completions || {};
+      const efforts = log.efforts || {};
+      const doneIds = habits.filter(h => comps[h.id]).map(h => h.id);
+      const doneCnt = doneIds.length;
       const max = habits.length || 1;
       const ratio = doneCnt / max;
       totalDone += doneCnt;
       totalDays += max;
 
-      let bg;
-      if (doneCnt === 0) bg = 'rgba(255,255,255,0.04)';
-      else if (ratio < 0.25) bg = 'rgba(255,255,255,0.14)';
-      else if (ratio < 0.5)  bg = 'rgba(255,255,255,0.26)';
-      else if (ratio < 0.85) bg = 'rgba(255,255,255,0.42)';
-      else                   bg = 'rgb(57,255,20)';
+      /* Four states, not two. A day carried on the safety net is not the same
+         as a full day and is emphatically not the same as a miss, and a
+         planned rest is part of the system rather than a hole in it. Drawing
+         all three as "not green" was the heatmap quietly disagreeing with the
+         rest of the app. */
+      const allMve = doneCnt > 0 && doneIds.every(id => efforts[id] === 'mve');
+      let bg, glow = null;
+      if (log.restDay)       { bg = 'rgba(255,255,255,0.10)'; }
+      else if (doneCnt === 0){ bg = 'rgba(224,85,85,0.16)'; }
+      else if (allMve)       { bg = 'rgba(57,255,20,0.30)'; }
+      else if (ratio < 0.5)  { bg = 'rgba(255,255,255,0.26)'; }
+      else if (ratio < 0.85) { bg = 'rgba(255,255,255,0.42)'; }
+      else                   { bg = 'rgb(57,255,20)'; glow = 'rgba(57,255,20,0.5)'; }
 
       ctx.fillStyle = bg;
       _hinsRoundRect(ctx, x, y, size, size, 2);
       ctx.fill();
-      if (ratio >= 0.85) {
-        ctx.shadowColor = 'rgba(57,255,20,0.5)';
+      // A rest day is drawn as an outline: present, deliberate, not a score.
+      if (log.restDay) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+        ctx.lineWidth = 1; ctx.stroke();
+      }
+      if (glow) {
+        ctx.shadowColor = glow;
         ctx.shadowBlur = 5;
         ctx.fill();
         ctx.shadowBlur = 0;
@@ -5782,17 +5997,23 @@ function initMilestonesPanel() {
       document.getElementById('plan-right-expand')?.addEventListener('click', e => { e.stopPropagation(); togglePlanPanel('right'); });
       document.getElementById('plan-ms-close')?.addEventListener('click', () => {
         closeMilestoneDetail();
-        window.showPlanTab2 && window.showPlanTab2(window._planTab2 || 'quarter');
+        window.showPlanTab2 && window.showPlanTab2(window._planTab2 || 'horizons');
       });
-      // Expose the calendar sub-tab switcher so the global 7-tab controller can drive it.
+      // Expose the calendar sub-tab switcher so the tab controller can drive it.
       window._switchPlanCalTab = switchPlanRightTab;
-      // 7-tab bar: This Week / Weekly Review / Quarter / North Star / Week / Month / Buckets
+      // 3-tab bar: Horizons / Commitments / Reflect — one per layer of the loop.
       document.querySelectorAll('#plan-tabs2 .plan-tab2').forEach(btn => {
         btn.addEventListener('click', () => window.showPlanTab2(btn.dataset.ptab2));
       });
+      // Buckets moved off the tab bar and into the commitments panel header.
+      document.getElementById('plan-buckets-btn')?.addEventListener('click', () => window.showPlanBuckets());
+      if (typeof initGoalsModal === 'function') initGoalsModal();
       restorePlanPanelStates();
     }
-    window.showPlanTab2(window._planTab2 || 'thisweek'); // default tab each time the panel opens
+    if (typeof goalsSubscribe === 'function') goalsSubscribe();
+    // Horizons is the default: the page now opens on what you are trying to
+    // make true, not on the logistics of the current week.
+    window.showPlanTab2(window._planTab2 || 'horizons');
   };
 })();
 
@@ -6133,7 +6354,17 @@ function showPlanningCalendarAll() {
    existing calendar sub-views. Commitments = MILESTONE_PROJECTS, surfaced by
    cadence. Reflective tabs persist to Firestore (weeklyPlans + planningMeta).
    ══════════════════════════════════════════════════════════════════════ */
-window._planTab2 = 'thisweek';
+window._planTab2 = 'horizons';
+
+/* The eight tabs collapsed to three, one per layer of the loop. Old names are
+   kept as aliases because they are reachable from saved state, the dashboard's
+   Planning button and a handful of jump-to call sites — none of which should
+   break because the information architecture changed. */
+const _PLAN_TAB_ALIAS = {
+  thisweek: 'reflect', review: 'reflect', north: 'horizons',
+  quarter: 'horizons', week: 'commitments', month: 'commitments',
+  buckets: 'commitments',
+};
 
 function _planShowView(view) { // 'projects' | 'calendar' | 'design'
   const p = document.getElementById('plan-view-projects');
@@ -6154,18 +6385,22 @@ window._planOpenCommitment = function(id) {
 };
 
 window.showPlanTab2 = function(tab) {
+  tab = _PLAN_TAB_ALIAS[tab] || tab;
   window._planTab2 = tab;
   document.querySelectorAll('#plan-tabs2 .plan-tab2').forEach(b =>
     b.classList.toggle('active', b.dataset.ptab2 === tab));
-  if (tab === 'buckets') { _planShowView('calendar'); window._switchPlanCalTab && window._switchPlanCalTab('focus'); return; }
   if (tab === 'commitments') { _planShowView('projects'); renderMilestones(); return; }
   _planShowView('design');
-  if      (tab === 'thisweek') renderPlanThisWeek();
-  else if (tab === 'month')    renderPlanCalendarTab('month');
-  else if (tab === 'week')     renderPlanCalendarTab('week');
-  else if (tab === 'quarter')  renderPlanQuarter();
-  else if (tab === 'review')   renderPlanReview();
-  else if (tab === 'north')    renderPlanNorth();
+  if      (tab === 'horizons') renderPlanHorizons();
+  else if (tab === 'reflect')  renderPlanReflect();
+  else                         renderPlanHorizons();
+};
+
+/* Buckets is a way of sorting the work under commitments, not a planning
+   horizon of its own, so it lost its tab and kept its view. */
+window.showPlanBuckets = function() {
+  _planShowView('calendar');
+  window._switchPlanCalTab && window._switchPlanCalTab('focus');
 };
 
 // Re-render the active design tab on data changes — but never while the user is
@@ -6175,13 +6410,9 @@ window._refreshPlanDesign = function() {
   if (!v || v.style.display === 'none') return;
   const ae = document.activeElement;
   if (ae && ae.closest && ae.closest('#plan-view-design') && /INPUT|TEXTAREA/.test(ae.tagName)) return;
-  const t = window._planTab2;
-  if      (t === 'thisweek') renderPlanThisWeek();
-  else if (t === 'month')    renderPlanCalendarTab('month');
-  else if (t === 'week')     renderPlanCalendarTab('week');
-  else if (t === 'quarter')  renderPlanQuarter();
-  else if (t === 'review')   renderPlanReview();
-  else if (t === 'north')    renderPlanNorth();
+  const t = _PLAN_TAB_ALIAS[window._planTab2] || window._planTab2;
+  if      (t === 'horizons') renderPlanHorizons();
+  else if (t === 'reflect')  renderPlanReflect();
 };
 
 /* ── Commitment progress (derived from linked tasks, then activities) ──── */
@@ -6304,20 +6535,95 @@ function _commitmentRow(c, opts) {
   </div>`;
 }
 
-/* ── THIS WEEK ────────────────────────────────────────────────────────── */
-function renderPlanThisWeek() {
+/* ── NORTH STAR BAND ──────────────────────────────────────────────────────
+   No longer a tab. Vision, roles and values are what a year goal is measured
+   against, so they belong at the top of the Horizons page, collapsed until
+   wanted, rather than on a page of their own that nothing else references. */
+function _planNorthBandHtml() {
+  return `<details class="plan-north-band" id="plan-north-band">
+    <summary class="plan-north-summary">
+      <span class="plan-dsn-eyebrow">NORTH STAR</span>
+      <span class="plan-north-line" id="pns-line">The thing underneath — why you do any of this.</span>
+      <span class="plan-north-chev">›</span>
+    </summary>
+    <div class="plan-north-inner">
+      <div class="plan-glass plan-north-vision">
+        <div class="plan-dsn-eyebrow">VISION · 5 YEARS</div>
+        <textarea class="plan-dsn-textarea vision" id="pns-vision" rows="3" placeholder="A quiet craftsman who ships one thing that matters each year…"></textarea>
+      </div>
+      <div class="plan-north-grid">
+        <div class="plan-glass">
+          <div class="plan-dsn-eyebrow">ROLES</div>
+          <div class="plan-glass-title" style="margin:2px 0 8px">The hats I choose to wear</div>
+          <textarea class="plan-dsn-textarea" id="pns-roles" rows="5" placeholder="Partner — present, patient&#10;Craftsman — slow, rigorous&#10;(one per line)"></textarea>
+        </div>
+        <div class="plan-glass">
+          <div class="plan-dsn-eyebrow">VALUES</div>
+          <div class="plan-glass-title" style="margin:2px 0 8px">What I protect when it's costly</div>
+          <textarea class="plan-dsn-textarea" id="pns-values" rows="5" placeholder="Depth over breadth&#10;Slow compound&#10;Honest signal&#10;(one per line)"></textarea>
+        </div>
+      </div>
+      <div class="plan-glass">
+        <div class="plan-dsn-eyebrow">ONE-YEAR EULOGY TEST</div>
+        <div class="plan-glass-title" style="margin:2px 0 8px">If the year ended tonight, what would I want said?</div>
+        <textarea class="plan-dsn-textarea" id="pns-eulogy" rows="3" placeholder="He showed up. Every morning, the same quiet way…"></textarea>
+      </div>
+    </div>
+  </details>`;
+}
+
+function _wireNorthBand() {
+  const ids = ['vision', 'roles', 'values', 'eulogy'];
+  _planLoadDoc('planningMeta', 'northStar').then(d => {
+    ids.forEach(k => {
+      const el = document.getElementById('pns-' + k);
+      if (el && document.activeElement !== el) el.value = d[k] || '';
+    });
+    // The collapsed summary shows the vision itself when there is one — a band
+    // that only ever says "North Star" is furniture.
+    const line = document.getElementById('pns-line');
+    if (line && d.vision) line.textContent = d.vision.split('\n')[0];
+  });
+  const save = () => _planDebSave('planningMeta', 'northStar', () => ({
+    vision: document.getElementById('pns-vision')?.value || '',
+    roles:  document.getElementById('pns-roles')?.value || '',
+    values: document.getElementById('pns-values')?.value || '',
+    eulogy: document.getElementById('pns-eulogy')?.value || '',
+  }));
+  ids.forEach(k => { const el = document.getElementById('pns-' + k); if (el) el.oninput = save; });
+}
+
+/* ── REFLECT ──────────────────────────────────────────────────────────────
+   This Week and Weekly Review merged. They were always the same week — they
+   even shared one Firestore document — split across two tabs, which meant
+   planning the week and judging it were two different rituals that never met.
+
+   The review prompts are now one per layer of the loop, which is the whole
+   point of having layers: when the week went badly, the question is which
+   layer to change, and a free-text box cannot tell you. Goal alignment,
+   plan feasibility, execution reality. The friction logged at the moment of
+   each miss is listed against the third, so the answer is in front of you
+   rather than being reconstructed from memory on a Friday. */
+function renderPlanReflect() {
   const body = document.getElementById('plan-design-body'); if (!body) return;
-  const commits = _activeCommitments('weekly');
-  const done = commits.filter(c => _commitmentProgress(c.id) >= 1).length;
+  const key = _planWeekKey();
   const days = _planWeekDays();
-  const wkDoneTasks = TASKS.filter(t => t.done && days.includes(t.doneDate || t.dueDate)).length;
+  const todayStr = localDateStr(new Date());
+
+  const commits = _activeCommitments('weekly');
+  const commitsDone = commits.filter(c => _commitmentProgress(c.id) >= 1).length;
+  const wkDone = TASKS.filter(t => t.done && days.includes(t.doneDate || t.dueDate)).length;
+  const wkTotal = TASKS.filter(t => days.includes(t.dueDate)).length;
+
+  // Show-up telemetry straight from the habit logs, counting an MVE day as a
+  // day shown up. That is the whole claim of the safety net: consistency over
+  // intensity, and the number has to agree with it or the net is a lie.
+  const showUp = _planWeekShowUp(days);
 
   const DOW = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
-  const todayStr = localDateStr(new Date());
   const shapedCells = days.map((ds, i) => {
     const d = new Date(ds + 'T00:00');
-    const isToday = ds === todayStr;
-    return `<div class="ptw-shape-cell${isToday ? ' today' : ''}">
+    return `<div class="ptw-shape-cell${ds === todayStr ? ' today' : ''}">
       <div class="ptw-shape-h"><span>${DOW[i]}</span><span class="ptw-shape-dd">${d.getDate()}</span></div>
       <input class="ptw-shape-in" data-shape="${i}" placeholder="One anchor…" autocomplete="off">
     </div>`;
@@ -6333,34 +6639,54 @@ function renderPlanThisWeek() {
       </select>
     </div>`).join('');
 
+  const quarter = (typeof goalsQuarterSummary === 'function') ? goalsQuarterSummary() : null;
+  const goalsHtml = quarter && quarter.goals.length
+    ? quarter.goals.map(g => {
+        const c = goalCriteriaDone(g);
+        return `<div class="reflect-goal-row${g.status !== 'active' ? ' closed' : ''}" data-reflect-goal="${escAttr(g.id)}">
+          <span class="reflect-goal-name">${escHtml(g.title || 'Untitled goal')}</span>
+          <span class="plan-tel">${c.done}/${c.total}</span>
+        </div>`;
+      }).join('')
+    : `<div class="plan-ms-empty">No goals set for this quarter. Set them on Horizons.</div>`;
+
+  const frictionHtml = _planWeekFrictionHtml(days);
+
   body.innerHTML = `
-    ${_planHeader('THIS WEEK · YOUR WEEKLY COMMITMENTS', 'Commitments you made. Watch them meet reality.',
-      'Weekly-cadence commitments live here. BAU big rocks are pinned above.',
-      `<button class="plan-liquid-btn" id="ptw-add">＋ Add commitment</button>`)}
-    ${_bauSectionHtml()}
-    <div class="plan-glass">
+    ${_planHeader('REFLECT · THE WEEK, SHAPED AND REVIEWED',
+      'Plan the week. Then tell the truth about it.',
+      'One page: the week ahead, the week behind, and which layer to change.',
+      `<div class="ptw-week-nav">
+         <button class="ptw-week-arrow" id="ptw-week-prev" title="Previous week">‹</button>
+         <span class="ptw-week-label">${escHtml(_ptwWeekLabel())}</span>
+         <button class="ptw-week-arrow" id="ptw-week-next" title="Next week">›</button>
+         <button class="ptw-week-today" id="ptw-week-today" title="Back to this week">◈ Today</button>
+       </div>`)}
+
+    <div class="plan-glass plan-quarter-bar">
       <div class="plan-glass-head">
-        <span class="plan-glass-title">This week's commitments</span>
-        <span class="plan-tel">${done}/${commits.length} COMPLETE · ${wkDoneTasks} TASKS DONE</span>
+        <span class="plan-glass-title">Week telemetry</span>
+        <span class="plan-tel">${showUp.days}/7 DAYS SHOWN UP · ${showUp.mve} ON THE SAFETY NET</span>
       </div>
-      <div class="plan-commit-list">
-        ${commits.length ? commits.map(c => _commitmentRow(c)).join('')
-          : `<div class="plan-empty">No weekly commitments yet. Add one, or set an existing commitment's cadence to Weekly.</div>`}
+      <div class="plan-tele-grid">
+        <div><div class="plan-dsn-eyebrow">SHOWN UP</div><div class="plan-tele-val">${showUp.days}/7</div></div>
+        <div><div class="plan-dsn-eyebrow">COMMITMENTS</div><div class="plan-tele-val">${commitsDone}/${commits.length}</div></div>
+        <div><div class="plan-dsn-eyebrow">TASKS DONE</div><div class="plan-tele-val">${wkDone}/${wkTotal}</div></div>
+        <div><div class="plan-dsn-eyebrow">MISSES LOGGED</div><div class="plan-tele-val">${showUp.frictionCount}</div></div>
       </div>
     </div>
+
+    ${_bauSectionHtml()}
+
     <div class="plan-glass">
       <div class="plan-glass-head">
         <span class="plan-glass-title">The week, shaped</span>
-        <div class="ptw-week-nav">
-          <button class="ptw-week-arrow" id="ptw-week-prev" title="Previous week">‹</button>
-          <span class="ptw-week-label" id="ptw-week-label">${escHtml(_ptwWeekLabel())}</span>
-          <button class="ptw-week-arrow" id="ptw-week-next" title="Next week">›</button>
-          <button class="ptw-week-today" id="ptw-week-today" title="Back to this week">◈ Today</button>
-        </div>
+        <span class="plan-tel">ONE ANCHOR A DAY</span>
       </div>
       <div class="plan-dsn-sub">Each day gets one anchor. One. Not three.</div>
       <div class="ptw-shape-grid">${shapedCells}</div>
     </div>
+
     <div class="plan-two">
       <div class="plan-glass">
         <div class="plan-dsn-eyebrow">ENERGY FORECAST</div>
@@ -6371,255 +6697,175 @@ function renderPlanThisWeek() {
         <div class="plan-dsn-eyebrow" style="color:var(--gold)">NOT DOING THIS WEEK</div>
         <div class="plan-glass-title" style="margin:2px 0 6px">The list that protects the list</div>
         <div class="plan-dsn-sub">One per line.</div>
-        <textarea class="plan-dsn-textarea" id="ptw-notdoing" rows="6" placeholder="Read new AI papers (next week)&#10;Refactor the pipeline&#10;Coffee chats"></textarea>
+        <textarea class="plan-dsn-textarea" id="ptw-notdoing" rows="5" placeholder="Read new AI papers (next week)&#10;Refactor the pipeline&#10;Coffee chats"></textarea>
+      </div>
+    </div>
+
+    <div class="plan-dsn-head" style="margin-top:6px">
+      <div>
+        <div class="plan-dsn-eyebrow">THE LOOP REVIEW · ONE QUESTION PER LAYER</div>
+        <div class="plan-dsn-title">Which layer needs changing?</div>
+        <div class="plan-dsn-italic">A bad week is a bug in one of three places. Find the place.</div>
+      </div>
+    </div>
+
+    <div class="plan-review-grid">
+      <div class="plan-review-col">
+        <div class="plan-glass plan-review-card neutral">
+          <div class="plan-tel review-num">LAYER 01 · GOAL</div>
+          <div class="plan-glass-title" style="margin-top:2px">Are these still the right goals?</div>
+          <div class="reflect-layer-evidence">${goalsHtml}</div>
+          <textarea class="plan-dsn-textarea" id="prv-goal" rows="3" placeholder="Still pointed at the right thing? Or is one of these quietly dead…"></textarea>
+        </div>
+        <div class="plan-glass plan-review-card warning">
+          <div class="plan-tel review-num">LAYER 02 · PLAN</div>
+          <div class="plan-glass-title" style="margin-top:2px">Did the plan hold?</div>
+          <div class="reflect-layer-evidence">
+            ${commits.length ? commits.map(c => _commitmentRow(c)).join('')
+              : `<div class="plan-ms-empty">No weekly commitments this week.</div>`}
+          </div>
+          <textarea class="plan-dsn-textarea" id="prv-plan" rows="3" placeholder="Too much? Wrongly sequenced? Or just not started…"></textarea>
+        </div>
+        <div class="plan-glass plan-review-card positive">
+          <div class="plan-tel review-num">LAYER 03 · SHOW UP</div>
+          <div class="plan-glass-title" style="margin-top:2px">What stopped me showing up?</div>
+          <div class="reflect-layer-evidence">${frictionHtml}</div>
+          <textarea class="plan-dsn-textarea" id="prv-exec" rows="3" placeholder="The pattern behind the misses above…"></textarea>
+        </div>
+      </div>
+      <div class="plan-review-col">
+        <div class="plan-glass">
+          <div class="plan-dsn-eyebrow">THE PATCH</div>
+          <div class="plan-glass-title" style="margin:2px 0 8px">One change for next week</div>
+          <div class="plan-dsn-sub">Operational, not aspirational. A time, a place, a smaller ask.</div>
+          <textarea class="plan-dsn-textarea" id="prv-change" rows="4" placeholder="Move the trading review from 9pm to 7am…"></textarea>
+        </div>
+        <div class="plan-glass">
+          <div class="plan-dsn-eyebrow">WHAT WORKED</div>
+          <textarea class="plan-dsn-textarea" id="prv-worked" rows="4" placeholder="Keep doing this…"></textarea>
+        </div>
+        <div class="plan-glass">
+          <div class="plan-dsn-eyebrow">GRATITUDE</div>
+          <textarea class="plan-dsn-textarea" id="prv-gratitude" rows="3" placeholder="Three small things worth keeping…"></textarea>
+        </div>
       </div>
     </div>`;
 
-  document.getElementById('ptw-add').onclick = () => _addCommitment('weekly');
-  body.querySelectorAll('[data-commit]').forEach(el => el.onclick = () => _planOpenCommitment(el.dataset.commit));
-  document.getElementById('ptw-week-prev')?.addEventListener('click', () => { _ptwWeekOffset--; renderPlanThisWeek(); });
-  document.getElementById('ptw-week-next')?.addEventListener('click', () => { _ptwWeekOffset++; renderPlanThisWeek(); });
-  document.getElementById('ptw-week-today')?.addEventListener('click', () => { _ptwWeekOffset = 0; renderPlanThisWeek(); });
+  _wirePlanReflect(body, key);
+}
 
-  const key = _planWeekKey();
+function _wirePlanReflect(body, key) {
+  document.getElementById('ptw-week-prev')?.addEventListener('click', () => { _ptwWeekOffset--; renderPlanReflect(); });
+  document.getElementById('ptw-week-next')?.addEventListener('click', () => { _ptwWeekOffset++; renderPlanReflect(); });
+  document.getElementById('ptw-week-today')?.addEventListener('click', () => { _ptwWeekOffset = 0; renderPlanReflect(); });
+
+  body.querySelectorAll('[data-commit]').forEach(el => el.onclick = () => _planOpenCommitment(el.dataset.commit));
+  body.querySelectorAll('[data-reflect-goal]').forEach(el => el.onclick = () => {
+    showPlanTab2('horizons');
+    setTimeout(() => window.GOALS_API?.open(el.dataset.reflectGoal), 60);
+  });
+
   const EFILL = { high: 90, mid: 55, low: 30, '': 0 };
   const applyEnergyBar = (dy, v) => {
     const f = body.querySelector(`[data-efill="${dy}"]`);
     if (f) { f.style.width = (EFILL[v] || 0) + '%'; f.classList.toggle('high', v === 'high'); }
   };
-  const readThisWeek = () => ({
+
+  // Both halves of the page write to one weeklyPlans document, which is what
+  // they always did — the split was only ever in the UI.
+  const readAll = () => ({
     notDoing: document.getElementById('ptw-notdoing')?.value || '',
     weekShaped: Array.from(body.querySelectorAll('[data-shape]')).map(i => i.value),
     energy: Object.fromEntries(Array.from(body.querySelectorAll('[data-energy]')).map(s => [s.dataset.energy, s.value])),
+    review: {
+      goal:      document.getElementById('prv-goal')?.value || '',
+      plan:      document.getElementById('prv-plan')?.value || '',
+      exec:      document.getElementById('prv-exec')?.value || '',
+      change:    document.getElementById('prv-change')?.value || '',
+      worked:    document.getElementById('prv-worked')?.value || '',
+      gratitude: document.getElementById('prv-gratitude')?.value || '',
+    },
   });
-  const saveThisWeek = () => _planDebSave('weeklyPlans', key, readThisWeek);
+  const save = () => _planDebSave('weeklyPlans', key, readAll);
 
-  const nd = document.getElementById('ptw-notdoing');
-  nd.oninput = saveThisWeek;
-  body.querySelectorAll('[data-shape]').forEach(i => i.oninput = saveThisWeek);
-  body.querySelectorAll('[data-energy]').forEach(s => s.onchange = () => { applyEnergyBar(s.dataset.energy, s.value); saveThisWeek(); });
+  ['ptw-notdoing','prv-goal','prv-plan','prv-exec','prv-change','prv-worked','prv-gratitude']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.oninput = save; });
+  body.querySelectorAll('[data-shape]').forEach(i => i.oninput = save);
+  body.querySelectorAll('[data-energy]').forEach(s => s.onchange = () => { applyEnergyBar(s.dataset.energy, s.value); save(); });
 
   _planLoadDoc('weeklyPlans', key).then(d => {
-    if (nd && document.activeElement !== nd) nd.value = d.notDoing || '';
-    (d.weekShaped || []).forEach((v, i) => { const el = body.querySelector(`[data-shape="${i}"]`); if (el && document.activeElement !== el) el.value = v || ''; });
+    const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v || ''; };
+    set('ptw-notdoing', d.notDoing);
+    (d.weekShaped || []).forEach((v, i) => {
+      const el = body.querySelector(`[data-shape="${i}"]`);
+      if (el && document.activeElement !== el) el.value = v || '';
+    });
     const en = d.energy || {};
     body.querySelectorAll('[data-energy]').forEach(s => { s.value = en[s.dataset.energy] || ''; applyEnergyBar(s.dataset.energy, s.value); });
+    const r = d.review || {};
+    // 'didnt' and 'learned' were the old free-text prompts; fold them into the
+    // layer they were really about rather than dropping what was written.
+    set('prv-goal', r.goal);
+    set('prv-plan', r.plan || r.learned);
+    set('prv-exec', r.exec || r.didnt);
+    set('prv-change', r.change);
+    set('prv-worked', r.worked);
+    set('prv-gratitude', r.gratitude);
   });
 }
 
-/* ── QUARTER ──────────────────────────────────────────────────────────── */
-function renderPlanQuarter() {
-  const body = document.getElementById('plan-design-body'); if (!body) return;
-  const commits = _activeCommitments('quarterly');
-  const now = new Date();
-  const qNum = Math.floor(now.getMonth() / 3) + 1;
-  // Quarter progress = tasks done ÷ total tasks across every quarter commitment (item 11)
-  let _qTotT = 0, _qDoneT = 0;
-  commits.forEach(c => { const ts = _commitmentTasks(c.id); _qTotT += ts.length; _qDoneT += ts.filter(t => t.done).length; });
-  const qPct = _qTotT ? Math.round(_qDoneT / _qTotT * 100) : 0;
+/* Days shown up this week, where an MVE day counts fully. `restDay` is neither
+   a hit nor a miss: a planned rest is part of the system, so it is excluded
+   from the denominator rather than counted as a failure. */
+function _planWeekShowUp(days) {
+  const logs = (typeof _habitLogs !== 'undefined') ? _habitLogs : {};
+  let shown = 0, mve = 0, frictionCount = 0;
+  days.forEach(ds => {
+    const log = logs[ds];
+    if (!log) return;
+    if (log.restDay) { shown++; return; }
+    const comps = log.completions || {};
+    const ids = Object.keys(comps).filter(k => comps[k]);
+    if (ids.length) {
+      shown++;
+      const efforts = log.efforts || {};
+      if (ids.every(id => efforts[id] === 'mve')) mve++;
+    }
+    frictionCount += (log.friction || []).length;
+  });
+  return { days: shown, mve, frictionCount };
+}
 
-  const qTodayStr = localDateStr(new Date());
-  const cardsHtml = commits.map(c => {
-    const pct = Math.round(_commitmentProgress(c.id) * 100);
-    const cat = c.category ? CATEGORIES[c.category] : null;
-    // Tasks-tab-inspired list of the work under this commitment (item 10)
-    const cTasks = _commitmentTasks(c.id)
-      .sort((a, b) => (a.done - b.done) || String(a.dueDate || '~').localeCompare(String(b.dueDate || '~')));
-    const doneN = cTasks.filter(t => t.done).length;
-    const tasksHtml = cTasks.length ? cTasks.map(t => {
-      const over = t.dueDate && !t.done && t.dueDate < qTodayStr;
-      return `<div class="pq-task-row${t.done ? ' done' : ''}">
-        <span class="pq-task-check${t.done ? ' on' : ''}" data-pqcheck="${escAttr(t.id)}"></span>
-        <span class="pq-task-dot" style="background:${getCatColor(t.category)}"></span>
-        <span class="pq-task-name" data-pqopen="${escAttr(t.id)}">${escHtml(t.title)}</span>
-        <span class="pq-task-due${over ? ' over' : ''}">${t.dueDate ? escHtml(fmtDate(t.dueDate)) : '—'}</span>
+/* The week's friction entries, grouped by the cause chosen at the moment of
+   the miss. Grouped rather than listed because one missed Tuesday is noise and
+   four missed evenings in a row is a scheduling bug. */
+function _planWeekFrictionHtml(days) {
+  const logs = (typeof _habitLogs !== 'undefined') ? _habitLogs : {};
+  const byCause = {};
+  days.forEach(ds => {
+    (logs[ds]?.friction || []).forEach(f => {
+      const k = f.cause || 'other';
+      (byCause[k] = byCause[k] || []).push({ ...f, date: ds });
+    });
+  });
+  const causes = Object.keys(byCause);
+  if (!causes.length) {
+    return `<div class="plan-ms-empty">No friction logged this week. Either it was a clean week, or the misses went unrecorded.</div>`;
+  }
+  return causes
+    .sort((a, b) => byCause[b].length - byCause[a].length)
+    .map(c => {
+      const rows = byCause[c];
+      const patches = rows.map(r => r.patch).filter(Boolean);
+      return `<div class="reflect-friction">
+        <div class="reflect-friction-head">
+          <span class="reflect-friction-cause">${escHtml(_frictionLabel(c))}</span>
+          <span class="plan-tel">${rows.length}×</span>
+        </div>
+        ${patches.length ? `<div class="reflect-friction-patch">${escHtml(patches[patches.length - 1])}</div>` : ''}
       </div>`;
-    }).join('') : `<div class="plan-ms-empty">No tasks yet — open to add the work.</div>`;
-    return `<div class="plan-goal-card" style="--commit-clr:${c.color || 'rgba(255,255,255,.4)'}">
-      <div class="plan-goal-top">
-        <div style="display:flex;gap:6px;align-items:center">
-          ${cat ? `<span class="plan-pill">${escHtml(cat.label.toUpperCase())}</span>` : ''}
-        </div>
-        <span class="plan-commit-pct">${doneN}/${cTasks.length} · ${pct}%</span>
-      </div>
-      <div class="plan-goal-title" data-commit="${escAttr(c.id)}">${escHtml(c.title)}</div>
-      <div class="plan-commit-track"><div class="plan-commit-fill" style="width:${pct}%"></div></div>
-      <div class="pq-task-list">${tasksHtml}</div>
-      <button class="plan-ms-add" data-commit-edit="${escAttr(c.id)}">＋ Add / edit tasks</button>
-    </div>`;
-  }).join('');
-
-  body.innerHTML = `
-    ${_planHeader(`Q${qNum} ${now.getFullYear()} · GOALS ACROSS THE QUARTER`, 'Goals long enough to change something.',
-      'Quarterly-cadence commitments and their tasks. BAU big rocks are pinned above.',
-      `<button class="plan-liquid-btn" id="pq-add">＋ Add commitment</button>`)}
-    ${_bauSectionHtml()}
-    <div class="plan-glass plan-quarter-bar">
-      <div class="plan-glass-head"><span class="plan-glass-title">Quarter progress</span>
-        <span class="plan-tel">${commits.length} COMMITMENTS · ${_qDoneT}/${_qTotT} TASKS · ${qPct}%</span></div>
-      <div class="plan-commit-track big"><div class="plan-commit-fill neon" style="width:${qPct}%"></div></div>
-    </div>
-    <div class="plan-goal-grid">
-      ${commits.length ? cardsHtml : `<div class="plan-empty">No quarterly commitments yet. Add one, or set an existing commitment's cadence to Quarterly.</div>`}
-    </div>`;
-
-  document.getElementById('pq-add').onclick = () => _addCommitment('quarterly');
-  body.querySelectorAll('[data-commit]').forEach(el => el.onclick = () => _planOpenCommitment(el.dataset.commit));
-  body.querySelectorAll('[data-commit-edit]').forEach(el => el.onclick = e => { e.stopPropagation(); openMsProjectModal(el.dataset.commitEdit); });
-  body.querySelectorAll('[data-pqopen]').forEach(el => el.onclick = e => { e.stopPropagation(); showMainPanel('alltasks'); setTimeout(() => window.openAtkDetail?.(el.dataset.pqopen), 40); });
-  body.querySelectorAll('[data-pqcheck]').forEach(el => el.onclick = e => {
-    e.stopPropagation();
-    const t = TASKS.find(x => x.id === el.dataset.pqcheck); if (!t) return;
-    if (t.done) toggleTask(t.id); else handleCheckClick(t.id, e);
-  });
+    }).join('');
 }
-
-/* ── WEEKLY REVIEW ────────────────────────────────────────────────────── */
-function renderPlanReview() {
-  const body = document.getElementById('plan-design-body'); if (!body) return;
-  const key = _planWeekKey();
-  const days = _planWeekDays();
-  const wkDone = TASKS.filter(t => t.done && days.includes(t.doneDate || t.dueDate)).length;
-  const wkTotal = TASKS.filter(t => days.includes(t.dueDate)).length;
-  const commits = _activeCommitments('weekly');
-  const commitsDone = commits.filter(c => _commitmentProgress(c.id) >= 1).length;
-
-  const prompts = [
-    ['worked', 'What worked?', 'positive'],
-    ['didnt',  "What didn't?", 'warning'],
-    ['learned','What did I learn?', 'neutral'],
-    ['change', 'What will I change?', 'neutral'],
-  ];
-  body.innerHTML = `
-    ${_planHeader('WEEKLY REVIEW · FRIDAY RITUAL', 'The 20-minute look back.', 'Four prompts. Honest answers. Tomorrow starts Monday.')}
-    <div class="plan-review-grid">
-      <div class="plan-review-col">
-        ${prompts.map(([k, q, tone], i) => `
-          <div class="plan-glass plan-review-card ${tone}">
-            <div class="plan-tel review-num">REVIEW 0${i + 1}</div>
-            <div class="plan-glass-title" style="margin-top:2px">${q}</div>
-            <textarea class="plan-dsn-textarea" id="prv-${k}" rows="3" placeholder="Honest answer…"></textarea>
-          </div>`).join('')}
-      </div>
-      <div class="plan-review-col">
-        <div class="plan-glass">
-          <div class="plan-dsn-eyebrow">WEEK TELEMETRY</div>
-          <div class="plan-tele-grid">
-            <div><div class="plan-dsn-eyebrow">COMMITMENTS</div><div class="plan-tele-val">${commitsDone}/${commits.length}</div></div>
-            <div><div class="plan-dsn-eyebrow">TASKS DONE</div><div class="plan-tele-val">${wkDone}/${wkTotal}</div></div>
-          </div>
-        </div>
-        <div class="plan-glass">
-          <div class="plan-dsn-eyebrow">GRATITUDE</div>
-          <textarea class="plan-dsn-textarea" id="prv-gratitude" rows="4" placeholder="Three small things worth keeping…"></textarea>
-        </div>
-      </div>
-    </div>`;
-
-  _planLoadDoc('weeklyPlans', key).then(d => {
-    ['worked','didnt','learned','change','gratitude'].forEach(k => {
-      const el = document.getElementById('prv-' + k);
-      if (el && document.activeElement !== el) el.value = (d.review && d.review[k]) || '';
-    });
-  });
-  const saveReview = () => _planDebSave('weeklyPlans', key, () => ({
-    review: {
-      worked: document.getElementById('prv-worked')?.value || '',
-      didnt: document.getElementById('prv-didnt')?.value || '',
-      learned: document.getElementById('prv-learned')?.value || '',
-      change: document.getElementById('prv-change')?.value || '',
-      gratitude: document.getElementById('prv-gratitude')?.value || '',
-    }
-  }));
-  ['worked','didnt','learned','change','gratitude'].forEach(k => {
-    const el = document.getElementById('prv-' + k); if (el) el.oninput = saveReview;
-  });
-}
-
-/* ── NORTH STAR ───────────────────────────────────────────────────────── */
-function renderPlanNorth() {
-  const body = document.getElementById('plan-design-body'); if (!body) return;
-  body.innerHTML = `
-    ${_planHeader('NORTH STAR · THE THING UNDERNEATH', 'Why you do any of this.', 'The identity beneath the tasks. Revisit quarterly.')}
-    <div class="plan-glass plan-north-vision">
-      <div class="plan-dsn-eyebrow">VISION · 5 YEARS</div>
-      <textarea class="plan-dsn-textarea vision" id="pns-vision" rows="3" placeholder="A quiet craftsman who ships one thing that matters each year…"></textarea>
-    </div>
-    <div class="plan-north-grid">
-      <div class="plan-glass">
-        <div class="plan-dsn-eyebrow">ROLES</div>
-        <div class="plan-glass-title" style="margin:2px 0 8px">The hats I choose to wear</div>
-        <textarea class="plan-dsn-textarea" id="pns-roles" rows="6" placeholder="Partner — present, patient&#10;Craftsman — slow, rigorous&#10;(one per line)"></textarea>
-      </div>
-      <div class="plan-glass">
-        <div class="plan-dsn-eyebrow">VALUES</div>
-        <div class="plan-glass-title" style="margin:2px 0 8px">What I protect when it's costly</div>
-        <textarea class="plan-dsn-textarea" id="pns-values" rows="6" placeholder="Depth over breadth&#10;Slow compound&#10;Honest signal&#10;(one per line)"></textarea>
-      </div>
-    </div>
-    <div class="plan-glass">
-      <div class="plan-dsn-eyebrow">ONE-YEAR EULOGY TEST</div>
-      <div class="plan-glass-title" style="margin:2px 0 8px">If the year ended tonight, what would I want said?</div>
-      <textarea class="plan-dsn-textarea" id="pns-eulogy" rows="4" placeholder="He showed up. Every morning, the same quiet way…"></textarea>
-    </div>`;
-
-  _planLoadDoc('planningMeta', 'northStar').then(d => {
-    [['vision','vision'],['roles','roles'],['values','values'],['eulogy','eulogy']].forEach(([id, k]) => {
-      const el = document.getElementById('pns-' + id);
-      if (el && document.activeElement !== el) el.value = d[k] || '';
-    });
-  });
-  const save = () => _planDebSave('planningMeta', 'northStar', () => ({
-    vision: document.getElementById('pns-vision')?.value || '',
-    roles: document.getElementById('pns-roles')?.value || '',
-    values: document.getElementById('pns-values')?.value || '',
-    eulogy: document.getElementById('pns-eulogy')?.value || '',
-  }));
-  ['vision','roles','values','eulogy'].forEach(id => {
-    const el = document.getElementById('pns-' + id); if (el) el.oninput = save;
-  });
-}
-
-/* ── Week/Month tabs: unified planning calendar (events+tasks+milestones+holidays) ── */
-function renderPlanCalendarTab(mode) {
-  const body = document.getElementById('plan-design-body'); if (!body) return;
-  _pcalView = mode; _pcalShowAll = true; _pcalProj = null;
-  const byDate = _pcalItems(null);
-  body.innerHTML = `
-    ${_planHeader(mode === 'week' ? 'WEEK · FULL CALENDAR' : 'MONTH · FULL CALENDAR',
-      mode === 'week' ? 'Your week, in full.' : 'Your month, in full.',
-      'Events, tasks, milestones and holidays — all in one place.',
-      `<button class="plan-liquid-btn" id="pcal2-addms">＋ Milestone</button>`)}
-    <div class="plan-glass" style="padding:14px">
-      <div class="pcal pcal-embed">${_pcalToolbar(true)}${mode === 'week' ? _pcalRenderWeek(byDate) : _pcalRenderMonth(byDate)}</div>
-    </div>`;
-  _wirePlanCal2(body, mode);
-}
-
-function _wirePlanCal2(body, mode) {
-  body.querySelectorAll('[data-pcal-nav]').forEach(b => b.onclick = () => {
-    const dir = b.dataset.pcalNav;
-    if (dir === 'today') _pcalAnchor = new Date();
-    else {
-      const step = dir === 'next' ? 1 : -1;
-      _pcalAnchor = mode === 'week'
-        ? new Date(_pcalAnchor.getFullYear(), _pcalAnchor.getMonth(), _pcalAnchor.getDate() + 7 * step)
-        : new Date(_pcalAnchor.getFullYear(), _pcalAnchor.getMonth() + step, 1);
-    }
-    renderPlanCalendarTab(mode);
-  });
-  body.querySelectorAll('[data-pcal-open]').forEach(el => el.onclick = (e) => {
-    e.stopPropagation();
-    const kind = el.dataset.pcalOpen, id = el.dataset.id, proj = el.dataset.proj;
-    if (kind === 'milestone') { openMsEventModal(proj, id); }
-    else if (kind === 'event') { const ev = (CAL_EVENTS || []).find(x => x.id === id); if (ev) showEventModal(ev, e.clientX, e.clientY); }
-    // task / holiday chips are display-only here
-  });
-  body.querySelectorAll('[data-pcal-day]').forEach(el => el.onclick = () => _planMilestonePicker(el.dataset.pcalDay));
-  const addBtn = document.getElementById('pcal2-addms');
-  if (addBtn) addBtn.onclick = () => _planMilestonePicker(localDateStr(new Date()));
-}
-
 // Lightweight commitment picker → open the milestone modal for the chosen commitment/date.
 function _planMilestonePicker(dateStr) {
   const commits = MILESTONE_PROJECTS.filter(p => !p.isArchived);
@@ -12027,6 +12273,9 @@ document.getElementById('signin-btn')?.addEventListener('click', () => {
 // If returning visitor already has an anonymous session, skip sign-in screen
 window.addEventListener('cdx-auth-ready', () => {
   dismissSigninOverlay();
+  // Goals feed the dashboard's quarter line, so they subscribe at boot rather
+  // than waiting for the Planning page to be opened.
+  if (typeof goalsSubscribe === 'function') goalsSubscribe();
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -13908,7 +14157,9 @@ function _dashRenderRituals() {
   const rows = [];
   habits.forEach(h => {
     const done = logDone(h.id);
-    const name = h.tinyBehavior || h.name || 'Habit';
+    // Through the resolver: the two builders disagree about which stored field
+    // is the standard, so reading one directly shows the minimum for half of them.
+    const name = (typeof habitActions === 'function') ? habitActions(h).standard : (h.tinyBehavior || h.name || 'Habit');
     rows.push(`<div class="dash-ritual-row${done ? ' done' : ''}" data-ritual-habit="${escAttr(h.id)}">
       <span class="dash-ritual-check${done ? ' on' : ''}">${done ? '✓' : ''}</span>
       <span class="dash-ritual-name">${escHtml(name)}</span>
@@ -15474,7 +15725,14 @@ function _hxActive() {
     .filter(h => h && h.status !== 'archived' && h.status !== 'graduated')
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
-function _hxName(h) { return h.tinyBehavior || h.name || 'Habit'; }
+/* Every surface in this module names a habit through here, so the standard /
+   minimum resolution happens once. Reading `tinyBehavior` directly showed the
+   minimum as the habit's name for anything built by the older wizard. */
+function _hxName(h) {
+  return (typeof habitActions === 'function')
+    ? habitActions(h).standard
+    : (h.tinyBehavior || h.name || 'Habit');
+}
 function _hxAnchor(h) { return (h.anchor && h.anchor.value) ? h.anchor.value : 'anytime'; }
 function _hxDone(h, ds) { return !!(_habitLogs[ds] && _habitLogs[ds].completions && _habitLogs[ds].completions[h.id]); }
 function _hxStreak(id) { return typeof _todayStreakDays === 'function' ? _todayStreakDays(id) : 0; }
@@ -15491,6 +15749,34 @@ function _hxDayRate(ds, active) {
   if (!active.length) return 0;
   const log = _habitLogs[ds]; if (!log || !log.completions) return 0;
   return active.filter(h => log.completions[h.id]).length / active.length;
+}
+
+/* One heatmap cell, in four states rather than one gradient.
+
+   A day carried on the MVE is not the same as a full day and is emphatically
+   not the same as a miss — that distinction is the entire claim of the safety
+   net, so the grid has to make it. A planned rest is part of the system, drawn
+   as an outline: present, deliberate, not a hole. Only a tracked day with
+   nothing logged reads as missed. Days before any tracking began stay blank,
+   because an empty past is not a failed one. */
+function _hxHeatCell(ds, active) {
+  const log = _habitLogs[ds];
+  if (!log) return `<div class="hx-heat-cell" style="background:rgba(255,255,255,.04)"></div>`;
+  if (log.restDay) {
+    return `<div class="hx-heat-cell" title="${ds} · rest" style="background:rgba(255,255,255,.10);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28)"></div>`;
+  }
+  const comps = log.completions || {};
+  const doneIds = active.filter(h => comps[h.id]).map(h => h.id);
+  if (!doneIds.length) {
+    return `<div class="hx-heat-cell" title="${ds} · missed" style="background:rgba(224,85,85,.16)"></div>`;
+  }
+  const efforts = log.efforts || {};
+  if (doneIds.every(id => efforts[id] === 'mve')) {
+    return `<div class="hx-heat-cell" title="${ds} · MVE — streak kept" style="background:rgba(57,255,20,.30)"></div>`;
+  }
+  const r = doneIds.length / active.length;
+  const glow = r > 0.85 ? ';box-shadow:0 0 8px rgba(255,255,255,.14)' : '';
+  return `<div class="hx-heat-cell" title="${ds} · ${Math.round(r * 100)}%" style="background:rgba(255,255,255,${(0.10 + r * 0.42).toFixed(3)})${glow}"></div>`;
 }
 
 /* ── shared bits ─────────────────────────────────────────────────────── */
@@ -15519,13 +15805,26 @@ function _hxToday() {
 
   const rows = dueActive.length ? dueActive.map(h => {
     const done = _hxDone(h, ds), color = _hxColor(h);
-    return `<div class="hx-hrow${done ? ' done' : ''}">
+    /* The MVE toggle and the friction flag. `habitActions` resolves which of
+       the two stored behaviour fields is the standard and which is the
+       minimum, because the two builders disagree about that — see the comment
+       on that function. */
+    const acts = (typeof habitActions === 'function') ? habitActions(h) : { standard: _hxName(h), mve: '' };  // eslint-disable-line
+    const onMve = (typeof _habitEffortToday === 'function') && _habitEffortToday(h.id, ds) === 'mve';
+    const label = onMve && acts.mve ? acts.mve : acts.standard;
+    const mveBtn = acts.mve && acts.mve !== acts.standard
+      ? `<button class="hx-mve${onMve ? ' on' : ''}" data-hx-mve="${escAttr(h.id)}"
+           title="${onMve ? 'Back to the full version' : 'Low-energy day — drop to the minimum'}">◐ MVE</button>` : '';
+    const fricBtn = !done
+      ? `<button class="hx-fric" data-hx-friction="${escAttr(h.id)}" title="Log what got in the way">⚑</button>` : '';
+    return `<div class="hx-hrow${done ? ' done' : ''}${onMve ? ' mve' : ''}">
       <div class="hx-check${done ? ' on' : ''}" data-hx-toggle="${escAttr(h.id)}"></div>
       <div>
-        <div class="hx-hname">${escHtml(_hxName(h))}</div>
+        <div class="hx-hname">${escHtml(label)}</div>
         <div class="hx-hanchor">↳ ${escHtml(_hxAnchor(h))}</div>
       </div>
       ${_hxDot(color)}
+      ${mveBtn}${fricBtn}
       <span class="hx-tel" style="font-size:11px;color:rgba(255,255,255,.65)">${_hxStreak(h.id)}d</span>
       <button class="hx-row-manage" data-hx-edit="${escAttr(h.id)}" title="Edit / delete / graduate" aria-label="Manage habit">⋯</button>
     </div>`;
@@ -15536,8 +15835,8 @@ function _hxToday() {
   // 35-day (5 week) completion heatmap
   const cells = [];
   for (let i = 34; i >= 0; i--) {
-    const r = _hxDayRate(_hxDateStr(i), active);
-    cells.push(`<div class="hx-heat-cell" style="background:rgba(255,255,255,${(0.06 + r * 0.4).toFixed(3)})${r > 0.85 ? ';box-shadow:0 0 8px rgba(255,255,255,.14)' : ''}"></div>`);
+    const cds = _hxDateStr(i);
+    cells.push(_hxHeatCell(cds, active));
   }
   let keptTotal = 0; for (let i = 0; i < 35; i++) if (_hxDayRate(_hxDateStr(i), active) > 0) keptTotal++;
 
@@ -16010,6 +16309,9 @@ async function _hxCreateHabit() {
   doc0.cue = f.cue.trim();
   doc0.reward = f.reward.trim();
   doc0.fullBehavior = f.minimum.trim();
+  // Say which is which, so habitActions() never has to guess for this habit.
+  doc0.standardBehavior = f.name.trim();
+  doc0.mveBehavior = f.minimum.trim();
   const _schedule = { days: f.cadence || 'daily', frequency: 1 };
   if (f.cadence === 'custom') _schedule.dow = (f.dow || []).map(Number);
   doc0.schedule = _schedule;
@@ -16057,6 +16359,10 @@ async function _hxSaveHabit() {
   const h = _hxHabitEdit; if (!h) return;
   const patch = {
     tinyBehavior: (h.tinyBehavior || '').trim(),
+    // This form's name field is the standard, not the minimum. Recording that
+    // explicitly stops habitActions() falling back to the id heuristic, and
+    // upgrades a legacy habit the first time it is edited here.
+    standardBehavior: (h.tinyBehavior || '').trim(),
     identityTag: (h.identityTag || '').trim(),
     anchor: h.anchor || { type: 'anytime', value: '', linkedHabitId: null },
     cue: (h.cue || '').trim(),
@@ -16101,6 +16407,18 @@ function _hxWire(panel) {
   // Today: toggle
   panel.querySelectorAll('[data-hx-toggle]').forEach(el => el.onclick = () => {
     habitToggle(el.dataset.hxToggle, localDateStr(new Date())).then(() => { renderHabitsX(); window.renderDashboardBoard && window.renderDashboardBoard(); });
+  });
+
+  // Today: MVE toggle and friction log. Both live in 03-habits, which owns the
+  // habit log writes — this surface only calls them.
+  panel.querySelectorAll('[data-hx-mve]').forEach(el => el.onclick = e => {
+    e.stopPropagation();
+    const id = el.dataset.hxMve, ds = localDateStr(new Date());
+    _habitSetEffort(id, ds, _habitEffortToday(id, ds) === 'mve' ? 'full' : 'mve');
+    setTimeout(renderHabitsX, 80);
+  });
+  panel.querySelectorAll('[data-hx-friction]').forEach(el => el.onclick = e => {
+    e.stopPropagation(); openFrictionLog(el.dataset.hxFriction);
   });
 
   // Builder navigation + fields
@@ -17016,9 +17334,11 @@ window.renderInsightsX = renderInsightsX;
   let _saveTimer = null;
   let _content = '';        // in-memory daily-note markdown
   let _noteExists = false;  // does today's daily note file exist yet
+  let _capContent = '';     // in-memory capture-inbox markdown
+  let _capSaveTimer = null;
   let _focusHooked = false; // window focus/visibility listener attached once
   let _keysHooked = false;  // Cmd/Ctrl+E toggle listener attached once
-  let _mode = 'edit';       // 'edit' | 'read' — the daily note, nothing else
+  let _mode = 'edit';       // 'edit' | 'read' (daily note) | 'captures' (inbox file)
 
   function _invoke() { return window.CDX_NOTES_INVOKE || null; }
 
@@ -17270,6 +17590,7 @@ window.renderInsightsX = renderInsightsX;
   function _renderBody(dateStr) {
     const body = document.getElementById('dash-note-body'); if (!body) return;
 
+    if (_mode === 'captures') { _renderCaptures(body); return; }
 
     if (!_noteExists) {
       // No daily note for this day yet — offer to create it (Edit/Read need one).
@@ -17319,13 +17640,36 @@ window.renderInsightsX = renderInsightsX;
     });
   }
 
-  function _setEyebrow(label) {
-    const eb = document.getElementById('dash-note-eyebrow');
-    if (eb) eb.innerHTML = `✒ VALERIE · ${escHtml(label)}`;
+  // Captures view: the single "Capture Inbox" file (all iPhone captures land
+  // here and stay — no daily fold). Editable so it can be triaged/cleaned; saves
+  // straight back to that one file.
+  async function _renderCaptures(body) {
+    const invoke = _invoke();
+    body.innerHTML =
+      `<div class="dash-note-caps-hint">One running inbox for every capture — clean it out as you go.</div>
+       <textarea class="dash-note-textarea dash-note-caps" id="dash-cap-text" spellcheck="true" placeholder="Nothing captured yet. Use the iPhone Action Button to add here."></textarea>`;
+    const ta = body.querySelector('#dash-cap-text');
+    let content = '';
+    try { content = (await invoke('read_capture_file')) || ''; } catch (e) {}
+    _capContent = content;
+    ta.value = content;
+    ta.addEventListener('input', () => {
+      _capContent = ta.value; _status('Saving…');
+      clearTimeout(_capSaveTimer);
+      _capSaveTimer = setTimeout(async () => {
+        try { await invoke('write_capture_file', { content: _capContent }); _status('Saved'); }
+        catch (e) { _status('Save failed'); console.warn('capture save:', e); }
+      }, 600);
+    });
   }
 
-  // Cmd+E / the pills flip Edit ⇄ Read on the daily note.
-  // No-ops unless the note panel is on screen.
+  function _setEyebrow(label) {
+    const eb = document.getElementById('dash-note-eyebrow');
+    if (eb) eb.innerHTML = _mode === 'captures' ? '📥 CAPTURES · running inbox' : `✒ VALERIE · ${escHtml(label)}`;
+  }
+
+  // Cmd+E / the pills flip Edit ⇄ Read on the daily note. From Captures it
+  // returns to Edit. No-ops unless the note panel is on screen.
   function _toggleMode() {
     const el = document.getElementById('dash-note-panel');
     if (!el || !el.querySelector('#dash-note-body')) return;
@@ -17386,8 +17730,9 @@ window.renderInsightsX = renderInsightsX;
     _noteExists = content != null;
     _content = content || '';
 
-    // Pills always render, even before today's note exists.
-    const eyebrow = `✒ VALERIE · ${escHtml(label)}`;
+    // Pills always render (so Captures is reachable even before today's note
+    // exists). Body switches on the active mode.
+    const eyebrow = _mode === 'captures' ? '📥 CAPTURES · running inbox' : `✒ VALERIE · ${escHtml(label)}`;
     el.innerHTML =
       `<div class="dash-note-head"><span class="dash-eyebrow" id="dash-note-eyebrow">${eyebrow}</span>
          <div class="dash-note-actions">
@@ -17395,6 +17740,7 @@ window.renderInsightsX = renderInsightsX;
            <div class="dash-note-pills" id="dash-note-pills" title="⌘E toggles Edit / Read">
              <button type="button" data-mode="edit"${_mode === 'edit' ? ' class="active"' : ''}>Edit</button>
              <button type="button" data-mode="read"${_mode === 'read' ? ' class="active"' : ''}>Read</button>
+             <button type="button" data-mode="captures"${_mode === 'captures' ? ' class="active"' : ''}>📥 Captures</button>
            </div>
          </div>
        </div>
@@ -18604,12 +18950,34 @@ function _dashRenderCommitments() {
   if (!el) return;
   if (_mainPanel !== 'default') return;
 
+  /* The quarter's goals, one line above the commitment bands. A goal you never
+     see is a goal you do not have, and this band is where you already look. It
+     is a count and a click — the detail belongs on Horizons. Built before the
+     empty-state return, because having goals and no commitments yet is exactly
+     the moment this line is most worth showing. */
+  const q = (typeof goalsQuarterSummary === 'function') ? goalsQuarterSummary() : null;
+  const goalsLine = q && q.total
+    ? `<div class="dash-goals-line" id="dash-goals-line" title="Open Horizons">
+         <span class="dash-goals-lbl">${escHtml(goalPeriodLabel(q.period))} GOALS</span>
+         <span class="dash-goals-count">${q.done}/${q.total}</span>
+         <span class="dash-goals-names">${q.goals.filter(g => g.status === 'active')
+           .map(g => escHtml(g.title || 'Untitled')).join(' · ') || 'all closed'}</span>
+       </div>`
+    : '';
+  const wireGoalsLine = () => document.getElementById('dash-goals-line')
+    ?.addEventListener('click', () => {
+      showMainPanel('milestones');
+      setTimeout(() => window.showPlanTab2?.('horizons'), 40);
+    });
+
   const active = (MILESTONE_PROJECTS || []).filter(p => !p.isArchived);
   if (!active.length) {
     el.innerHTML =
       `<div class="dash-eyebrow">COMMITMENTS</div>
+       ${goalsLine}
        <div class="dash-nn-title muted" style="font-size:14px">Nothing committed yet.</div>
        <div class="dash-nn-meta">Planning is where commitments are made — they show up here once they exist.</div>`;
+    wireGoalsLine();
     return;
   }
 
@@ -18703,12 +19071,16 @@ function _dashRenderCommitments() {
       </div>`).join('');
 
   const totalOpen = Object.values(tasksBy).reduce((s, ts) => s + ts.filter(t => !t.done).length, 0);
+
   el.innerHTML =
     `<div class="dash-c-head-row">
        <div class="dash-eyebrow">COMMITMENTS · ${sorted.length} ACTIVE · ${totalOpen} OPEN TASKS</div>
        <button class="dash-btn" id="dash-c-plan" title="Open the Planning page">◉ Planning</button>
      </div>
+     ${goalsLine}
      ${bandsHtml}`;
+
+  wireGoalsLine();
 
   el.querySelectorAll('[data-dash-c-toggle]').forEach(h => h.addEventListener('click', e => {
     if (e.target.closest('[data-dash-c-edit]')) return;
@@ -18741,3 +19113,588 @@ function _dashRenderCommitments() {
   });
 }
 window._dashRenderCommitments = _dashRenderCommitments;
+/* ══════════════════════════════════════════════════════════════════════════
+   GOALS — the horizon layer above commitments
+   ──────────────────────────────────────────────────────────────────────────
+   A commitment answers "how"; it has milestones, tasks and a cadence. It is a
+   plan. A goal answers "what", over a horizon long enough to change something,
+   and it is the only thing in this app you declare achieved by hand.
+
+   The chain the rest of the app now hangs off:
+
+       GOAL        why + criteria + horizon + a checkbox     (this file)
+        └ COMMITMENT   milestones + tasks                    (06-…-planning)
+            └ HABIT      the daily show-up, full or MVE      (03-habits)
+                └ LOG      effort + friction                 (03-habits)
+
+   Three rules hold it together, and each one is a deliberate refusal:
+
+     1. The achieved checkbox is ALWAYS manual. Rolled-up commitment and habit
+        progress is advisory and is drawn thin on purpose. A ratio of finished
+        tasks is not the same claim as "I did this", and letting the app make
+        that claim is how a tracker starts lying to you.
+     2. `dropped` and `carried` are first-class. A year review that shows only
+        wins and a wall of stale `active` rows teaches nothing. Saying "I let
+        this go, on this date" is the entry worth having.
+     3. A goal with commitments but no habit shows a quiet warning. A plan with
+        no daily action is the failure mode the whole Discipline Loop is
+        written against, so the card says so rather than looking healthy.
+
+   Storage: users/{uid}/goals — one document per goal. No rules change needed;
+   firestore.rules already covers every subcollection under the user.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let GOALS = [];
+let _goalsUnsub = null;
+let _goalsSubscribed = false;
+let _horizonFocus = null;   // a year/half goal id: filters the columns to its line
+
+function getGoalsUid() {
+  return window.CDX_USER?.uid || null;
+}
+
+/* ── Periods ──────────────────────────────────────────────────────────────
+   A horizon is a kind of window ('quarter'); a period is a specific one
+   ('2026-Q4'). Storing the period string rather than two dates means a goal
+   keeps its meaning when it is carried forward, and the dates stay derivable. */
+const GOAL_HORIZONS = [
+  { id: 'year',    label: 'Year',    glyph: '◉' },
+  { id: 'half',    label: 'Half',    glyph: '◎' },
+  { id: 'quarter', label: 'Quarter', glyph: '◈' },
+];
+
+function goalPeriodNow(horizon, when) {
+  const d = when || new Date();
+  const y = d.getFullYear();
+  if (horizon === 'year') return String(y);
+  if (horizon === 'half') return `${y}-H${d.getMonth() < 6 ? 1 : 2}`;
+  return `${y}-Q${Math.floor(d.getMonth() / 3) + 1}`;
+}
+
+// '2026-Q4' → { start: Date, end: Date } — end is the last day, inclusive.
+function goalPeriodRange(period) {
+  const y = parseInt(String(period).slice(0, 4), 10);
+  const m = /-Q(\d)/.exec(period), h = /-H(\d)/.exec(period);
+  let m0 = 0, m1 = 11;
+  if (m) { m0 = (parseInt(m[1], 10) - 1) * 3; m1 = m0 + 2; }
+  else if (h) { m0 = (parseInt(h[1], 10) - 1) * 6; m1 = m0 + 5; }
+  return { start: new Date(y, m0, 1), end: new Date(y, m1 + 1, 0) };
+}
+
+function goalPeriodLabel(period) {
+  const y = String(period).slice(0, 4);
+  const m = /-Q(\d)/.exec(period), h = /-H(\d)/.exec(period);
+  if (m) return `Q${m[1]} ${y}`;
+  if (h) return `H${h[1]} ${y}`;
+  return y;
+}
+
+// Days left in the period, floored at zero. Past periods read "closed".
+function goalDaysLeft(period) {
+  const { end } = goalPeriodRange(period);
+  const e = new Date(end); e.setHours(23, 59, 59, 999);
+  return Math.ceil((e.getTime() - Date.now()) / 86400000);
+}
+
+function goalHorizonOf(period) {
+  if (/-Q\d/.test(period)) return 'quarter';
+  if (/-H\d/.test(period)) return 'half';
+  return 'year';
+}
+
+/* The period one step out: a quarter's parent half, a half's parent year.
+   Used to suggest a parent when a goal is created, never to enforce one. */
+function goalParentPeriod(period) {
+  const y = String(period).slice(0, 4);
+  const m = /-Q(\d)/.exec(period);
+  if (m) return `${y}-H${parseInt(m[1], 10) <= 2 ? 1 : 2}`;
+  if (/-H\d/.test(period)) return y;
+  return null;
+}
+
+/* ── Firestore ────────────────────────────────────────────────────────────
+   Identical call shapes to the rest of the app, so the offline SQLite store
+   in cosmodex-lite serves this collection with no changes of its own. */
+function goalsSubscribe() {
+  if (_goalsSubscribed) return;
+  const uid = getGoalsUid();
+  if (!uid || !window.CDX_FB || !window.CDX_DB) return;
+  _goalsSubscribed = true;
+  const { collection, onSnapshot } = window.CDX_FB;
+  try {
+    _goalsUnsub = onSnapshot(collection(window.CDX_DB, 'users', uid, 'goals'), snap => {
+      GOALS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      window._refreshPlanDesign?.();
+      window.renderDashboardBoard?.();
+    }, e => console.warn('goals subscribe:', e));
+  } catch (e) { _goalsSubscribed = false; console.warn('goals subscribe:', e); }
+}
+
+function goalsUnsubscribe() {
+  if (_goalsUnsub) { try { _goalsUnsub(); } catch {} }
+  _goalsUnsub = null; _goalsSubscribed = false; GOALS = [];
+}
+
+async function addGoal(data) {
+  const uid = getGoalsUid();
+  if (!uid) return null;
+  const { collection, addDoc, serverTimestamp } = window.CDX_FB;
+  return addDoc(collection(window.CDX_DB, 'users', uid, 'goals'), {
+    title: '', why: '', criteria: [], status: 'active',
+    horizon: 'quarter', period: goalPeriodNow('quarter'),
+    parentId: null, commitmentIds: [], habitIds: [],
+    category: '', color: '', doneDate: null,
+    createdAt: serverTimestamp(), ...data,
+  });
+}
+
+async function updateGoal(id, data) {
+  const uid = getGoalsUid();
+  if (!uid) return;
+  const { doc, updateDoc } = window.CDX_FB;
+  return updateDoc(doc(window.CDX_DB, 'users', uid, 'goals', id), data);
+}
+
+async function deleteGoal(id) {
+  const uid = getGoalsUid();
+  if (!uid) return;
+  const { doc, deleteDoc } = window.CDX_FB;
+  // Children are orphaned, not deleted — losing a quarter's work because the
+  // year goal above it was tidied away would be the wrong trade.
+  GOALS.filter(g => g.parentId === id).forEach(g => updateGoal(g.id, { parentId: null }));
+  return deleteDoc(doc(window.CDX_DB, 'users', uid, 'goals', id));
+}
+
+/* ── Derived state ────────────────────────────────────────────────────────
+   Everything here is advisory. Nothing in this section can close a goal. */
+
+// Fraction of the goal's commitments' tasks that are done, or null when the
+// goal has no commitments — null renders as "no plan yet", not as 0%.
+function goalPlanProgress(goal) {
+  const ids = goal.commitmentIds || [];
+  if (!ids.length) return null;
+  let tot = 0, done = 0;
+  ids.forEach(cid => {
+    const ts = (typeof _commitmentTasks === 'function') ? _commitmentTasks(cid) : [];
+    tot += ts.length; done += ts.filter(t => t.done).length;
+  });
+  if (!tot) return null;
+  return done / tot;
+}
+
+// Best current streak across the goal's linked habits, in days.
+function goalShowUpStreak(goal) {
+  const ids = goal.habitIds || [];
+  if (!ids.length || typeof _todayStreakDays !== 'function') return null;
+  return ids.reduce((best, hid) => Math.max(best, _todayStreakDays(hid) || 0), 0);
+}
+
+function goalCriteriaDone(goal) {
+  const c = goal.criteria || [];
+  return { done: c.filter(x => x.done).length, total: c.length };
+}
+
+function goalChildren(goal) {
+  return GOALS.filter(g => g.parentId === goal.id);
+}
+
+/* ── Status ───────────────────────────────────────────────────────────────
+   Marking achieved is a write of the date as well as the status: without the
+   date, a closed goal cannot be placed in the year it was actually finished. */
+async function goalSetStatus(id, status) {
+  const patch = { status };
+  patch.doneDate = status === 'done' ? localDateStr(new Date()) : null;
+  await updateGoal(id, patch);
+}
+
+async function goalToggleCriterion(goalId, critId) {
+  const g = GOALS.find(x => x.id === goalId);
+  if (!g) return;
+  const criteria = (g.criteria || []).map(c =>
+    c.id === critId ? { ...c, done: !c.done } : c);
+  await updateGoal(goalId, { criteria });
+}
+
+/* Carry a goal into the next period: the old row keeps its history with status
+   `carried`, and a new row starts clean. Editing the period in place would
+   quietly rewrite what you committed to and when. */
+async function goalCarryForward(id) {
+  const g = GOALS.find(x => x.id === id);
+  if (!g) return;
+  const { start } = goalPeriodRange(g.period);
+  const next = new Date(start);
+  next.setMonth(next.getMonth() + (g.horizon === 'quarter' ? 3 : g.horizon === 'half' ? 6 : 12));
+  const nextPeriod = goalPeriodNow(g.horizon, next);
+  await addGoal({
+    title: g.title, why: g.why, horizon: g.horizon, period: nextPeriod,
+    parentId: g.parentId, category: g.category || '', color: g.color || '',
+    commitmentIds: [...(g.commitmentIds || [])], habitIds: [...(g.habitIds || [])],
+    criteria: (g.criteria || []).map(c => ({ ...c, done: false })),
+  });
+  await goalSetStatus(id, 'carried');
+  showToast(`Carried to ${goalPeriodLabel(nextPeriod)}`, 'success');
+}
+
+/* ══ HORIZONS VIEW ═══════════════════════════════════════════════════════ */
+
+function _goalStatusPill(g) {
+  if (g.status === 'done')    return `<span class="goal-pill done">✓ achieved</span>`;
+  if (g.status === 'dropped') return `<span class="goal-pill dropped">dropped</span>`;
+  if (g.status === 'carried') return `<span class="goal-pill carried">carried</span>`;
+  return '';
+}
+
+function _goalBar(label, ratio, note) {
+  if (ratio === null || ratio === undefined) {
+    return `<div class="goal-rollup empty"><span class="goal-rollup-lbl">${escHtml(label)}</span>
+      <span class="goal-rollup-note">${escHtml(note || '—')}</span></div>`;
+  }
+  const pct = Math.round(ratio * 100);
+  return `<div class="goal-rollup"><span class="goal-rollup-lbl">${escHtml(label)}</span>
+    <div class="goal-rollup-track"><div class="goal-rollup-fill" style="width:${pct}%"></div></div>
+    <span class="goal-rollup-note">${pct}%</span></div>`;
+}
+
+function _goalCard(g) {
+  const crit = goalCriteriaDone(g);
+  const plan = goalPlanProgress(g);
+  const streak = goalShowUpStreak(g);
+  const days = goalDaysLeft(g.period);
+  const closed = g.status !== 'active';
+  const kids = goalChildren(g).length;
+
+  const critHtml = (g.criteria || []).length
+    ? (g.criteria || []).map(c => `<div class="goal-crit${c.done ? ' done' : ''}" data-goal-crit="${escAttr(g.id)}" data-crit-id="${escAttr(c.id)}">
+         <span class="goal-crit-box">${c.done ? '✓' : ''}</span>
+         <span class="goal-crit-text">${escHtml(c.text)}</span>
+       </div>`).join('')
+    : `<div class="goal-crit-empty">No success criteria yet — what would make this true?</div>`;
+
+  /* The one warning this card gives. A goal with a plan and no daily action is
+     precisely the shape that feels productive and moves nothing. */
+  const noHabit = !closed && (g.commitmentIds || []).length && !(g.habitIds || []).length
+    ? `<div class="goal-warn">No daily action linked. A plan with nothing to show up for tends not to happen.</div>` : '';
+
+  return `<div class="goal-card${closed ? ' closed' : ''}${_horizonFocus === g.id ? ' focused' : ''}"
+       style="--goal-clr:${g.color || 'rgba(255,255,255,.45)'}" data-goal-card="${escAttr(g.id)}">
+    <div class="goal-card-top">
+      <span class="goal-period">${escHtml(goalPeriodLabel(g.period))}</span>
+      ${_goalStatusPill(g)}
+      <div style="flex:1"></div>
+      <span class="goal-days${days < 0 ? ' over' : days <= 14 ? ' soon' : ''}">${
+        closed ? (g.doneDate ? escHtml(fmtDate(g.doneDate)) : '—')
+               : days < 0 ? 'period closed' : `${days} days left`}</span>
+    </div>
+    <div class="goal-title" data-goal-edit="${escAttr(g.id)}">${escHtml(g.title || 'Untitled goal')}</div>
+    ${g.why ? `<div class="goal-why"><span class="goal-why-lbl">why</span>${escHtml(g.why)}</div>` : ''}
+    <div class="goal-crits">${critHtml}</div>
+    ${noHabit}
+    <div class="goal-rollups">
+      ${_goalBar('plan', plan, (g.commitmentIds || []).length ? 'no tasks yet' : 'no commitment')}
+      ${_goalBar('show up', null, streak === null ? 'no habit' : `${streak}d streak`)}
+      ${kids ? `<div class="goal-rollup empty"><span class="goal-rollup-lbl">under this</span>
+        <span class="goal-rollup-note">${kids} goal${kids === 1 ? '' : 's'}</span></div>` : ''}
+    </div>
+    <div class="goal-card-foot">
+      <span class="goal-crit-count">${crit.done}/${crit.total} criteria</span>
+      <div style="flex:1"></div>
+      ${closed
+        ? `<button class="goal-act" data-goal-reopen="${escAttr(g.id)}">Reopen</button>`
+        : `<button class="goal-act" data-goal-carry="${escAttr(g.id)}" title="Move to the next period, keeping this one's record">Carry</button>
+           <button class="goal-act" data-goal-drop="${escAttr(g.id)}" title="Let this go, on the record">Drop</button>
+           <button class="goal-act primary" data-goal-done="${escAttr(g.id)}">☐ Mark achieved</button>`}
+    </div>
+  </div>`;
+}
+
+function renderPlanHorizons() {
+  const body = document.getElementById('plan-design-body');
+  if (!body) return;
+  goalsSubscribe();
+
+  const nowP = {
+    year: goalPeriodNow('year'), half: goalPeriodNow('half'), quarter: goalPeriodNow('quarter'),
+  };
+
+  /* Focus mode: clicking a year or half goal filters the columns to its own
+     line of descent, which is the only way to see whether this quarter's work
+     actually serves the year. */
+  const focus = _horizonFocus ? GOALS.find(g => g.id === _horizonFocus) : null;
+  const inLine = g => {
+    if (!focus) return true;
+    if (g.id === focus.id) return true;
+    let cur = g, hops = 0;
+    while (cur && hops++ < 4) {
+      if (cur.parentId === focus.id) return true;
+      cur = GOALS.find(x => x.id === cur.parentId);
+    }
+    return false;
+  };
+
+  const cols = GOAL_HORIZONS.map(h => {
+    const all = GOALS
+      .filter(g => g.horizon === h.id && inLine(g))
+      .sort((a, b) =>
+        String(a.period).localeCompare(String(b.period)) ||
+        (a.status === 'active' ? 0 : 1) - (b.status === 'active' ? 0 : 1) ||
+        String(a.title).localeCompare(String(b.title)));
+    const current = all.filter(g => g.period === nowP[h.id]);
+    const other   = all.filter(g => g.period !== nowP[h.id]);
+    const liveN   = current.filter(g => g.status === 'active').length;
+    const doneN   = current.filter(g => g.status === 'done').length;
+
+    return `<div class="horizon-col" data-horizon="${h.id}">
+      <div class="horizon-head">
+        <span class="horizon-glyph">${h.glyph}</span>
+        <span class="horizon-label">${escHtml(h.label)}</span>
+        <span class="horizon-period">${escHtml(goalPeriodLabel(nowP[h.id]))}</span>
+        <div style="flex:1"></div>
+        <span class="plan-tel">${doneN}/${current.length}</span>
+        <button class="horizon-add" data-goal-add="${h.id}" title="New ${h.label.toLowerCase()} goal">＋</button>
+      </div>
+      <div class="horizon-body">
+        ${current.length ? current.map(_goalCard).join('')
+          : `<div class="plan-empty">No ${h.label.toLowerCase()} goal for ${escHtml(goalPeriodLabel(nowP[h.id]))} yet.</div>`}
+        ${other.length ? `<div class="horizon-other-head">Other periods · ${other.length}</div>
+          ${other.map(_goalCard).join('')}` : ''}
+      </div>
+      ${liveN > 5 ? `<div class="horizon-warn">${liveN} active. More than a handful at one horizon is a list, not a set of goals.</div>` : ''}
+    </div>`;
+  }).join('');
+
+  body.innerHTML = `
+    ${_planHeader('HORIZONS · GOALS BY TIMEFRAME',
+      'What you are actually trying to make true.',
+      'A goal is an outcome you check off yourself. Commitments are how you get there.',
+      focus ? `<button class="plan-liquid-btn" id="hz-clearfocus">✕ Showing only: ${escHtml(focus.title || 'goal')}</button>` : '')}
+    ${typeof _planNorthBandHtml === 'function' ? _planNorthBandHtml() : ''}
+    <div class="horizon-grid">${cols}</div>`;
+
+  if (typeof _wireNorthBand === 'function') _wireNorthBand();
+  _wireHorizons(body);
+}
+
+function _wireHorizons(body) {
+  document.getElementById('hz-clearfocus')?.addEventListener('click', () => {
+    _horizonFocus = null; renderPlanHorizons();
+  });
+
+  body.querySelectorAll('[data-goal-add]').forEach(b => b.onclick = async () => {
+    const horizon = b.dataset.goalAdd;
+    const period = goalPeriodNow(horizon);
+    const parentPeriod = goalParentPeriod(period);
+    // Suggest the parent above it when exactly one is active, so the chain
+    // forms by default instead of needing to be assembled later.
+    const cands = parentPeriod
+      ? GOALS.filter(g => g.period === parentPeriod && g.status === 'active') : [];
+    const ref = await addGoal({
+      horizon, period, parentId: cands.length === 1 ? cands[0].id : null,
+    });
+    if (ref?.id) openGoalModal(ref.id);
+  });
+
+  body.querySelectorAll('[data-goal-crit]').forEach(el => el.onclick = e => {
+    e.stopPropagation();
+    goalToggleCriterion(el.dataset.goalCrit, el.dataset.critId);
+  });
+
+  body.querySelectorAll('[data-goal-edit]').forEach(el => el.onclick = e => {
+    e.stopPropagation(); openGoalModal(el.dataset.goalEdit);
+  });
+
+  body.querySelectorAll('[data-goal-done]').forEach(el => el.onclick = async e => {
+    e.stopPropagation();
+    const g = GOALS.find(x => x.id === el.dataset.goalDone);
+    const crit = g ? goalCriteriaDone(g) : { done: 0, total: 0 };
+    // A goal can be closed with criteria outstanding — it is your call — but
+    // the app says plainly what is being left behind.
+    if (crit.total && crit.done < crit.total &&
+        !confirm(`${crit.total - crit.done} of ${crit.total} criteria are still open. Mark achieved anyway?`)) return;
+    await goalSetStatus(el.dataset.goalDone, 'done');
+    showToast('Goal achieved', 'success');
+  });
+
+  body.querySelectorAll('[data-goal-drop]').forEach(el => el.onclick = async e => {
+    e.stopPropagation();
+    if (!confirm('Drop this goal? It stays on the record as dropped.')) return;
+    await goalSetStatus(el.dataset.goalDrop, 'dropped');
+  });
+
+  body.querySelectorAll('[data-goal-carry]').forEach(el => el.onclick = e => {
+    e.stopPropagation(); goalCarryForward(el.dataset.goalCarry);
+  });
+
+  body.querySelectorAll('[data-goal-reopen]').forEach(el => el.onclick = async e => {
+    e.stopPropagation(); await goalSetStatus(el.dataset.goalReopen, 'active');
+  });
+
+  // Clicking the card body of a year/half goal filters the other columns.
+  body.querySelectorAll('[data-goal-card]').forEach(el => el.onclick = () => {
+    const g = GOALS.find(x => x.id === el.dataset.goalCard);
+    if (!g || g.horizon === 'quarter') return;
+    _horizonFocus = _horizonFocus === g.id ? null : g.id;
+    renderPlanHorizons();
+  });
+}
+
+/* ══ GOAL MODAL ══════════════════════════════════════════════════════════ */
+
+let _goalEditId = null;
+
+function openGoalModal(id) {
+  _goalEditId = id;
+  const g = GOALS.find(x => x.id === id);
+  if (!g) return;
+  const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v || ''; };
+  set('goal-title', g.title);
+  set('goal-why', g.why);
+  set('goal-horizon', g.horizon);
+  set('goal-period', g.period);
+  set('goal-category', g.category || '');
+
+  // Parent picker — only goals at a longer horizon can be a parent.
+  const order = { quarter: 0, half: 1, year: 2 };
+  const parentSel = document.getElementById('goal-parent');
+  if (parentSel) {
+    const cands = GOALS.filter(x => x.id !== g.id && order[x.horizon] > order[g.horizon]);
+    parentSel.innerHTML = `<option value="">— none —</option>` + cands.map(c =>
+      `<option value="${escAttr(c.id)}"${c.id === g.parentId ? ' selected' : ''}>${escHtml(goalPeriodLabel(c.period))} · ${escHtml(c.title || 'Untitled')}</option>`).join('');
+  }
+  _goalRenderCriteria(g);
+  _goalRenderLinks(g);
+  openOverlay('goal-modal');
+}
+
+function _goalRenderCriteria(g) {
+  const el = document.getElementById('goal-crit-list');
+  if (!el) return;
+  const list = g.criteria || [];
+  el.innerHTML = list.length ? list.map(c => `
+    <div class="goal-crit-row">
+      <span class="goal-crit-box${c.done ? ' on' : ''}" data-gm-crit-toggle="${escAttr(c.id)}">${c.done ? '✓' : ''}</span>
+      <input class="form-input goal-crit-input" data-gm-crit-text="${escAttr(c.id)}" value="${escAttr(c.text)}" placeholder="Measurable, checkable…">
+      <button class="goal-crit-del" data-gm-crit-del="${escAttr(c.id)}" title="Remove">✕</button>
+    </div>`).join('')
+    : `<div class="plan-ms-empty">Nothing measurable yet. What would make this goal true?</div>`;
+
+  el.querySelectorAll('[data-gm-crit-toggle]').forEach(b => b.onclick = () =>
+    _goalMutateCriteria(cs => cs.map(c => c.id === b.dataset.gmCritToggle ? { ...c, done: !c.done } : c)));
+  el.querySelectorAll('[data-gm-crit-del]').forEach(b => b.onclick = () =>
+    _goalMutateCriteria(cs => cs.filter(c => c.id !== b.dataset.gmCritDel)));
+  el.querySelectorAll('[data-gm-crit-text]').forEach(i => i.onchange = () =>
+    _goalMutateCriteria(cs => cs.map(c => c.id === i.dataset.gmCritText ? { ...c, text: i.value.trim() } : c)));
+}
+
+async function _goalMutateCriteria(fn) {
+  const g = GOALS.find(x => x.id === _goalEditId);
+  if (!g) return;
+  const next = fn(g.criteria || []);
+  g.criteria = next;                 // optimistic, so the modal does not flicker
+  await updateGoal(g.id, { criteria: next });
+  _goalRenderCriteria(g);
+}
+
+/* Links to the two layers below. Commitments are the plan; habits are the
+   show-up. Both are plain multi-selects: this is a wiring panel, not a
+   browser, and a goal with more than a few of either has a scope problem. */
+function _goalRenderLinks(g) {
+  const cEl = document.getElementById('goal-commit-list');
+  if (cEl) {
+    const commits = (typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : [])
+      .filter(p => !p.isArchived);
+    cEl.innerHTML = commits.length ? commits.map(c => {
+      const on = (g.commitmentIds || []).includes(c.id);
+      return `<button class="goal-link-chip${on ? ' on' : ''}" data-gm-commit="${escAttr(c.id)}">
+        <span class="goal-link-dot" style="background:${c.color || 'rgba(255,255,255,.5)'}"></span>${escHtml(c.title)}</button>`;
+    }).join('') : `<div class="plan-ms-empty">No commitments yet — create one on the Commitments tab.</div>`;
+    cEl.querySelectorAll('[data-gm-commit]').forEach(b => b.onclick = () =>
+      _goalToggleLink('commitmentIds', b.dataset.gmCommit));
+  }
+  const hEl = document.getElementById('goal-habit-list');
+  if (hEl) {
+    const habits = (typeof _habits !== 'undefined' ? _habits : [])
+      .filter(h => h.status !== 'archived' && h.status !== 'graduated');
+    hEl.innerHTML = habits.length ? habits.map(h => {
+      const on = (g.habitIds || []).includes(h.id);
+      return `<button class="goal-link-chip${on ? ' on' : ''}" data-gm-habit="${escAttr(h.id)}">
+        ${escHtml(habitActions(h).standard)}</button>`;
+    }).join('') : `<div class="plan-ms-empty">No habits yet — design one on the Habits page.</div>`;
+    hEl.querySelectorAll('[data-gm-habit]').forEach(b => b.onclick = () =>
+      _goalToggleLink('habitIds', b.dataset.gmHabit));
+  }
+}
+
+async function _goalToggleLink(field, id) {
+  const g = GOALS.find(x => x.id === _goalEditId);
+  if (!g) return;
+  const cur = g[field] || [];
+  const next = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id];
+  g[field] = next;
+  await updateGoal(g.id, { [field]: next });
+  _goalRenderLinks(g);
+}
+
+function initGoalsModal() {
+  const modal = document.getElementById('goal-modal');
+  if (!modal || modal.dataset.inited === '1') return;
+  modal.dataset.inited = '1';
+
+  // Changing the horizon re-bases the period, otherwise a goal switched from
+  // quarter to year keeps a '2026-Q4' period and sorts into nothing.
+  document.getElementById('goal-horizon')?.addEventListener('change', e => {
+    const per = document.getElementById('goal-period');
+    if (per) per.value = goalPeriodNow(e.target.value);
+  });
+
+  document.getElementById('goal-crit-add')?.addEventListener('click', () => {
+    const inp = document.getElementById('goal-crit-new');
+    const text = (inp?.value || '').trim();
+    if (!text) return;
+    if (inp) inp.value = '';
+    _goalMutateCriteria(cs => [...cs, { id: 'c' + Date.now().toString(36), text, done: false }]);
+  });
+  document.getElementById('goal-crit-new')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('goal-crit-add')?.click(); }
+  });
+
+  document.getElementById('goal-save')?.addEventListener('click', async () => {
+    const g = GOALS.find(x => x.id === _goalEditId);
+    if (!g) return;
+    const val = id => document.getElementById(id)?.value || '';
+    const title = val('goal-title').trim();
+    if (!title) { showToast('A goal needs a title.', 'error'); return; }
+    const horizon = val('goal-horizon') || 'quarter';
+    let period = val('goal-period').trim() || goalPeriodNow(horizon);
+    if (goalHorizonOf(period) !== horizon) period = goalPeriodNow(horizon);
+    await updateGoal(g.id, {
+      title, why: val('goal-why').trim(), horizon, period,
+      parentId: val('goal-parent') || null,
+      category: val('goal-category') || '',
+    });
+    closeOverlay('goal-modal');
+    window._refreshPlanDesign?.();
+  });
+
+  document.getElementById('goal-delete')?.addEventListener('click', async () => {
+    if (!_goalEditId) return;
+    if (!confirm('Delete this goal? Goals beneath it are kept and unlinked.')) return;
+    await deleteGoal(_goalEditId);
+    closeOverlay('goal-modal');
+    window._refreshPlanDesign?.();
+  });
+}
+
+/* ── Surfaces outside the Horizons tab ───────────────────────────────────
+   One line on the dashboard, because a goal you never see is a goal you do
+   not have. Deliberately a count and nothing else: the detail lives on the
+   page built for it. */
+function goalsQuarterSummary() {
+  const per = goalPeriodNow('quarter');
+  const q = GOALS.filter(g => g.horizon === 'quarter' && g.period === per);
+  return { period: per, total: q.length, done: q.filter(g => g.status === 'done').length, goals: q };
+}
+
+window.GOALS_API = {
+  subscribe: goalsSubscribe, unsubscribe: goalsUnsubscribe,
+  summary: goalsQuarterSummary, render: renderPlanHorizons, open: openGoalModal,
+};

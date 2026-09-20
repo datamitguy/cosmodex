@@ -358,15 +358,16 @@
           <div class="plan-hero-title">The map above the day</div>
         </div>
         <div class="plan-tabs2" id="plan-tabs2">
+          <!-- Three tabs, one per layer of the loop: what you are trying to make
+               true, how you intend to do it, and what actually happened.
+               The old eight routed into three different view containers while
+               looking like one control. Week and Month duplicated the calendar
+               that the Commitments view already centres on; Quarter was a
+               filtered commitment list; This Week and Weekly Review wrote about
+               the same week into the same document from two places. -->
+          <button class="plan-tab2 active" data-ptab2="horizons">Horizons</button>
           <button class="plan-tab2" data-ptab2="commitments">Commitments</button>
-          <button class="plan-tab2" data-ptab2="buckets">Buckets</button>
-          <span class="plan-tab2-sep"></span>
-          <button class="plan-tab2" data-ptab2="review">Weekly Review</button>
-          <button class="plan-tab2 active" data-ptab2="thisweek">This Week</button>
-          <button class="plan-tab2" data-ptab2="week">Week</button>
-          <button class="plan-tab2" data-ptab2="month">Month</button>
-          <button class="plan-tab2" data-ptab2="quarter">Quarter</button>
-          <button class="plan-tab2" data-ptab2="north">North Star</button>
+          <button class="plan-tab2" data-ptab2="reflect">Reflect</button>
         </div>
       </div>
 
@@ -378,6 +379,9 @@
             <span class="plan-panel-label">Projects</span>
             <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
 <button id="ms-add-project-btn" class="btn-primary" style="font-size:10px;padding:5px 11px">+ New</button>
+              <!-- Buckets lost its top-level tab: it is a way of sorting the work
+                   under commitments, not a fourth planning horizon. -->
+              <button class="plan-panel-toggle" id="plan-buckets-btn" title="Focus buckets">▤</button>
               <button class="plan-panel-toggle" id="plan-left-toggle" title="Collapse">‹</button>
             </div>
           </div>
@@ -1161,13 +1165,18 @@
           <div class="hins-heatmap-wrap">
             <canvas id="hins-heatmap-canvas" class="hins-heatmap-canvas"></canvas>
             <div class="hins-heatmap-legend">
-              <span class="hins-legend-label">less</span>
-              <div class="hins-legend-cell" style="background:rgba(255,255,255,0.04)"></div>
-              <div class="hins-legend-cell" style="background:rgba(255,255,255,0.14)"></div>
-              <div class="hins-legend-cell" style="background:rgba(255,255,255,0.26)"></div>
+              <!-- Four states, matching _hinsDrawHeatmap: a day on the safety
+                   net kept the loop and reads as such; a planned rest is not a
+                   hole; only an unlogged day is a miss. -->
+              <div class="hins-legend-cell" style="background:rgba(224,85,85,0.16)"></div>
+              <span class="hins-legend-label">missed</span>
+              <div class="hins-legend-cell" style="background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.28)"></div>
+              <span class="hins-legend-label">rest</span>
+              <div class="hins-legend-cell" style="background:rgba(57,255,20,0.30)"></div>
+              <span class="hins-legend-label">MVE</span>
               <div class="hins-legend-cell" style="background:rgba(255,255,255,0.42)"></div>
               <div class="hins-legend-cell" style="background:rgb(53,249,47);box-shadow:0 0 4px rgba(53,249,47,0.4)"></div>
-              <span class="hins-legend-label">more</span>
+              <span class="hins-legend-label">full</span>
               <span class="hins-heatmap-stat" id="hins-heatmap-stat"></span>
             </div>
           </div>
@@ -1557,6 +1566,80 @@
         <div style="display:flex;gap:8px;margin-left:auto">
           <button data-close="ms-project-modal" class="btn-ghost">Cancel</button>
           <button id="ms-proj-confirm" class="btn-primary">Save Commitment</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Goal: Add/Edit Modal — the horizon layer above commitments.
+     The Why sits directly under the title on purpose: it is the thing that
+     carries a goal when motivation is gone, and it is useless filed away in a
+     separate vision note. Success criteria are checkboxes rather than a single
+     sentence so the rollup can be honest without ever closing the goal. -->
+<div class="overlay" id="goal-modal" style="z-index:862">
+  <div class="overlay-panel" style="width:min(560px,94vw)">
+    <div class="overlay-header">
+      <span class="overlay-title">Goal</span>
+      <button class="overlay-close" data-close="goal-modal">✕</button>
+    </div>
+    <div class="overlay-body" style="padding:20px;display:flex;flex-direction:column;gap:14px;max-height:72vh;overflow-y:auto">
+      <div class="form-group">
+        <label class="form-label">Goal</label>
+        <input id="goal-title" class="form-input" placeholder="e.g. Trade a written plan, every session" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Why this matters</label>
+        <textarea id="goal-why" class="form-input" rows="2" placeholder="The reason that still holds when motivation is gone…"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Horizon</label>
+          <select id="goal-horizon" class="form-input" style="cursor:pointer">
+            <option value="quarter">Quarter</option>
+            <option value="half">Half year</option>
+            <option value="year">Year</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Period</label>
+          <input id="goal-period" class="form-input" placeholder="2026-Q4" autocomplete="off">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Rolls up into</label>
+          <select id="goal-parent" class="form-input" style="cursor:pointer"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <input id="goal-category" class="form-input" placeholder="optional" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Success criteria — what makes this true</label>
+        <div id="goal-crit-list" class="goal-crit-list"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="goal-crit-new" class="form-input" placeholder="e.g. 60 sessions logged with a pre-set stop" autocomplete="off">
+          <button id="goal-crit-add" class="btn-ghost" style="white-space:nowrap">＋ Add</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Plan — commitments that deliver this</label>
+        <div id="goal-commit-list" class="goal-link-wrap"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Show up — habits that feed this</label>
+        <div id="goal-habit-list" class="goal-link-wrap"></div>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;padding-top:4px">
+        <button id="goal-delete" class="btn-ghost" style="color:#e05555;border-color:rgba(224,85,85,.4)">Delete Goal</button>
+        <div style="display:flex;gap:8px;margin-left:auto">
+          <button data-close="goal-modal" class="btn-ghost">Cancel</button>
+          <button id="goal-save" class="btn-primary">Save Goal</button>
         </div>
       </div>
     </div>

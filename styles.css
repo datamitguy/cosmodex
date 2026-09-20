@@ -9716,3 +9716,237 @@ select.atk-inline option { background:#141414; color:#fff; }
 .dash-note-preview blockquote blockquote {
   margin-top:8px; border-left-color:rgba(255,255,255,0.18);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GOALS · HORIZONS — the layer above commitments
+   Three columns, year to quarter, left to right. The card is quiet by design:
+   the checkbox is the only loud element, because it is the only thing on this
+   page that makes a claim. Rollup bars are hairlines on purpose — they are
+   advisory, and drawing them at full weight would let them read as the score.
+   ══════════════════════════════════════════════════════════════════════════ */
+.horizon-grid {
+  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; align-items:start;
+}
+@media (max-width:1100px){ .horizon-grid { grid-template-columns:1fr; } }
+
+.horizon-col {
+  display:flex; flex-direction:column; gap:10px; min-width:0;
+  background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.07);
+  border-radius:14px; padding:12px;
+}
+.horizon-head { display:flex; align-items:center; gap:8px; padding:2px 2px 8px; border-bottom:1px solid rgba(255,255,255,.07); }
+.horizon-glyph { color:rgba(255,255,255,.45); font-size:12px; }
+.horizon-label { font-family:var(--font-body); font-size:14px; font-weight:600; color:rgba(255,255,255,.9); }
+.horizon-period { font-family:var(--font-mono); font-size:10px; letter-spacing:.14em; color:rgba(255,255,255,.4); text-transform:uppercase; }
+.horizon-add {
+  background:none; border:1px solid rgba(255,255,255,.18); color:rgba(255,255,255,.7);
+  border-radius:7px; width:24px; height:24px; cursor:pointer; font-size:13px; line-height:1;
+  transition:all .18s var(--ease-glass);
+}
+.horizon-add:hover { border-color:rgba(255,255,255,.5); color:#fff; }
+.horizon-body { display:flex; flex-direction:column; gap:10px; }
+.horizon-other-head {
+  font-family:var(--font-mono); font-size:9px; letter-spacing:.2em; text-transform:uppercase;
+  color:rgba(255,255,255,.3); padding:10px 2px 2px; border-top:1px solid rgba(255,255,255,.06);
+}
+.horizon-warn {
+  font-family:var(--font-mono); font-size:9.5px; line-height:1.5; color:rgba(224,85,85,.8);
+  padding:8px 2px 2px;
+}
+
+.goal-card {
+  position:relative; padding:14px; border-radius:12px;
+  background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08);
+  border-left:2px solid var(--goal-clr, rgba(255,255,255,.45));
+  display:flex; flex-direction:column; gap:9px; cursor:default;
+  transition:border-color .18s var(--ease-glass), background .18s var(--ease-glass);
+}
+.goal-card:hover { background:rgba(255,255,255,.05); }
+.goal-card.focused { border-color:rgba(255,255,255,.35); background:rgba(255,255,255,.06); }
+.goal-card.closed { opacity:.55; }
+.goal-card-top { display:flex; align-items:center; gap:7px; }
+.goal-period { font-family:var(--font-mono); font-size:9px; letter-spacing:.18em; text-transform:uppercase; color:rgba(255,255,255,.4); }
+.goal-days { font-family:var(--font-mono); font-size:9px; color:rgba(255,255,255,.35); }
+.goal-days.soon { color:var(--amber, #d4a24e); }
+.goal-days.over { color:#e05555; }
+.goal-pill {
+  font-family:var(--font-mono); font-size:8.5px; letter-spacing:.14em; text-transform:uppercase;
+  padding:2px 6px; border-radius:4px; border:1px solid rgba(255,255,255,.18); color:rgba(255,255,255,.6);
+}
+.goal-pill.done { color:rgb(53,249,47); border-color:rgba(53,249,47,.4); }
+.goal-pill.dropped { color:#e05555; border-color:rgba(224,85,85,.35); }
+.goal-pill.carried { color:rgba(255,255,255,.55); }
+
+.goal-title {
+  font-family:var(--font-body); font-size:15px; font-weight:600; line-height:1.3;
+  color:rgba(255,255,255,.92); cursor:pointer;
+}
+.goal-title:hover { text-decoration:underline; text-underline-offset:3px; }
+
+/* The Why is set small and quiet but never hidden — it is the line that has to
+   still be there on the morning the motivation is not. */
+.goal-why {
+  font-family:var(--font-body); font-size:12px; line-height:1.5; font-style:italic;
+  color:rgba(255,255,255,.55);
+}
+.goal-why-lbl {
+  font-family:var(--font-mono); font-style:normal; font-size:8.5px; letter-spacing:.2em;
+  text-transform:uppercase; color:rgba(255,255,255,.3); margin-right:7px;
+}
+
+.goal-crits { display:flex; flex-direction:column; gap:5px; }
+.goal-crit { display:flex; align-items:flex-start; gap:8px; cursor:pointer; }
+.goal-crit-box {
+  flex-shrink:0; width:13px; height:13px; margin-top:2px; border-radius:3px;
+  border:1px solid rgba(255,255,255,.28); font-size:9px; line-height:11px; text-align:center;
+  color:#000; transition:all .16s var(--ease-glass);
+}
+.goal-crit:hover .goal-crit-box { border-color:rgba(255,255,255,.6); }
+.goal-crit.done .goal-crit-box, .goal-crit-box.on { background:rgb(53,249,47); border-color:rgb(53,249,47); }
+.goal-crit-text { font-family:var(--font-body); font-size:12.5px; line-height:1.45; color:rgba(255,255,255,.75); }
+.goal-crit.done .goal-crit-text { color:rgba(255,255,255,.4); text-decoration:line-through; }
+.goal-crit-empty, .goal-crit-count {
+  font-family:var(--font-mono); font-size:9.5px; color:rgba(255,255,255,.32);
+}
+
+.goal-warn {
+  font-family:var(--font-mono); font-size:9.5px; line-height:1.55; color:var(--amber, #d4a24e);
+  background:rgba(212,162,78,.07); border-left:2px solid rgba(212,162,78,.4);
+  padding:6px 8px; border-radius:0 5px 5px 0;
+}
+
+.goal-rollups { display:flex; flex-direction:column; gap:4px; }
+.goal-rollup { display:flex; align-items:center; gap:8px; }
+.goal-rollup-lbl {
+  font-family:var(--font-mono); font-size:8.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:rgba(255,255,255,.3); width:52px; flex-shrink:0;
+}
+.goal-rollup-track { flex:1; height:2px; background:rgba(255,255,255,.08); border-radius:2px; overflow:hidden; }
+.goal-rollup-fill { height:100%; background:rgba(255,255,255,.45); border-radius:2px; }
+.goal-rollup-note { font-family:var(--font-mono); font-size:9px; color:rgba(255,255,255,.35); }
+
+.goal-card-foot { display:flex; align-items:center; gap:6px; padding-top:4px; border-top:1px solid rgba(255,255,255,.06); }
+.goal-act {
+  background:none; border:1px solid rgba(255,255,255,.14); color:rgba(255,255,255,.55);
+  font-family:var(--font-mono); font-size:9px; letter-spacing:.08em;
+  padding:4px 8px; border-radius:6px; cursor:pointer; transition:all .18s var(--ease-glass);
+}
+.goal-act:hover { border-color:rgba(255,255,255,.4); color:rgba(255,255,255,.9); }
+.goal-act.primary { border-color:rgba(53,249,47,.35); color:rgb(53,249,47); }
+.goal-act.primary:hover { background:rgba(53,249,47,.1); border-color:rgb(53,249,47); }
+
+/* Goal modal bits */
+.goal-crit-list { display:flex; flex-direction:column; gap:6px; }
+.goal-crit-row { display:flex; align-items:center; gap:8px; }
+.goal-crit-row .goal-crit-box { margin-top:0; cursor:pointer; }
+.goal-crit-input { flex:1; }
+.goal-crit-del {
+  background:none; border:none; color:rgba(255,255,255,.3); cursor:pointer; font-size:11px; padding:4px;
+}
+.goal-crit-del:hover { color:#e05555; }
+.goal-link-wrap { display:flex; flex-wrap:wrap; gap:6px; }
+.goal-link-chip {
+  display:inline-flex; align-items:center; gap:6px;
+  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.12);
+  color:rgba(255,255,255,.6); font-family:var(--font-mono); font-size:10px;
+  padding:5px 9px; border-radius:7px; cursor:pointer; transition:all .18s var(--ease-glass);
+}
+.goal-link-chip:hover { border-color:rgba(255,255,255,.35); color:rgba(255,255,255,.9); }
+.goal-link-chip.on { border-color:rgb(53,249,47); color:#fff; background:rgba(53,249,47,.1); }
+.goal-link-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+
+/* North Star, collapsed above the year column rather than on a tab of its own */
+.plan-north-band { margin-bottom:14px; border:1px solid rgba(255,255,255,.07); border-radius:12px; background:rgba(255,255,255,.02); }
+.plan-north-summary { display:flex; align-items:center; gap:12px; padding:11px 14px; cursor:pointer; list-style:none; }
+.plan-north-summary::-webkit-details-marker { display:none; }
+.plan-north-line { font-family:var(--font-body); font-size:13px; font-style:italic; color:rgba(255,255,255,.55); flex:1; }
+.plan-north-chev { color:rgba(255,255,255,.3); transition:transform .2s var(--ease-glass); }
+.plan-north-band[open] .plan-north-chev { transform:rotate(90deg); }
+.plan-north-inner { padding:0 14px 14px; display:flex; flex-direction:column; gap:12px; }
+
+/* Reflect: evidence blocks under each layer question */
+.reflect-layer-evidence {
+  display:flex; flex-direction:column; gap:6px; margin:8px 0 10px;
+  padding:9px; border-radius:8px; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.05);
+}
+.reflect-goal-row { display:flex; align-items:center; gap:8px; cursor:pointer; padding:3px 2px; }
+.reflect-goal-row:hover .reflect-goal-name { color:#fff; }
+.reflect-goal-row.closed { opacity:.5; }
+.reflect-goal-name { flex:1; font-family:var(--font-body); font-size:12.5px; color:rgba(255,255,255,.75); }
+.reflect-friction { padding:6px 2px; border-bottom:1px solid rgba(255,255,255,.05); }
+.reflect-friction:last-child { border-bottom:none; }
+.reflect-friction-head { display:flex; align-items:center; gap:8px; }
+.reflect-friction-cause { flex:1; font-family:var(--font-body); font-size:12.5px; color:rgba(255,255,255,.8); }
+.reflect-friction-patch {
+  font-family:var(--font-body); font-size:11.5px; font-style:italic; line-height:1.5;
+  color:rgba(255,255,255,.45); padding-top:3px;
+}
+
+/* ══ MVE toggle and friction flag on the Today habit row ══
+   Both are small and unlit until used. The MVE button is not a downgrade
+   button — a day carried on the safety net still counts — so it is styled as
+   a mode, not as a penalty. */
+.today-habit-mve, .today-habit-friction {
+  background:none; border:1px solid rgba(255,255,255,.14); color:rgba(255,255,255,.4);
+  font-family:var(--font-mono); font-size:8.5px; letter-spacing:.1em;
+  padding:3px 7px; border-radius:6px; cursor:pointer; flex-shrink:0;
+  transition:all .18s var(--ease-glass); opacity:0;
+}
+.today-habit:hover .today-habit-mve,
+.today-habit:hover .today-habit-friction,
+.today-habit-mve.on { opacity:1; }
+.today-habit-mve:hover, .today-habit-friction:hover { border-color:rgba(255,255,255,.45); color:rgba(255,255,255,.9); }
+.today-habit-mve.on { border-color:rgba(53,249,47,.45); color:rgb(53,249,47); }
+.today-habit.mve .today-habit-name { color:rgba(255,255,255,.72); }
+.today-habit-friction:hover { border-color:rgba(224,85,85,.5); color:#e05555; }
+
+/* Friction log sheet */
+.friction-back {
+  position:fixed; inset:0; z-index:900; background:rgba(0,0,0,.6);
+  backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; padding:20px;
+}
+.friction-panel {
+  width:min(440px,94vw); background:rgba(18,18,18,.96); border:1px solid rgba(255,255,255,.12);
+  border-radius:16px; padding:20px; display:flex; flex-direction:column; gap:12px;
+}
+.friction-eyebrow { font-family:var(--font-mono); font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:rgba(255,255,255,.35); }
+.friction-title { font-family:var(--font-body); font-size:16px; font-weight:600; color:rgba(255,255,255,.92); }
+.friction-sub { font-family:var(--font-body); font-size:12.5px; font-style:italic; line-height:1.5; color:rgba(255,255,255,.5); }
+.friction-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.friction-chip {
+  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.12); color:rgba(255,255,255,.6);
+  font-family:var(--font-mono); font-size:10px; padding:5px 9px; border-radius:7px; cursor:pointer;
+  transition:all .18s var(--ease-glass);
+}
+.friction-chip:hover { border-color:rgba(255,255,255,.35); color:rgba(255,255,255,.9); }
+.friction-chip.on { border-color:#fff; color:#fff; background:rgba(255,255,255,.1); }
+.friction-field { display:flex; flex-direction:column; gap:6px; }
+.friction-acts { display:flex; gap:8px; justify-content:flex-end; padding-top:4px; }
+
+/* Dashboard: the quarter's goals, one line above the commitment bands */
+.dash-goals-line {
+  display:flex; align-items:center; gap:10px; cursor:pointer;
+  padding:8px 12px; margin-bottom:10px; border-radius:9px;
+  background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07);
+  transition:all .18s var(--ease-glass);
+}
+.dash-goals-line:hover { border-color:rgba(255,255,255,.22); background:rgba(255,255,255,.05); }
+.dash-goals-lbl { font-family:var(--font-mono); font-size:9px; letter-spacing:.18em; color:rgba(255,255,255,.4); }
+.dash-goals-count { font-family:var(--font-mono); font-size:12px; color:rgba(255,255,255,.9); }
+.dash-goals-names {
+  flex:1; min-width:0; font-family:var(--font-body); font-size:12px; color:rgba(255,255,255,.5);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* MVE toggle + friction flag on the current Habits surface (14-habits-x) */
+.hx-mve, .hx-fric {
+  background:none; border:1px solid rgba(255,255,255,.14); color:rgba(255,255,255,.4);
+  font-family:var(--font-mono); font-size:8.5px; letter-spacing:.1em;
+  padding:3px 7px; border-radius:6px; cursor:pointer; flex-shrink:0;
+  transition:all .18s var(--ease-glass); opacity:0;
+}
+.hx-hrow:hover .hx-mve, .hx-hrow:hover .hx-fric, .hx-mve.on { opacity:1; }
+.hx-mve:hover, .hx-fric:hover { border-color:rgba(255,255,255,.45); color:rgba(255,255,255,.9); }
+.hx-mve.on { border-color:rgba(53,249,47,.45); color:rgb(53,249,47); }
+.hx-fric:hover { border-color:rgba(224,85,85,.5); color:#e05555; }
+.hx-hrow.mve .hx-hname { color:rgba(255,255,255,.72); }

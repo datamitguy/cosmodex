@@ -17855,7 +17855,11 @@ window.GOALS_API = {
    that nothing reads.
    ══════════════════════════════════════════════════════════════════════════ */
 
-const GOAL_AREAS = [
+/* Seeds only. If you have categories of your own, those are the areas — the
+   first version matched my eight names against your category strings, which is
+   guessing, and the evidence column stayed empty unless your categories
+   happened to use my words. */
+const GOAL_AREA_SEEDS = [
   { id: 'v_health',        name: 'Health',        emoji: '💪' },
   { id: 'v_craft',         name: 'Craft',         emoji: '🛠️' },
   { id: 'v_relationships', name: 'Relationships', emoji: '🤝' },
@@ -17866,17 +17870,45 @@ const GOAL_AREAS = [
   { id: 'v_meaning',       name: 'Meaning',       emoji: '✨' },
 ];
 
+/* Your categories are the areas, keyed exactly as tasks, commitments and habits
+   already store them, so the evidence column is a lookup rather than a guess.
+   The seeded eight appear only when you have no categories at all, and a seed
+   you have already written a gap against is kept either way so nothing typed
+   disappears the day a category is added. */
+function goalAreas() {
+  const cats = (typeof CATEGORIES !== 'undefined' && CATEGORIES) ? CATEGORIES : {};
+  const keys = Object.keys(cats);
+  const saved = (_draftDoc && _draftDoc.areas) || {};
+  const hasText = id => { const a = saved[id]; return !!(a && ((a.now || '').trim() || (a.want || '').trim())); };
+
+  if (!keys.length) return GOAL_AREA_SEEDS;
+
+  const fromCats = keys.map(k => ({
+    id: k,
+    name: cats[k].label || k,
+    color: cats[k].color || 'rgba(255,255,255,.5)',
+    fromCategory: true,
+  })).sort((a, b) => a.name.localeCompare(b.name));
+
+  const keptSeeds = GOAL_AREA_SEEDS.filter(s => hasText(s.id) && !cats[s.id]);
+  return [...fromCats, ...keptSeeds];
+}
+
 let _draftDoc = null;      // { areas: { [id]: { now, want } } }
 
 /* What the app can say about an area without being asked. Matching is by the
    area's name against the category on tasks and habits, which is loose on
    purpose: a rough signal beats a precise number nobody entered. */
+/* An exact category-key match when the area came from your categories, and a
+   name match only for the seeded ones, which have no key to match on. */
 function _areaEvidence(area) {
-  const key = area.name.toLowerCase();
-  const matches = v => typeof v === 'string' && v.toLowerCase().includes(key);
+  const key = (area.name || '').toLowerCase();
+  const matches = v => area.fromCategory
+    ? v === area.id
+    : (typeof v === 'string' && v.toLowerCase().includes(key));
 
   const commitments = (typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : [])
-    .filter(p => !p.isArchived && (matches(p.category) || matches(p.title)));
+    .filter(p => !p.isArchived && matches(p.category));
 
   const habits = (typeof _habits !== 'undefined' ? _habits : [])
     .filter(h => h.status !== 'archived' && h.status !== 'graduated')
@@ -17885,12 +17917,16 @@ function _areaEvidence(area) {
   const bestStreak = habits.reduce(
     (b, h) => Math.max(b, (typeof _todayStreakDays === 'function' ? _todayStreakDays(h.id) : 0)), 0);
 
+  const openTasks = (typeof TASKS !== 'undefined' ? TASKS : [])
+    .filter(t => !t.done && matches(t.category));
+
   const goals = GOALS.filter(g => g.status === 'active' && (g.areaId === area.id || matches(g.category)));
 
   const bits = [];
   if (goals.length)       bits.push(`${goals.length} goal${goals.length === 1 ? '' : 's'}`);
   if (commitments.length) bits.push(`${commitments.length} commitment${commitments.length === 1 ? '' : 's'}`);
   if (habits.length)      bits.push(`${habits.length} habit${habits.length === 1 ? '' : 's'}${bestStreak ? ` · ${bestStreak}d` : ''}`);
+  if (openTasks.length)   bits.push(`${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}`);
   return { text: bits.join(' · '), empty: !bits.length, goals: goals.length };
 }
 
@@ -17907,7 +17943,9 @@ function _draftAreaRow(area) {
   const ev = _areaEvidence(area);
   return `<div class="draft-row" data-draft-area="${escAttr(area.id)}">
     <div class="draft-area">
-      <span class="draft-emoji">${area.emoji}</span>
+      ${area.fromCategory
+        ? `<span class="draft-dot" style="background:${escAttr(area.color)}"></span>`
+        : `<span class="draft-emoji">${area.emoji}</span>`}
       <div>
         <div class="draft-name">${escHtml(area.name)}</div>
         <div class="draft-ev${ev.empty ? ' none' : ''}">${ev.empty ? 'nothing here yet' : escHtml(ev.text)}</div>
@@ -17923,7 +17961,7 @@ function _draftAreaRow(area) {
 }
 
 function _draftHtml() {
-  const rows = GOAL_AREAS.map(_draftAreaRow).join('');
+  const rows = goalAreas().map(_draftAreaRow).join('');
   return `<details class="draft-band" id="draft-band">
     <summary class="draft-summary">
       <span class="eyebrow">DRAFT</span>
@@ -17933,7 +17971,10 @@ function _draftHtml() {
     <div class="draft-inner">
       <div class="draft-help">One line for where each area is, one for where you want it in a year.
         The difference between them is the goal. What the app already knows sits next to each,
-        so you are writing against evidence rather than mood.</div>
+        so you are writing against evidence rather than mood.
+        ${(typeof CATEGORIES !== 'undefined' && Object.keys(CATEGORIES || {}).length)
+          ? 'These are your own categories.'
+          : 'Add categories in Settings and they replace this starter list.'}</div>
       <div class="draft-head">
         <span>Area</span><span>Now</span><span>In a year</span><span></span>
       </div>
@@ -17962,7 +18003,7 @@ function _wireDraft() {
 
   band.querySelectorAll('[data-draft-promote]').forEach(b => b.onclick = async () => {
     const id = b.dataset.draftPromote;
-    const area = GOAL_AREAS.find(a => a.id === id);
+    const area = goalAreas().find(a => a.id === id);
     const saved = ((_draftDoc && _draftDoc.areas) || {})[id] || {};
     const want = (saved.want || '').trim();
     if (!want) return;
@@ -17974,7 +18015,11 @@ function _wireDraft() {
       : `Because ${area.name.toLowerCase()} is not where I want it.`;
     const ref = await addGoal({
       title: want, why, horizon: 'year', period: goalPeriodNow('year'),
-      areaId: id, category: area.name,
+      areaId: id,
+      // The key, not the label — everything else in the app looks categories up
+      // by key, so storing the display name here would match nothing.
+      category: area.fromCategory ? area.id : '',
+      color: area.fromCategory ? area.color : '',
     });
     showToast(`Year goal drafted from ${area.name}`, 'success');
     renderPlanHorizons();

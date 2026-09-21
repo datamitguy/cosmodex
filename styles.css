@@ -7008,7 +7008,13 @@ select.atk-inline option { background:#141414; color:#fff; }
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.45);
+  /* nowrap WITHOUT overflow:hidden makes this unshrinkable, and in a grid row
+     an unshrinkable cell squeezes its siblings to zero — which is exactly what
+     happened to the task title when these classes were consolidated. */
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .insx2-tel { text-transform: none; letter-spacing: 0.05em; color: rgba(255,255,255,0.55); }
 .hx-rail-tel { text-transform: none; letter-spacing: 0.06em; color: rgba(255,255,255,0.4); }
@@ -7194,4 +7200,23 @@ textarea:focus-visible {
 @media (max-width:1100px) {
   .draft-head { display:none; }
   .draft-row { grid-template-columns:1fr; gap:6px; }
+}
+
+/* Category-derived areas carry the category's colour instead of an emoji. */
+.draft-dot { width:9px; height:9px; border-radius:50%; flex:none; box-shadow:0 0 7px currentColor; }
+
+/* ══ TASKS: narrow windows ════════════════════════════════════════════════
+   The row is a grid whose fixed columns total about 510px with gaps. Once the
+   list pane drops below that, the 1fr title column is squeezed to zero and the
+   rows render blank — worse than any truncation. Below 1200px the List and
+   Category columns go; below 900px the Due column follows. The title keeps its
+   space at every width. */
+@media (max-width: 1200px) {
+  .atk-colhead, .atk-row { grid-template-columns:22px 14px 1fr 110px 80px; }
+  .atk-colhead span:nth-child(4), .atk-row > *:nth-child(4),
+  .atk-colhead span:nth-child(6), .atk-row > *:nth-child(6) { display:none; }
+}
+@media (max-width: 900px) {
+  .atk-colhead, .atk-row { grid-template-columns:22px 14px 1fr 80px; }
+  .atk-colhead span:nth-child(5), .atk-row > *:nth-child(5) { display:none; }
 }

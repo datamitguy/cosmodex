@@ -2638,11 +2638,11 @@ function renderMilestones() {
   // Only manage timeline/center-panel state when actually on the Planning panel
   if (_mainPanel !== 'milestones') return;
   if (_msView === 'timeline' && _msFocusProj && MILESTONE_PROJECTS.find(p => p.id === _msFocusProj)) {
-    // An initiative is selected — filter the calendar (and lists) to it
+    // An commitment is selected — filter the calendar (and lists) to it
     showPlanningTimeline(_msFocusProj);
   } else {
     // Nothing selected (or the focused project was deleted) — show every
-    // initiative's milestones + events on the calendar.
+    // commitment's milestones + events on the calendar.
     _msView = 'dashboard';
     _msFocusProj = null;
     showPlanningCalendarAll();
@@ -2809,7 +2809,7 @@ function showPlanningTimeline(projId) {
   // Auto-expand right panel if collapsed
   if (_planRightCollapsed) togglePlanPanel('right');
 
-  // Render content — calendar filtered to this initiative
+  // Render content — calendar filtered to this commitment
   renderPlanningCalendar(projId);
   ensureMilestoneList(projId, proj.title).then(() => renderMilestoneListsPanel(projId));
 }
@@ -2842,7 +2842,7 @@ function renderMilestoneListsPanel(projId) {
           <div style="display:flex;align-items:center;gap:5px">
             <input type="checkbox" data-plink-toggle="${escAttr(t.id)}" ${t.done ? 'checked' : ''} style="cursor:pointer;accent-color:var(--gold);flex-shrink:0">
             <span data-plink-open="${escAttr(t.id)}" title="Open task" style="font-size:11px;color:${t.done ? 'var(--muted)' : 'var(--cream)'};flex:1;${t.done ? 'text-decoration:line-through' : ''};line-height:1.4;word-break:break-word;cursor:pointer">${escHtml(t.title)}</span>
-            <span style="font-family:var(--font-mono);font-size:9px;color:var(--muted);flex-shrink:0">${t.dueDate ? escHtml(fmtDate(t.dueDate)) : (t.someday ? 'Someday' : '—')}</span>
+            <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);flex-shrink:0">${t.dueDate ? escHtml(fmtDate(t.dueDate)) : (t.someday ? 'Someday' : '—')}</span>
             <button data-plink-unlink="${escAttr(t.id)}" title="Remove from this commitment (keeps the task)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;line-height:1;flex-shrink:0">×</button>
           </div>`).join('')}
       </div>
@@ -3151,7 +3151,7 @@ function initMilestonesPanel() {
     }
   });
 
-  // Add initiative button
+  // Add commitment button
   document.getElementById('ms-add-project-btn')?.addEventListener('click', () => openMsProjectModal());
 
   // Color swatch selection in project modal
@@ -3164,7 +3164,7 @@ function initMilestonesPanel() {
     document.getElementById('ms-proj-color-val').value = sw.dataset.color;
   });
 
-  // Initiative modal confirm — includes category + notes + mission + anti-goals
+  // Commitment modal confirm — includes category + notes + mission + anti-goals
   document.getElementById('ms-proj-confirm').addEventListener('click', async () => {
     const title       = document.getElementById('ms-proj-title').value.trim();
     const start       = document.getElementById('ms-proj-start').value;
@@ -3176,9 +3176,19 @@ function initMilestonesPanel() {
     const antiGoals   = document.getElementById('ms-proj-antigoals')?.value.trim() || '';
     const cadence     = document.getElementById('ms-proj-cadence')?.value || 'quarterly';
     const bigRock     = !!document.getElementById('ms-proj-bigrock')?.checked;
-    if (!title) { showToast('Title is required.', 'error'); return; }
+    // Highlight the field as well as saying so: the toast lands bottom-right,
+    // a long way from whatever is actually missing.
+    const _flag = (id, bad) => document.getElementById(id)?.classList.toggle('invalid', !!bad);
+    _flag('ms-proj-title', !title);
+    if (!title) { showToast('Give the commitment a name.', 'error'); document.getElementById('ms-proj-title')?.focus(); return; }
     // BAU big rocks are ongoing — no mandatory start/end (item 6).
-    if (!bigRock && (!start || !end)) { showToast('Start and End dates are required.', 'error'); return; }
+    _flag('ms-proj-start', !bigRock && !start);
+    _flag('ms-proj-end',   !bigRock && !end);
+    if (!bigRock && (!start || !end)) {
+      showToast('A commitment needs a start and an end date.', 'error');
+      document.getElementById(!start ? 'ms-proj-start' : 'ms-proj-end')?.focus();
+      return;
+    }
     if (start && end && end < start) { showToast('End date must be on or after start date.', 'error'); return; }
     try {
       if (_msProjEdit) {
@@ -3195,7 +3205,7 @@ function initMilestonesPanel() {
     }
   });
 
-  // Initiative delete button
+  // Commitment delete button
   document.getElementById('ms-proj-delete-btn').addEventListener('click', async () => {
     if (!_msProjEdit) return;
     const proj = MILESTONE_PROJECTS.find(p => p.id === _msProjEdit);
@@ -3236,7 +3246,7 @@ function initMilestonesPanel() {
     const addEvBtn = e.target.closest('[data-ms-add-event]');
     if (addEvBtn) { openMsEventModal(addEvBtn.dataset.msAddEvent); return; }
 
-    // ⋯ Edit initiative button
+    // ⋯ Edit commitment button
     const editProjBtn = e.target.closest('[data-ms-edit-proj]');
     if (editProjBtn && editProjBtn.dataset.msEditProj) {
       openMsProjectModal(editProjBtn.dataset.msEditProj); return;
@@ -3434,11 +3444,11 @@ function initMilestonesPanel() {
     const _evProj = MILESTONE_PROJECTS.find(p => p.id === projId);
     if (_evProj) {
       if (_evProj.startDate && date < _evProj.startDate) {
-        showToast(`Milestone date cannot be before the initiative start date (${_evProj.startDate}).`, 'error');
+        showToast(`Milestone date cannot be before the commitment start date (${_evProj.startDate}).`, 'error');
         _msEventSaving = false; return;
       }
       if (_evProj.endDate && date > _evProj.endDate) {
-        showToast(`Milestone date cannot be after the initiative end date (${_evProj.endDate}).`, 'error');
+        showToast(`Milestone date cannot be after the commitment end date (${_evProj.endDate}).`, 'error');
         _msEventSaving = false; return;
       }
     }
@@ -3861,7 +3871,7 @@ function initMilestonesPanel() {
   }
 
   function closeMilestoneDetail() {
-    // Deselect the initiative and fall back to the all-initiatives calendar
+    // Deselect the commitment and fall back to the all-commitments calendar
     _msView = 'dashboard';
     _msFocusProj = null;
     showPlanningCalendarAll();
@@ -3952,14 +3962,14 @@ document.addEventListener('pointermove', e => {
 });
 
 /* ══════════════════════════════════════════════════════════════════════
-   PLANNING CALENDAR — Month / Week view of initiative milestones + events.
+   PLANNING CALENDAR — Month / Week view of commitment milestones + events.
    Replaces the old vertical milestone timeline in the planning centre panel.
-   _pcalProj null → every initiative's items, colour-coded by initiative;
+   _pcalProj null → every commitment's items, colour-coded by commitment;
    a project id → filtered to that one. Aesthetic from the design kit.
    ══════════════════════════════════════════════════════════════════════ */
 let _pcalView   = 'month';       // 'month' | 'week'
 let _pcalAnchor = new Date();    // any date inside the visible month / week
-let _pcalProj   = null;          // filter project id (null = all initiatives)
+let _pcalProj   = null;          // filter project id (null = all commitments)
 let _pcalShowAll = false;        // Week/Month tabs: also show tasks + holidays + all events
 
 const _PCAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -3971,14 +3981,14 @@ function _pcalProjColor(projId) {
   return (p && p.color) || 'rgba(255,255,255,0.55)';
 }
 
-// Which initiative a calendar event belongs to (direct field or via its task)
+// Which commitment a calendar event belongs to (direct field or via its task)
 function _pcalEventProj(ev) {
   if (ev.projectId) return ev.projectId;
   const t = TASKS.find(t => t.calEventId === ev.id) || (ev.taskId ? TASKS.find(t => t.id === ev.taskId) : null);
   return t ? (t.projectId || null) : null;
 }
 
-// Items (milestones + initiative-linked events) grouped by 'YYYY-MM-DD'
+// Items (milestones + commitment-linked events) grouped by 'YYYY-MM-DD'
 function _pcalItems(projId) {
   const byDate = {};
   const push = (ds, item) => { (byDate[ds] = byDate[ds] || []).push(item); };
@@ -3995,7 +4005,7 @@ function _pcalItems(projId) {
 
   (CAL_EVENTS || []).forEach(ev => {
     const pid = _pcalEventProj(ev);
-    // In show-all mode we surface every event; otherwise only initiative-linked ones.
+    // In show-all mode we surface every event; otherwise only commitment-linked ones.
     if (!pid && !_pcalShowAll) return;
     if (projId && pid !== projId) return;
     const ds = String(ev.date || '').slice(0, 10);
@@ -4179,7 +4189,7 @@ function renderPlanningCalendar(projId) {
   const byDate = _pcalItems(_pcalProj);
   const anyItems = Object.keys(byDate).length > 0;
   const empty = anyItems ? '' :
-    `<div class="pcal-empty">${_pcalProj ? 'No milestones or events for this initiative yet.' : 'No initiative milestones or events scheduled yet.'}</div>`;
+    `<div class="pcal-empty">${_pcalProj ? 'No milestones or events for this commitment yet.' : 'No commitment milestones or events scheduled yet.'}</div>`;
   // Commitment summary ribbon below the calendar (item 5)
   let ribbon = '';
   const rproj = _pcalProj ? MILESTONE_PROJECTS.find(p => p.id === _pcalProj) : null;
@@ -4225,7 +4235,7 @@ function renderPlanningCalendar(projId) {
       if (ev) showEventModal(ev, e.clientX, e.clientY);
     }
   });
-  // Empty-day click adds a milestone to the selected initiative (month view only)
+  // Empty-day click adds a milestone to the selected commitment (month view only)
   if (_pcalProj && _pcalView === 'month') {
     body.querySelectorAll('[data-pcal-day]').forEach(cell => cell.onclick = () => {
       if (typeof openMsEventModal === 'function') openMsEventModal(_pcalProj, null, cell.dataset.pcalDay);
@@ -4245,7 +4255,7 @@ function renderPlanningCalendar(projId) {
   }
 }
 
-// Default centre-panel state: calendar across every initiative
+// Default centre-panel state: calendar across every commitment
 function showPlanningCalendarAll() {
   const empty   = document.getElementById('plan-ctx-empty');
   const content = document.getElementById('plan-ctx-content');
@@ -4425,13 +4435,18 @@ function _ptwWeekLabel() {
 }
 
 /* ── Shared bits ──────────────────────────────────────────────────────── */
+/* The page already carries a title and an eyebrow in .plan-hero. This used to
+   print a second eyebrow, a second title and an italic subtitle on top of it,
+   so every tab opened with four typographic levels and three sentences of voice
+   before any content. The voice now lives in the hero, which this updates, and
+   the section header keeps only the italic line and the tab's own controls. */
 function _planHeader(eyebrow, title, italic, rightHtml) {
+  const heroTitle = document.querySelector('.plan-hero-title');
+  if (heroTitle) heroTitle.textContent = title;
+  const heroEyebrow = document.querySelector('.plan-hero-eyebrow');
+  if (heroEyebrow) heroEyebrow.textContent = String(eyebrow).split('·')[0].trim() || 'PLANNING';
   return `<div class="plan-dsn-head">
-    <div>
-      <div class="plan-dsn-eyebrow">${escHtml(eyebrow)}</div>
-      <div class="plan-dsn-title">${escHtml(title)}</div>
-      ${italic ? `<div class="plan-dsn-italic">${escHtml(italic)}</div>` : ''}
-    </div>
+    <div>${italic ? `<div class="plan-dsn-italic">${escHtml(italic)}</div>` : ''}</div>
     ${rightHtml || ''}
   </div>`;
 }
@@ -4583,13 +4598,17 @@ function renderPlanReflect() {
     <div class="plan-glass plan-quarter-bar">
       <div class="plan-glass-head">
         <span class="plan-glass-title">Week telemetry</span>
-        <span class="plan-tel">${showUp.days}/7 DAYS SHOWN UP · ${showUp.mve} ON THE SAFETY NET</span>
       </div>
-      <div class="plan-tele-grid">
-        <div><div class="plan-dsn-eyebrow">SHOWN UP</div><div class="plan-tele-val">${showUp.days}/7</div></div>
-        <div><div class="plan-dsn-eyebrow">COMMITMENTS</div><div class="plan-tele-val">${commitsDone}/${commits.length}</div></div>
-        <div><div class="plan-dsn-eyebrow">TASKS DONE</div><div class="plan-tele-val">${wkDone}/${wkTotal}</div></div>
-        <div><div class="plan-dsn-eyebrow">MISSES LOGGED</div><div class="plan-tele-val">${showUp.frictionCount}</div></div>
+      <!-- One display numeral, for the number this page is actually about, and
+           the rest as a quiet line. Four counters at display size meant that on
+           a fresh week the loudest thing on the page was four zeros — and every
+           one of them was also printed in the eyebrow directly above. -->
+      <div class="plan-tele-lead">
+        <div class="plan-tele-val">${showUp.days}<span class="plan-tele-of">/7</span></div>
+        <div>
+          <div class="eyebrow">DAYS SHOWN UP</div>
+          <div class="plan-tele-line">${showUp.mve} on the safety net · ${commitsDone}/${commits.length} commitments met · ${wkDone}/${wkTotal} tasks done · ${showUp.frictionCount} miss${showUp.frictionCount === 1 ? '' : 'es'} logged</div>
+        </div>
       </div>
     </div>
 
@@ -6086,6 +6105,31 @@ function cdxConfirm(msg, { okLabel = 'Delete', okColor = '#ffffff', okBg = 'rgba
   });
 }
 
+/* ── Custom prompt ───────────────────────────────────────
+   Same overlay as cdxConfirm, with the input revealed. The app had exactly one
+   window.prompt() left — a system dialog in the middle of a fully art-directed
+   interface, and the only surface that could not be styled or themed. */
+function cdxPrompt(msg, { okLabel = 'Add', placeholder = '', value = '' } = {}) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('cdx-confirm-overlay');
+    const input   = document.getElementById('cdx-confirm-input');
+    if (!overlay || !input) { resolve(window.prompt(msg, value)); return; }
+    input.style.display = '';
+    input.placeholder = placeholder;
+    input.value = value;
+    const done = ok => {
+      input.style.display = 'none';
+      resolve(ok ? (input.value.trim() || null) : null);
+    };
+    cdxConfirm(msg, { okLabel, okColor: '#ffffff', okBg: 'rgba(255,255,255,0.18)', okBorder: 'rgba(255,255,255,0.4)' })
+      .then(done);
+    setTimeout(() => input.focus(), 60);
+    input.onkeydown = e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('cdx-confirm-ok')?.click(); }
+    };
+  });
+}
+
 /* ── Toast notifications ─────────────────────────────── */
 function showToast(msg, type = 'info', duration = 3000) {
   const container = document.getElementById('cdx-toast-container');
@@ -6269,7 +6313,7 @@ function initData() {
   _msProjUnsub = onSnapshot(query(_uc('milestoneProjects'), orderBy('startDate', 'asc')), snap => {
     MILESTONE_PROJECTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderMilestones();
-    renderTasks(); // re-render task panel so initiative grouping updates
+    renderTasks(); // re-render task panel so commitment grouping updates
     renderCalendar(); // commitment colours drive the global milestone layer
     if (_mainPanel === 'archived') renderArchivedPage();
   });
@@ -6277,7 +6321,7 @@ function initData() {
   _msEventsUnsub = onSnapshot(query(_uc('milestoneEvents'), orderBy('date', 'asc')), snap => {
     MILESTONE_EVENTS = snap.docs.map(d => ({ id: d.id, ...d.data(), activities: d.data().activities || [] }));
     renderMilestones();
-    renderTasks(); // re-render task panel so initiative grouping updates
+    renderTasks(); // re-render task panel so commitment grouping updates
     renderCalendar(); // milestones are a global calendar layer
     window._calMirrorSchedule?.(); // mirror to Apple Calendar (desktop app)
   });
@@ -6409,7 +6453,7 @@ function _buildTaskToProjectMap() {
 }
 
 function _renderTaskGroup(container, tasks, taskProjMap, rowIdxRef) {
-  // Separate tasks into initiative-linked and standalone
+  // Separate tasks into commitment-linked and standalone
   const byProject = {};
   const standalone = [];
   tasks.forEach(task => {
@@ -6422,14 +6466,14 @@ function _renderTaskGroup(container, tasks, taskProjMap, rowIdxRef) {
     }
   });
 
-  // Render standalone tasks as collapsible "Independent" group (only if there are also initiative tasks)
+  // Render standalone tasks as collapsible "Independent" group (only if there are also commitment tasks)
   const hasInitiatives = Object.keys(byProject).length > 0;
   if (standalone.length && hasInitiatives) {
     const storageKey = 'cdx_init_collapsed_independent';
     const isCollapsed = localStorage.getItem(storageKey) !== 'false';
     const indLabel = document.createElement('div');
-    indLabel.className = 'tasks-initiative-label';
-    indLabel.innerHTML = `<span style="margin-right:4px;transition:transform 0.2s;display:inline-block;font-size:10px;${isCollapsed ? '' : 'transform:rotate(90deg)'}">\u203A</span><span class="tasks-initiative-dot" style="background:var(--muted)"></span>Independent<span class="tasks-initiative-count">${standalone.length}</span>`;
+    indLabel.className = 'tasks-commitment-label';
+    indLabel.innerHTML = `<span style="margin-right:4px;transition:transform 0.2s;display:inline-block;font-size:10px;${isCollapsed ? '' : 'transform:rotate(90deg)'}">\u203A</span><span class="tasks-commitment-dot" style="background:var(--muted)"></span>Independent<span class="tasks-commitment-count">${standalone.length}</span>`;
     const indContainer = document.createElement('div');
     indContainer.style.display = isCollapsed ? 'none' : '';
     indLabel.addEventListener('click', () => {
@@ -6446,14 +6490,14 @@ function _renderTaskGroup(container, tasks, taskProjMap, rowIdxRef) {
     standalone.forEach(task => container.appendChild(buildTaskRow(task, rowIdxRef.idx++)));
   }
 
-  // Render initiative sub-groups (collapsed by default)
+  // Render commitment sub-groups (collapsed by default)
   Object.values(byProject).forEach(projGroup => {
     const storageKey = 'cdx_init_collapsed_' + projGroup.projectId;
     const isCollapsed = localStorage.getItem(storageKey) !== 'false'; // collapsed by default
 
     const initLabel = document.createElement('div');
-    initLabel.className = 'tasks-initiative-label';
-    initLabel.innerHTML = `<span style="margin-right:4px;transition:transform 0.2s;display:inline-block;font-size:10px;${isCollapsed ? '' : 'transform:rotate(90deg)'}">\u203A</span><span class="tasks-initiative-dot" style="background:${escAttr(projGroup.projectColor)}"></span>${escHtml(projGroup.projectTitle)}<span class="tasks-initiative-count">${projGroup.tasks.length}</span>`;
+    initLabel.className = 'tasks-commitment-label';
+    initLabel.innerHTML = `<span style="margin-right:4px;transition:transform 0.2s;display:inline-block;font-size:10px;${isCollapsed ? '' : 'transform:rotate(90deg)'}">\u203A</span><span class="tasks-commitment-dot" style="background:${escAttr(projGroup.projectColor)}"></span>${escHtml(projGroup.projectTitle)}<span class="tasks-commitment-count">${projGroup.tasks.length}</span>`;
 
     const initContainer = document.createElement('div');
     initContainer.style.display = isCollapsed ? 'none' : '';
@@ -6646,7 +6690,7 @@ function buildTaskRow(task, idx) {
         const p = PEOPLE.find(p => p.id === id);
         if (!p) return '';
         return `<span class="task-person-badge" style="background:${p.color}18;border-color:${p.color}44;color:${p.color}" title="${escAttr(p.name)}">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:50%;background:${p.color};font-size:6px;font-weight:600;color:#0d0c0a;margin-right:3px">${escHtml(p.initials)}</span>@${escHtml(p.name)}</span>`;
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:50%;background:${p.color};font-size:10px;font-weight:600;color:#0d0c0a;margin-right:3px">${escHtml(p.initials)}</span>@${escHtml(p.name)}</span>`;
       }).join('')
     : '';
 
@@ -7714,7 +7758,7 @@ function renderWeekView(date) {
     const isWeekend = (i === 5 || i === 6); // Sat=5, Sun=6
     const hol = HOLIDAYS[ds];
     html += `<div class="week-day-header${isToday ? ' today' : ''}${isWeekend ? ' weekend' : ''}" data-date="${ds}" style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;${isToday ? 'color:rgba(57,255,20,0.9);text-shadow:0 0 8px rgba(57,255,20,0.4);border-bottom:2px solid rgba(57,255,20,0.45)' : ''}">
-      ${DAYS[i]} ${d.getDate()}${hol ? `<br><span style="font-size:7px;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.12);border-radius:2px;padding:0 2px;display:block">${escHtml(hol.name)}</span>` : ''}
+      ${DAYS[i]} ${d.getDate()}${hol ? `<br><span style="font-size:10px;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.12);border-radius:2px;padding:0 2px;display:block">${escHtml(hol.name)}</span>` : ''}
     </div>`;
   }
   html += `</div>`;
@@ -7930,7 +7974,7 @@ function buildMonthCell(dateStr, isCurrentMonth) {
 
   const holBadge = hol ? `<span class="month-holiday-name">${escHtml(hol.name)}</span>` : '';
   const adBadges = allDayEvs.slice(0,1).map(ev =>
-    `<span style="font-family:var(--font-mono);font-size:7px;color:#fff;background:var(--neon);border-radius:2px;padding:0 3px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px">${escHtml(ev.title)}</span>`
+    `<span style="font-family:var(--font-mono);font-size:10px;color:#fff;background:var(--neon);border-radius:2px;padding:0 3px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px">${escHtml(ev.title)}</span>`
   ).join('');
   const pills = timedEvs.slice(0,2).map(ev => {
     const color = getCatColor(TASKS.find(t => t.id === ev.taskId)?.category);
@@ -8481,7 +8525,7 @@ function initAddTaskForm() {
       const p = PEOPLE.find(p => p.id === id);
       if (!p) return '';
       return `<span class="task-people-pill" style="background:${p.color}18;border-color:${p.color}44;color:${p.color}">
-        <span class="mention-avatar" style="background:${p.color};width:14px;height:14px;font-size:7px">${escHtml(p.initials)}</span>
+        <span class="mention-avatar" style="background:${p.color};width:14px;height:14px;font-size:10px">${escHtml(p.initials)}</span>
         @${escHtml(p.name)}
         <button class="pill-remove" data-remove-person="${escAttr(p.id)}" tabindex="-1">✕</button>
       </span>`;
@@ -9651,7 +9695,7 @@ const CMD_COMMANDS_BASE = [
   { label: 'Toggle Theme',     icon: '◑', action: toggleTheme, keys: '' },
   { label: 'Zen Mode',         icon: '◎', action: () => document.getElementById('left-nav').classList.toggle('collapsed'), keys: '' },
   { label: 'Add Shallow Task', icon: '💬', action: async () => {
-    const title = prompt('Shallow task title:');
+    const title = await cdxPrompt('Add a shallow task', { okLabel: 'Add', placeholder: 'e.g. reply to the vendor email' });
     if (!title?.trim()) return;
     await addTask(title.trim(), 'med', '', _settings.defaultCategory || '', '', 'shallow', []);
   }, keys: '' },
@@ -9666,14 +9710,14 @@ function getCmdCommands() {
     _personColor: p.color,
     _personInitials: p.initials,
   }));
-  const initiativeCmds = MILESTONE_PROJECTS.filter(p => !p.isArchived).map(proj => ({
+  const commitmentCmds = MILESTONE_PROJECTS.filter(p => !p.isArchived).map(proj => ({
     label: `◉ ${proj.title} — tasks`,
     icon: '◉',
     action: () => showInitiativeTasks(proj),
     keys: '',
     _projColor: proj.color,
   }));
-  return [...CMD_COMMANDS_BASE, ...personCmds, ...initiativeCmds];
+  return [...CMD_COMMANDS_BASE, ...personCmds, ...commitmentCmds];
 }
 
 function showInitiativeTasks(proj) {
@@ -9781,7 +9825,7 @@ function renderCmdResults(query) {
   container.innerHTML = filtered.map((c, i) => `
     <div class="cmd-result-item ${i===0?'selected':''}" data-cmd="${i}">
       ${c._personColor
-        ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:${c._personColor};font-size:7px;font-weight:600;color:#0d0c0a;flex-shrink:0">${escHtml(c._personInitials)}</span>`
+        ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:${c._personColor};font-size:10px;font-weight:600;color:#0d0c0a;flex-shrink:0">${escHtml(c._personInitials)}</span>`
         : c._projColor
           ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:${c._projColor};font-size:10px;color:#0d0c0a;flex-shrink:0">◉</span>`
           : `<span class="cmd-result-icon">${c.icon}</span>`}
@@ -11326,7 +11370,7 @@ function renderTasksPage() {
                 <span class="atk-shown" id="atk-shown"></span>
               </div>
               <div class="atk-sortwrap">
-                <span class="atk-eyebrow">ORBIT</span>
+                <span class="atk-eyebrow">COMMITMENT</span>
                 <select class="atk-commit-sel" id="atk-commit-sel"></select>
               </div>
               <div class="atk-sortwrap">
@@ -12069,13 +12113,20 @@ function _dashRenderRituals() {
   const logDone = id => !!(typeof _habitLogs !== 'undefined' && _habitLogs[ds]?.completions?.[id]);
 
   if (!habits.length && !morning.length && !evening.length) {
-    el.innerHTML = `<div class="dash-eyebrow">TODAY'S RITUALS</div>
-      <div class="dash-nn-title muted" style="font-size:14px">No rituals yet.</div>
-      <div class="dash-nn-meta">Add habits &amp; routines in the Habits page.</div>`;
+    el.innerHTML = `<div class="dash-eyebrow">TODAY</div>
+      <div class="dash-nn-title muted" style="font-size:14px">No habits or routines yet.</div>
+      <div class="dash-nn-meta">Add them on the Habits page.</div>`;
     return;
   }
 
+  /* The counter used to read habits only while the card also listed and
+     accepted ticks on the routine steps below, so ticking one left the count
+     unchanged. It counts everything the card can check off. */
   const habitDone = habits.filter(h => logDone(h.id)).length;
+  const stepKeys = [...morning.map((_, i) => 'm' + i), ...evening.map((_, i) => 'e' + i)];
+  const stepDone = stepKeys.filter(k => routineDone[k]).length;
+  const allDone = habitDone + stepDone;
+  const allTotal = habits.length + stepKeys.length;
   const rows = [];
   habits.forEach(h => {
     const done = logDone(h.id);
@@ -12102,7 +12153,7 @@ function _dashRenderRituals() {
   };
 
   el.innerHTML =
-    `<div class="dash-eyebrow">TODAY'S RITUALS · ${habitDone}/${habits.length}</div>` +
+    `<div class="dash-eyebrow">TODAY'S HABITS &amp; ROUTINES · ${allDone}/${allTotal}</div>` +
     (habits.length ? `<div class="dash-ritual-list">${rows.join('')}</div>` : '') +
     routineBlock('MORNING', morning, 'morning') +
     routineBlock('EVENING', evening, 'evening');
@@ -12662,8 +12713,10 @@ window.initMindMap = (function(){
     });
     document.getElementById('mm-btn-delete')?.addEventListener('click', deleteSelected);
     document.getElementById('mm-btn-center')?.addEventListener('click', centerView);
-    document.getElementById('mm-btn-clear')?.addEventListener('click', () => {
-      if (!nodes.length || confirm('Clear all nodes?')) { nodes=[]; edges=[]; selected=null; connectFrom=null; draw(); }
+    document.getElementById('mm-btn-clear')?.addEventListener('click', async () => {
+      if (nodes.length && !(await cdxConfirm('Clear every node on this map?',
+            { okLabel: 'Clear', okColor: '#e05555', okBg: 'rgba(224,85,85,0.18)', okBorder: 'rgba(224,85,85,0.4)' }))) return;
+      nodes=[]; edges=[]; selected=null; connectFrom=null; draw();
     });
 
     // Initial state — seed with a root node
@@ -12740,7 +12793,7 @@ const DRILL_PROMPT_BANK = [
     context_setup: 'A stakeholder wants to add real-time currency conversion to next sprint — a two-line request that\'s actually a multi-week integration.',
     scenario_text: 'Respond, setting expectations on what "adding" this actually means.' },
   { id: 'rd03', category: 'roadmap_defense', difficulty: 3,
-    context_setup: 'Three VPs each believe their initiative is "the top priority" for your team next quarter. You can fully deliver exactly one.',
+    context_setup: 'Three VPs each believe their commitment is "the top priority" for your team next quarter. You can fully deliver exactly one.',
     scenario_text: 'Write the message to all three that sets the record straight on sequencing.' },
   { id: 'rd04', category: 'roadmap_defense', difficulty: 2,
     context_setup: 'Leadership wants to cut your technical-debt sprint to fund a new dashboard feature demo for the board next month.',
@@ -13768,7 +13821,7 @@ function _hxToday() {
       `<div style="display:flex;gap:8px"><button class="hx-liquid" data-hx-routines>◷ Routines</button><button class="hx-liquid" data-hx-gotab="builder">＋ Design a habit</button></div>`)}
     <div class="hx-grid-15">
       <div class="hx-card" style="padding:22px">
-        <div class="hx-ritual-head"><span class="hx-ritual-title">Daily ritual</span>
+        <div class="hx-ritual-head"><span class="hx-ritual-title">Today's habits</span>
           <span class="hx-eyebrow">${kept} / ${dueActive.length} KEPT</span></div>
         ${rows}
       </div>
@@ -13947,7 +14000,7 @@ function _hxProgress() {
           <path d="${path} L 400 160 L 0 160 Z" fill="url(#hx-curve)"/>
           ${pts.map(p => `<circle cx="${p[0].toFixed(0)}" cy="${p[1].toFixed(0)}" r="3" fill="#fff" style="filter:drop-shadow(0 0 4px rgba(255,255,255,.6))"/>`).join('')}
         </svg>
-        <div style="display:flex;justify-content:space-between;margin-top:6px">${['W1', 'W2', 'W3', 'W4', 'NOW'].map(w => `<span class="hx-tel" style="font-size:9px;color:rgba(255,255,255,.4)">${w}</span>`).join('')}</div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px">${['W1', 'W2', 'W3', 'W4', 'NOW'].map(w => `<span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.4)">${w}</span>`).join('')}</div></div>
     </div>`;
 }
 
@@ -14058,7 +14111,7 @@ function _hxBehaviours() {
     if (log && log.completions) { const n = Object.keys(log.completions).length; dow[d.getDay()] += n; dowMax.v = Math.max(dowMax.v, dow[d.getDay()]); } }
   const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   const todHtml = DOW.map((lbl, i) => { const inten = dow[i] / dowMax.v;
-    return `<div class="hx-tod-col"><div class="hx-tod-bar" style="background:rgba(255,255,255,${(0.05 + inten * 0.4).toFixed(3)})${inten > 0.75 ? ';box-shadow:0 0 10px rgba(255,255,255,.2)' : ''}"></div><span class="hx-tel" style="font-size:8px;color:rgba(255,255,255,.35)">${lbl}</span></div>`; }).join('');
+    return `<div class="hx-tod-col"><div class="hx-tod-bar" style="background:rgba(255,255,255,${(0.05 + inten * 0.4).toFixed(3)})${inten > 0.75 ? ';box-shadow:0 0 10px rgba(255,255,255,.2)' : ''}"></div><span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.35)">${lbl}</span></div>`; }).join('');
 
   // strongest pairs — Jaccard co-occurrence over 60 days
   const pairs = [];
@@ -14193,7 +14246,7 @@ function renderHabitsX() {
 
   panel.innerHTML = `<div class="hx-root">
     <div class="hx-topbar">
-      <div><div class="hx-eyebrow">HABITS</div><div class="hx-h1">Ritual engine</div></div>
+      <div><div class="hx-eyebrow">HABITS</div><div class="hx-h1">Habit engine</div></div>
       <div class="hx-spacer"></div>
       <div class="hx-tabs">${_HX_TABS.map(t => `<button class="hx-tab${_hxTab === t ? ' active' : ''}" data-hx-tab="${t}">${t}</button>`).join('')}</div>
     </div>
@@ -17391,7 +17444,10 @@ function renderPlanHorizons() {
       </div>
       <div class="horizon-body">
         ${current.length ? current.map(_goalCard).join('')
-          : `<div class="plan-empty">No ${h.label.toLowerCase()} goal for ${escHtml(goalPeriodLabel(nowP[h.id]))} yet.</div>`}
+          : `<div class="horizon-empty" data-goal-add="${h.id}">
+               <div class="horizon-empty-text">Nothing set for ${escHtml(goalPeriodLabel(nowP[h.id]))}.</div>
+               <div class="horizon-empty-cta">＋ Set a ${escHtml(h.label.toLowerCase())} goal</div>
+             </div>`}
         ${other.length ? `<div class="horizon-other-head">Closed &amp; past · ${other.length}</div>
           ${other.map(_goalCard).join('')}` : ''}
       </div>
@@ -17446,14 +17502,16 @@ function _wireHorizons(body) {
     // A goal can be closed with criteria outstanding — it is your call — but
     // the app says plainly what is being left behind.
     if (crit.total && crit.done < crit.total &&
-        !confirm(`${crit.total - crit.done} of ${crit.total} criteria are still open. Mark achieved anyway?`)) return;
+        !(await cdxConfirm(`${crit.total - crit.done} of ${crit.total} criteria are still open. Mark it achieved anyway?`,
+          { okLabel: 'Mark achieved', okColor: 'rgb(53,249,47)', okBg: 'rgba(53,249,47,0.14)', okBorder: 'rgba(53,249,47,0.45)' }))) return;
     await goalSetStatus(el.dataset.goalDone, 'done');
     showToast('Goal achieved', 'success');
   });
 
   body.querySelectorAll('[data-goal-drop]').forEach(el => el.onclick = async e => {
     e.stopPropagation();
-    if (!confirm('Drop this goal? It stays on the record as dropped.')) return;
+    if (!(await cdxConfirm('Drop this goal? It stays on the record as dropped.',
+          { okLabel: 'Drop it', okColor: '#e05555', okBg: 'rgba(224,85,85,0.18)', okBorder: 'rgba(224,85,85,0.4)' }))) return;
     await goalSetStatus(el.dataset.goalDrop, 'dropped');
   });
 
@@ -17539,26 +17597,77 @@ function _goalRenderLinks(g) {
   if (cEl) {
     const commits = (typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : [])
       .filter(p => !p.isArchived);
-    cEl.innerHTML = commits.length ? commits.map(c => {
+    /* A "＋ New" chip rather than a sentence telling you to go elsewhere. This
+       panel used to dead-end: discover you need a commitment, close the goal,
+       change tab, create it, come back, find the goal, reopen it, link. The
+       commitment modal already exists and already takes these fields. */
+    cEl.innerHTML = commits.map(c => {
       const on = (g.commitmentIds || []).includes(c.id);
       return `<button class="goal-link-chip${on ? ' on' : ''}" data-gm-commit="${escAttr(c.id)}">
         <span class="goal-link-dot" style="background:${c.color || 'rgba(255,255,255,.5)'}"></span>${escHtml(c.title)}</button>`;
-    }).join('') : `<div class="plan-ms-empty">No commitments yet — create one on the Commitments tab.</div>`;
+    }).join('') + `<button class="goal-link-chip new" data-gm-new-commit>＋ New commitment</button>`;
     cEl.querySelectorAll('[data-gm-commit]').forEach(b => b.onclick = () =>
       _goalToggleLink('commitmentIds', b.dataset.gmCommit));
+    cEl.querySelector('[data-gm-new-commit]')?.addEventListener('click', () => _goalCreateAndLink('commitment'));
   }
   const hEl = document.getElementById('goal-habit-list');
   if (hEl) {
     const habits = (typeof _habits !== 'undefined' ? _habits : [])
       .filter(h => h.status !== 'archived' && h.status !== 'graduated');
-    hEl.innerHTML = habits.length ? habits.map(h => {
+    hEl.innerHTML = habits.map(h => {
       const on = (g.habitIds || []).includes(h.id);
       return `<button class="goal-link-chip${on ? ' on' : ''}" data-gm-habit="${escAttr(h.id)}">
         ${escHtml(habitActions(h).standard)}</button>`;
-    }).join('') : `<div class="plan-ms-empty">No habits yet — design one on the Habits page.</div>`;
+    }).join('') + `<button class="goal-link-chip new" data-gm-new-habit>＋ New habit</button>`;
+    hEl.querySelector('[data-gm-new-habit]')?.addEventListener('click', () => _goalCreateAndLink('habit'));
     hEl.querySelectorAll('[data-gm-habit]').forEach(b => b.onclick = () =>
       _goalToggleLink('habitIds', b.dataset.gmHabit));
   }
+}
+
+/* Create a commitment or a habit without leaving the goal, and link it when it
+   comes back. Both are made through the screens that already own them, so there
+   is one creation path per entity and no second field set to drift. The goal
+   modal steps aside while that happens and reopens on top afterwards. */
+async function _goalCreateAndLink(kind) {
+  const goalId = _goalEditId;
+  if (!goalId) return;
+  const before = kind === 'commitment'
+    ? new Set((MILESTONE_PROJECTS || []).map(p => p.id))
+    : new Set((_habits || []).map(h => h.id));
+
+  closeOverlay('goal-modal');
+  if (kind === 'commitment') {
+    openMsProjectModal();
+  } else {
+    showMainPanel('habits');
+    setTimeout(() => window.initHabitsX?.('builder'), 60);
+  }
+
+  /* Watch for the new record rather than threading a callback through two
+     modules. Gives up after two minutes so an abandoned create does not leave
+     a timer running. */
+  const started = Date.now();
+  const poll = setInterval(() => {
+    const now = kind === 'commitment' ? (MILESTONE_PROJECTS || []) : (_habits || []);
+    const fresh = now.find(x => !before.has(x.id));
+    if (fresh) {
+      clearInterval(poll);
+      const g = GOALS.find(x => x.id === goalId);
+      if (g) {
+        const field = kind === 'commitment' ? 'commitmentIds' : 'habitIds';
+        const next = [...(g[field] || []), fresh.id];
+        g[field] = next;
+        updateGoal(goalId, { [field]: next }).then(() => {
+          showToast(`Linked to "${escHtml(g.title || 'the goal')}"`, 'success');
+          showMainPanel('milestones');
+          setTimeout(() => { showPlanTab2('horizons'); setTimeout(() => openGoalModal(goalId), 80); }, 60);
+        });
+      }
+    } else if (Date.now() - started > 120000) {
+      clearInterval(poll);
+    }
+  }, 500);
 }
 
 async function _goalToggleLink(field, id) {
@@ -17642,7 +17751,8 @@ function initGoalsModal() {
 
   document.getElementById('goal-delete')?.addEventListener('click', async () => {
     if (!_goalEditId) return;
-    if (!confirm('Delete this goal? Goals beneath it are kept and unlinked.')) return;
+    if (!(await cdxConfirm('Delete this goal? Goals beneath it are kept and unlinked.',
+          { okLabel: 'Delete', okColor: '#e05555', okBg: 'rgba(224,85,85,0.18)', okBorder: 'rgba(224,85,85,0.4)' }))) return;
     await deleteGoal(_goalEditId);
     closeOverlay('goal-modal');
     window._refreshPlanDesign?.();

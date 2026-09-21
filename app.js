@@ -1165,6 +1165,35 @@ function habitActions(h) {
    the "keystone habit" panel could name a habit's minimum. */
 function _hName(h) { return habitActions(h).standard; }
 
+/* ══ ONE ENERGY SCALE ════════════════════════════════════════════════════
+   Capacity was recorded three ways on three scales: the morning ritual wrote
+   'high' | 'med' | 'low' to habitLogs[ds].dailyEnergy, the retired Today
+   check-in wrote a 1–5 integer to habitLogs[ds].energy, and the Reflect
+   forecast writes 'high' | 'mid' | 'low' per weekday. Nothing could be
+   compared, and when the check-in went with the old habits UI the Insights
+   Energy tab lost its only input and started reporting "—" forever.
+
+   One scale: high | mid | low. This reads whichever field a day happens to
+   have and answers on that scale, so historic days still count and the two
+   spellings of the middle value stop mattering. (task.energyType — deep /
+   shallow / admin — is a different question: the kind of work, not how much
+   capacity you have. It stays separate.) */
+const ENERGY_LEVELS = ['low', 'mid', 'high'];
+
+function energyCanonical(v) {
+  if (v === 'med' || v === 'medium') return 'mid';
+  if (v === 'high' || v === 'mid' || v === 'low') return v;
+  const n = Number(v);
+  if (!n) return null;
+  return n <= 2 ? 'low' : n === 3 ? 'mid' : 'high';   // legacy 1–5 check-in
+}
+
+function dayEnergy(ds) {
+  const log = (typeof _habitLogs !== 'undefined') ? _habitLogs[ds] : null;
+  if (!log) return null;
+  return energyCanonical(log.dailyEnergy) || energyCanonical(log.energy);
+}
+
 /* ══ EFFORT LEVEL — the MVE safety net, recorded ═════════════════════════
    One value per habit per day: 'full' or 'mve'. Without it the log is binary
    and the heatmap cannot tell a day you carried from a day you protected,
@@ -2649,13 +2678,12 @@ async function addMilestoneActivity(eventId, text, taskId=null) {
   let realTaskId = taskId;
   if (!taskId && text) {
     const { addDoc, serverTimestamp } = window.CDX_FB;
-    const ref = await addDoc(_uc('tasks'), {
-      title: text, done: false, priority: 'med',
-      dueDate: ev.date || null, category: _settings.defaultCategory || null,
-      calEventId: null, subtasks: [],
+    const ref = await addDoc(_uc('tasks'), newTaskDoc({
+      title: text,
+      dueDate: ev.date || null,
+      category: _settings.defaultCategory || null,
       projectId: ev.projectId || null,
-      createdAt: serverTimestamp()
-    });
+    }));
     realTaskId = ref.id;
   } else if (taskId && ev.projectId) {
     // Stamp projectId on existing task if not already set
@@ -3083,7 +3111,7 @@ async function _commitmentAddTask(projId, title, due) {
       await updateTask(existing.id, { projectId: projId, dueDate: existing.dueDate || due });
     } else {
       const { addDoc, serverTimestamp } = window.CDX_FB;
-      await addDoc(_uc('tasks'), { title, done: false, dueDate: due, projectId: projId, priority: 'med', createdAt: serverTimestamp() });
+      await addDoc(_uc('tasks'), newTaskDoc({ title, dueDate: due || null, projectId: projId }));
     }
     showToast('Task added to commitment', 'success');
     return true;
@@ -3516,12 +3544,7 @@ function initMilestonesPanel() {
       const activitiesToSave = await Promise.all(_msNewActivities.map(async a => {
         if (!a.taskId && a.text) {
           const { addDoc, serverTimestamp } = window.CDX_FB;
-          const ref = await addDoc(_uc('tasks'), {
-            title: a.text, done: false, priority: 'med',
-            dueDate: date || null, category: null,
-            calEventId: null, subtasks: [],
-            createdAt: serverTimestamp()
-          });
+          const ref = await addDoc(_uc('tasks'), newTaskDoc({ title: a.text, dueDate: date || null }));
           return { ...a, taskId: ref.id };
         }
         return a;
@@ -4914,12 +4937,9 @@ async function confirmOrbAddTask() {
     color: getCatColor('personal'), createdAt: serverTimestamp()
   });
   // Create linked task
-  await addDoc(_uc('tasks'), {
-    title, done: false, priority: 'med',
-    dueDate: today, category: 'personal',
-    calEventId: evRef.id, subtasks: [],
-    createdAt: serverTimestamp()
-  });
+  await addDoc(_uc('tasks'), newTaskDoc({
+    title, dueDate: today, category: 'personal', calEventId: evRef.id,
+  }));
   closeOverlay('orb-add-task-modal');
 }
 
@@ -6097,6 +6117,34 @@ function waitForFirebase(fn) {
 }
 
 /* ══ USER-SCOPED FIRESTORE HELPERS ══ */
+/* One shape for a task, whatever door created it.
+   There were five creation paths — the Tasks page, the commitment card's inline
+   add, the commitment modal, a milestone activity, and the orb — and each wrote
+   a different subset of fields. A task made through one of them could arrive
+   without scheduleCount, recurrence, energyType or people, so readers that
+   assume those exist got undefined. Every path now spreads this and overrides
+   only what it actually knows. */
+function newTaskDoc(overrides = {}) {
+  const { serverTimestamp } = window.CDX_FB;
+  return {
+    title: '',
+    done: false,
+    priority: 'med',
+    dueDate: null,
+    doneDate: null,
+    category: null,
+    recurrence: null,
+    energyType: null,
+    people: null,
+    projectId: null,
+    calEventId: null,
+    subtasks: [],
+    scheduleCount: 0,
+    createdAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
 function _uc(name) { // user-scoped collection ref
   const uid = window.CDX_USER?.uid;
   if (!uid) throw new Error('Not authenticated');
@@ -6902,17 +6950,14 @@ async function addTask(title, priority = 'med', dueDate = '', category = '', rec
   if (!title?.trim()) { showToast('Task title cannot be empty', 'error'); return; }
   const { addDoc, serverTimestamp } = window.CDX_FB;
   try {
-    await addDoc(_uc('tasks'), {
-      title, done: false, priority,
+    await addDoc(_uc('tasks'), newTaskDoc({
+      title, priority,
       dueDate: dueDate || null,
       category: category || null,
       recurrence: recurrence || null,
       energyType: energyType || null,
       people: people.length ? people : null,
-      calEventId: null, subtasks: [],
-      scheduleCount: 0,
-      createdAt: serverTimestamp()
-    });
+    }));
     showToast('Task added', 'success');
   } catch (err) {
     console.error('addTask error:', err);
@@ -6929,9 +6974,8 @@ async function duplicateTask(taskId) {
   if (!src) return;
   const { addDoc, serverTimestamp } = window.CDX_FB;
   try {
-    const ref = await addDoc(_uc('tasks'), {
+    const ref = await addDoc(_uc('tasks'), newTaskDoc({
       title: src.title,
-      done: false,
       priority: src.priority || 'med',
       dueDate: src.dueDate || null,
       category: src.category || null,
@@ -6942,10 +6986,7 @@ async function duplicateTask(taskId) {
       notes: src.notes || null,
       // Fresh copy: subtasks reset to not-done, no calendar link, no time logged
       subtasks: (src.subtasks || []).map(s => ({ ...s, id: crypto.randomUUID(), done: false })),
-      calEventId: null,
-      scheduleCount: 0,
-      createdAt: serverTimestamp()
-    });
+    }));
     showToast('Task duplicated', 'success');
     // Select the new copy in the Tasks page detail pane if we're there
     if (_mainPanel === 'alltasks') { _atkSelectedId = ref.id; }
@@ -8239,7 +8280,7 @@ async function confirmQuickCalEvent() {
   const { addDoc, serverTimestamp } = window.CDX_FB;
   if (!window.CDX_USER?.uid) return;
   try {
-    const taskDoc = { title, category, done: false, dueDate: date, createdAt: serverTimestamp() };
+    const taskDoc = newTaskDoc({ title, category, dueDate: date });
     if (projectId) taskDoc.projectId = projectId; // link the task to a commitment
     const taskRef = await addDoc(_uc('tasks'), taskDoc);
     if (isAllDay) {
@@ -10228,7 +10269,7 @@ function initDailyRitual() {
       if (typeof _habitLogs !== 'undefined') {
         _habitLogs[ds] = _habitLogs[ds] || { date: ds, completions: {} };
         if (focus) _habitLogs[ds].nonNegotiable = focus;
-        if (_ritualEnergy) _habitLogs[ds].dailyEnergy = _ritualEnergy;
+        if (_ritualEnergy) _habitLogs[ds].dailyEnergy = (typeof energyCanonical === 'function') ? energyCanonical(_ritualEnergy) : _ritualEnergy;
       }
       const { doc, setDoc } = window.CDX_FB;
       const payload = { date: ds };
@@ -12171,6 +12212,7 @@ function renderDashboardBoard() {
   _dashRenderRituals();
   _dashRenderTasks();
   window._dashRenderCommitments?.();
+  window._dashRenderWelcome?.();
   window._dashRenderNote?.(); // Valerie daily note (desktop → iCloud vault)
   if (navDir) mStagger(document.querySelectorAll('#dash-board .dash-side .dash-card'), navDir);
 }
@@ -15028,47 +15070,56 @@ function _insxFocus() {
 /* ── TAB: ENERGY ───────────────────────────────────────────────────────── */
 function _insxEnergy() {
   const n = _insxDays(), dates = _insxDateList(n);
-  const moodDays = dates.map(ds => ({ ds, mood: _habitLogs[ds]?.mood || 0, energy: _habitLogs[ds]?.energy || 0 })).filter(d => d.mood || d.energy);
-  const avgMood = moodDays.length ? (moodDays.reduce((s, d) => s + d.mood, 0) / moodDays.filter(d => d.mood).length) : 0;
-  const avgEnergy = moodDays.length ? (moodDays.reduce((s, d) => s + d.energy, 0) / moodDays.filter(d => d.energy).length) : 0;
+  /* Reads the canonical scale (see dayEnergy), so the morning ritual's answer
+     counts and historic 1–5 check-ins still map on. This used to read
+     habitLogs[].energy alone, whose only input went with the old habits UI —
+     the tab has been showing "—" ever since. */
+  const levels = dates.map(ds => ({ ds, level: (typeof dayEnergy === 'function') ? dayEnergy(ds) : null }))
+                      .filter(d => d.level);
+  const SCORE = { low: 1, mid: 2, high: 3 };
+  const avgScore = levels.length ? levels.reduce((s, d) => s + SCORE[d.level], 0) / levels.length : 0;
+  const avgLabel = !avgScore ? '—' : avgScore >= 2.5 ? 'High' : avgScore >= 1.75 ? 'Mid' : 'Low';
+  const moodDays = levels;
+  const counts = { high: 0, mid: 0, low: 0 };
+  levels.forEach(d => counts[d.level]++);
 
   const rail = _insxStatRail([
-    { label: 'AVG MOOD', value: avgMood ? avgMood.toFixed(1) + '/5' : '—' },
-    { label: 'AVG ENERGY', value: avgEnergy ? avgEnergy.toFixed(1) + '/5' : '—' },
-    { label: 'CHECK-INS', value: `${moodDays.length}/${n}d` },
+    { label: 'TYPICAL ENERGY', value: avgLabel },
+    { label: 'HIGH DAYS', value: `${counts.high}/${levels.length || 0}` },
+    { label: 'LOW DAYS', value: `${counts.low}/${levels.length || 0}` },
+    { label: 'LOGGED', value: `${levels.length}/${n}d` },
     { label: 'FOCUS HRS', value: _insxFmtHrs(dates.reduce((s, ds) => s + _insxFocusSecsOn(ds), 0)) },
   ]);
 
-  if (!moodDays.length) {
-    return `${_insxSection('ENERGY · THE HUMAN LAYER', 'You are a circadian animal.', 'Log mood & energy on the Habits “Today” tab to light this up.')}${rail}
-      <div class="insx2-card insx2-quote"><div class="insx2-eyebrow">NO CHECK-INS YET</div><div class="insx2-quote-txt">Add a daily mood/energy check-in on the Habits page and this tab traces it against what you shipped.</div></div>`;
+  if (!levels.length) {
+    return `${_insxSection('ENERGY · THE HUMAN LAYER', 'You are a circadian animal.', 'Answer the morning check-in and this tab traces your capacity against what you shipped.')}${rail}
+      <div class="insx2-card insx2-quote"><div class="insx2-eyebrow">NOTHING LOGGED YET</div><div class="insx2-quote-txt">The morning check-in asks how much you have today. A few days of that and the pattern here is worth reading.</div></div>`;
   }
 
   // mood × focus line (real, scaled)
   const labels = dates.map((ds, i) => (i === 0 || i === dates.length - 1 || i % Math.ceil(n / 5) === 0) ? new Date(ds + 'T00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase() : '');
   const chart = _insxLineChart([
-    { points: dates.map(ds => _habitLogs[ds]?.mood || 0), color: 'rgba(255,255,255,.7)' },
+    { points: dates.map(ds => SCORE[(typeof dayEnergy === 'function') ? dayEnergy(ds) : null] || 0), color: 'rgba(255,255,255,.7)' },
     { points: dates.map(ds => +(_insxFocusSecsOn(ds) / 3600).toFixed(2)), color: _INSX_GREEN },
   ], 220, labels);
 
-  // mood distribution
-  const buckets = {}; moodDays.forEach(d => { if (d.mood) buckets[d.mood] = (buckets[d.mood] || 0) + 1; });
-  const moodLabels = { 1: 'Low', 2: 'Flat', 3: 'Steady', 4: 'Good', 5: 'Great' };
-  const totMood = Object.values(buckets).reduce((a, b) => a + b, 0) || 1;
-  const dist = [5, 4, 3, 2, 1].filter(k => buckets[k]).map(k => {
-    const pct = Math.round(buckets[k] / totMood * 100);
-    return `<div><div class="insx2-kh-top"><span>${moodLabels[k]}</span><span class="insx2-tel">${pct}%</span></div><div class="insx2-bar"><div class="insx2-bar-fill" style="width:${pct}%"></div></div></div>`;
+  // how the days split across the scale
+  const totLevels = levels.length || 1;
+  const levelLabels = { high: 'High', mid: 'Mid', low: 'Low' };
+  const dist = ['high', 'mid', 'low'].filter(k => counts[k]).map(k => {
+    const pct = Math.round(counts[k] / totLevels * 100);
+    return `<div><div class="insx2-kh-top"><span>${levelLabels[k]}</span><span class="insx2-tel">${pct}%</span></div><div class="insx2-bar"><div class="insx2-bar-fill" style="width:${pct}%"></div></div></div>`;
   }).join('');
 
   return `
-    ${_insxSection('ENERGY · THE HUMAN LAYER', 'You are a circadian animal.', 'Mood & energy check-ins, traced against what you shipped.')}
+    ${_insxSection('ENERGY · THE HUMAN LAYER', 'You are a circadian animal.', 'What you had, traced against what you shipped.')}
     ${rail}
     <div class="insx2-card">
-      <div class="insx2-card-head"><div><div class="insx2-eyebrow">MOOD × FOCUS · ${n}D</div><div class="insx2-card-title">Energy and output, side by side</div></div>
-        <div class="insx2-legend"><span><span class="insx2-dot" style="background:rgba(255,255,255,.7)"></span>MOOD</span><span><span class="insx2-dot" style="background:${_INSX_GREEN}"></span>FOCUS HRS</span></div></div>
+      <div class="insx2-card-head"><div><div class="insx2-eyebrow">ENERGY × FOCUS · ${n}D</div><div class="insx2-card-title">Capacity and output, side by side</div></div>
+        <div class="insx2-legend"><span><span class="insx2-dot" style="background:rgba(255,255,255,.7)"></span>ENERGY</span><span><span class="insx2-dot" style="background:${_INSX_GREEN}"></span>FOCUS HRS</span></div></div>
       ${chart}
     </div>
-    <div class="insx2-card"><div class="insx2-eyebrow">MOOD DISTRIBUTION</div><div class="insx2-card-title">How you felt, shaped</div><div class="insx2-kh">${dist}</div></div>`;
+    <div class="insx2-card"><div class="insx2-eyebrow">HOW THE DAYS SPLIT</div><div class="insx2-card-title">High, mid and low</div><div class="insx2-kh">${dist}</div></div>`;
 }
 
 /* ── TAB: PATTERNS ─────────────────────────────────────────────────────── */
@@ -15492,21 +15543,60 @@ window.renderInsightsX = renderInsightsX;
   async function _renderCaptures(body) {
     const invoke = _invoke();
     body.innerHTML =
-      `<div class="dash-note-caps-hint">One running inbox for every capture — clean it out as you go.</div>
+      `<div class="dash-note-caps-hint">One running inbox for every capture. Turn a line into a task, or clear it.</div>
+       <div class="dash-cap-lines" id="dash-cap-lines"></div>
        <textarea class="dash-note-textarea dash-note-caps" id="dash-cap-text" spellcheck="true" placeholder="Nothing captured yet. Use the iPhone Action Button to add here."></textarea>`;
     const ta = body.querySelector('#dash-cap-text');
     let content = '';
     try { content = (await invoke('read_capture_file')) || ''; } catch (e) {}
     _capContent = content;
     ta.value = content;
-    ta.addEventListener('input', () => {
-      _capContent = ta.value; _status('Saving…');
+
+    const save = () => {
+      _status('Saving…');
       clearTimeout(_capSaveTimer);
       _capSaveTimer = setTimeout(async () => {
         try { await invoke('write_capture_file', { content: _capContent }); _status('Saved'); }
         catch (e) { _status('Save failed'); console.warn('capture save:', e); }
       }, 600);
-    });
+    };
+    ta.addEventListener('input', () => { _capContent = ta.value; save(); _renderCapLines(); });
+
+    /* Triage in place. The inbox was a plain text box that nothing else in the
+       app read, so anything captured on the phone had to be retyped as a task
+       by hand. Each non-empty line now offers one click to become a task and
+       one to drop it, and the line leaves the file either way. */
+    function _renderCapLines() {
+      const wrap = body.querySelector('#dash-cap-lines');
+      if (!wrap) return;
+      const lines = (_capContent || '').split('\n')
+        .map((raw, i) => ({ i, raw, text: raw.replace(/^[-*\u2022\s\[\]xX]+/, '').trim() }))
+        .filter(l => l.text);
+      if (!lines.length) { wrap.innerHTML = ''; return; }
+      wrap.innerHTML = lines.map(l => `
+        <div class="dash-cap-row" data-cap-line="${l.i}">
+          <span class="dash-cap-text">${escHtml(l.text)}</span>
+          <button class="dash-cap-btn" data-cap-task="${l.i}" title="Make this a task">＋ Task</button>
+          <button class="dash-cap-btn drop" data-cap-drop="${l.i}" title="Remove this line">✕</button>
+        </div>`).join('');
+
+      const dropLine = idx => {
+        const all = (_capContent || '').split('\n');
+        all.splice(idx, 1);
+        _capContent = all.join('\n');
+        ta.value = _capContent;
+        save(); _renderCapLines();
+      };
+      wrap.querySelectorAll('[data-cap-task]').forEach(b => b.onclick = async () => {
+        const idx = +b.dataset.capTask;
+        const line = lines.find(l => l.i === idx);
+        if (!line) return;
+        if (typeof addTask === 'function') await addTask(line.text);
+        dropLine(idx);
+      });
+      wrap.querySelectorAll('[data-cap-drop]').forEach(b => b.onclick = () => dropLine(+b.dataset.capDrop));
+    }
+    _renderCapLines();
   }
 
   function _setEyebrow(label) {
@@ -16776,14 +16866,9 @@ async function _dashAddCommitTask(projId, title) {
   const proj = (MILESTONE_PROJECTS || []).find(p => p.id === projId);
   const { addDoc, serverTimestamp } = window.CDX_FB;
   try {
-    await addDoc(_uc('tasks'), {
-      title: title.trim(), done: false, priority: 'med',
-      dueDate: null, category: proj?.category || null,
-      recurrence: null, energyType: null, people: null,
-      calEventId: null, subtasks: [], scheduleCount: 0,
-      projectId: projId,
-      createdAt: serverTimestamp(),
-    });
+    await addDoc(_uc('tasks'), newTaskDoc({
+      title: title.trim(), category: proj?.category || null, projectId: projId,
+    }));
     showToast('Added to ' + (proj?.title || 'commitment'), 'success');
   } catch (err) {
     console.error('commitment task add:', err);
@@ -16967,6 +17052,74 @@ function _dashRenderCommitments() {
   });
 }
 window._dashRenderCommitments = _dashRenderCommitments;
+
+/* ══ FIRST RUN ═══════════════════════════════════════════════════════════
+   Not a wizard — a card that names the chain and takes you to the first step
+   of it. It appears only when the app is genuinely empty and goes for good
+   once dismissed or once anything exists, so it cannot get in the way of
+   someone who has already started. */
+const _DASH_WELCOME_KEY = 'cdx_welcome_dismissed';
+
+function _dashRenderWelcome() {
+  const el = document.getElementById('dash-welcome');
+  if (!el) return;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(_DASH_WELCOME_KEY) === '1'; } catch {}
+  const hasAnything =
+    (typeof GOALS !== 'undefined' && GOALS.length) ||
+    (typeof MILESTONE_PROJECTS !== 'undefined' && MILESTONE_PROJECTS.filter(p => !p.isArchived).length) ||
+    (typeof _habits !== 'undefined' && _habits.filter(h => h.status !== 'archived' && h.status !== 'graduated').length);
+  if (dismissed || hasAnything) { el.style.display = 'none'; return; }
+
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="dash-welcome-head">
+      <div>
+        <div class="eyebrow">WELCOME</div>
+        <div class="dash-welcome-title">Four layers, top to bottom.</div>
+      </div>
+      <button class="dash-welcome-x" id="dash-welcome-x" title="Dismiss">✕</button>
+    </div>
+    <div class="dash-welcome-chain">
+      <div class="dash-welcome-step" data-welcome-go="goal">
+        <span class="dash-welcome-n">01</span>
+        <div><div class="dash-welcome-h">Goal</div>
+          <div class="dash-welcome-b">What you are trying to make true, over a quarter or a year. You tick it off yourself.</div></div>
+      </div>
+      <div class="dash-welcome-step" data-welcome-go="commitment">
+        <span class="dash-welcome-n">02</span>
+        <div><div class="dash-welcome-h">Commitment</div>
+          <div class="dash-welcome-b">How you intend to get there. Milestones and the tasks under them.</div></div>
+      </div>
+      <div class="dash-welcome-step" data-welcome-go="habit">
+        <span class="dash-welcome-n">03</span>
+        <div><div class="dash-welcome-h">Habit</div>
+          <div class="dash-welcome-b">The daily show-up, with a smaller version for the days you have nothing.</div></div>
+      </div>
+      <div class="dash-welcome-step" data-welcome-go="reflect">
+        <span class="dash-welcome-n">04</span>
+        <div><div class="dash-welcome-h">Reflect</div>
+          <div class="dash-welcome-b">Once a week, decide which of the three above needs changing.</div></div>
+      </div>
+    </div>
+    <div class="dash-welcome-foot">
+      <span class="dash-welcome-hint">Start at the top. The goal screen can create the rest without leaving it.</span>
+      <button class="dash-btn" id="dash-welcome-start">Set a goal →</button>
+    </div>`;
+
+  const go = where => {
+    if (where === 'habit') { showMainPanel('habits'); setTimeout(() => window.initHabitsX?.('builder'), 60); return; }
+    showMainPanel('milestones');
+    setTimeout(() => window.showPlanTab2?.(where === 'reflect' ? 'reflect' : where === 'commitment' ? 'commitments' : 'horizons'), 50);
+  };
+  el.querySelectorAll('[data-welcome-go]').forEach(s => s.addEventListener('click', () => go(s.dataset.welcomeGo)));
+  document.getElementById('dash-welcome-start')?.addEventListener('click', () => go('goal'));
+  document.getElementById('dash-welcome-x')?.addEventListener('click', () => {
+    try { localStorage.setItem(_DASH_WELCOME_KEY, '1'); } catch {}
+    el.style.display = 'none';
+  });
+}
+window._dashRenderWelcome = _dashRenderWelcome;
 /* ══════════════════════════════════════════════════════════════════════════
    GOALS — the horizon layer above commitments
    ──────────────────────────────────────────────────────────────────────────

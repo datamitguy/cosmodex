@@ -7106,3 +7106,40 @@ textarea:focus-visible {
   font-size: 12px;
   color: var(--muted-readable);
 }
+
+/* Capture inbox triage. Each captured line offers one click to become a task,
+   so what the phone collects stops needing to be retyped by hand. */
+.dash-cap-lines { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+.dash-cap-row {
+  display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:7px;
+  background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06);
+}
+.dash-cap-text { flex:1; min-width:0; font-family:var(--font-body); font-size:12.5px;
+  color:rgba(255,255,255,.8); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dash-cap-btn {
+  background:none; border:1px solid rgba(255,255,255,.14); color:rgba(255,255,255,.55);
+  font-family:var(--font-mono); font-size:10px; padding:3px 8px; border-radius:6px;
+  cursor:pointer; flex:none; transition:all .18s var(--ease-glass);
+}
+.dash-cap-btn:hover { border-color:rgba(255,255,255,.45); color:#fff; }
+.dash-cap-btn.drop:hover { border-color:rgba(224,85,85,.5); color:#e05555; }
+
+/* First-run card. Sits above the commitments band and disappears for good once
+   anything exists or it is dismissed. */
+.dash-welcome { padding:18px 20px; display:flex; flex-direction:column; gap:14px; }
+.dash-welcome-head { display:flex; align-items:flex-start; gap:12px; }
+.dash-welcome-title { font-family:var(--font-display); font-weight:300; font-size:22px; color:rgba(255,255,255,.92); margin-top:4px; }
+.dash-welcome-x { margin-left:auto; background:none; border:none; color:rgba(255,255,255,.35); cursor:pointer; font-size:13px; padding:4px; }
+.dash-welcome-x:hover { color:rgba(255,255,255,.85); }
+.dash-welcome-chain { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
+.dash-welcome-step {
+  display:flex; gap:10px; padding:12px; border-radius:10px; cursor:pointer;
+  background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.06);
+  transition:all .18s var(--ease-glass);
+}
+.dash-welcome-step:hover { border-color:rgba(255,255,255,.28); background:rgba(255,255,255,.05); }
+.dash-welcome-n { font-family:var(--font-mono); font-size:10px; color:rgba(255,255,255,.3); flex:none; }
+.dash-welcome-h { font-family:var(--font-body); font-size:13.5px; font-weight:600; color:rgba(255,255,255,.88); }
+.dash-welcome-b { font-family:var(--font-body); font-size:12px; line-height:1.5; color:rgba(255,255,255,.5); margin-top:3px; }
+.dash-welcome-foot { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.dash-welcome-hint { flex:1; font-family:var(--font-body); font-size:12px; font-style:italic; color:rgba(255,255,255,.45); }

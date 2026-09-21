@@ -113,7 +113,13 @@
         <span class="nav-item-icon">◈</span>
         Insights
       </div>
-      <div class="nav-item" data-panel="drill" id="nav-drill" role="button" tabindex="0">
+      <!-- Drill is hidden, not removed. Its grading round-trips through the
+           clipboard — write a response, "Copy to Claude", leave the app, then
+           paste raw JSON back into the page — which is not something to hand a
+           new user. The page, its data and its Firestore collection are
+           untouched: delete this style attribute to bring it back, and
+           showMainPanel('drill') still reaches it meanwhile. -->
+      <div class="nav-item" data-panel="drill" id="nav-drill" style="display:none" role="button" tabindex="0">
         <span class="nav-item-icon">◆</span>
         Drill
       </div>

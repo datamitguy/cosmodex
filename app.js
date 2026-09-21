@@ -198,7 +198,10 @@ let _mainPanel         = 'default';  // 'default' | 'milestones'
 let _msView            = 'dashboard'; // 'dashboard' | 'timeline'
 let _msFocusProj       = null;        // project id when in timeline view
 let _planLeftCollapsed  = localStorage.getItem('cosmodex_plan_left_collapsed')  === '1';
-let _planRightCollapsed = localStorage.getItem('cosmodex_plan_right_collapsed') === '1';
+/* The Lists rail holds ~150px open to say "select a commitment to view lists"
+   for most of its life, so it starts collapsed to its narrow rail and opens
+   when a commitment is actually selected. An explicit preference still wins. */
+let _planRightCollapsed = localStorage.getItem('cosmodex_plan_right_collapsed') !== '0';
 
 let _settings = JSON.parse(localStorage.getItem('cdx_v2_settings') || 'null') || {
   visibleCategories: Object.keys(CATEGORIES),
@@ -1187,19 +1190,43 @@ async function _habitSetEffort(habitId, ds, level) {
    as the day's log. That field has been declared in the habit schema since the
    beginning and written as an empty object ever since — this is the use it was
    shaped for: per-cause, what I do instead. */
+/* ── ONE FRICTION TAXONOMY ────────────────────────────────────────────────
+   The app had three: the task-deferral modal's six reasons, the habit
+   builder's six predicted-friction chips, and the eight I added for a missed
+   habit. "Energy" appeared in all three under three different labels, so
+   nothing could be counted across them.
+
+   One id space now, with each surface showing the subset that makes sense
+   where it is. The ids are what gets stored, so a pattern is countable
+   whatever surface logged it. Follow-up still differs by surface: a task can
+   be killed or deferred, a habit cannot. */
 const FRICTION_CAUSES = [
-  { id: 'low-energy', label: '🔋 Low energy' },
-  { id: 'no-time',    label: '⏱ No time' },
-  { id: 'meetings',   label: '📞 Meetings ran over' },
-  { id: 'travel',     label: '✈ Travel' },
-  { id: 'distraction',label: '📱 Distraction' },
-  { id: 'vague',      label: '🌫 Task was vague' },
-  { id: 'scheduling', label: '📅 Scheduled badly' },
-  { id: 'illness',    label: '🤒 Illness' },
+  { id: 'low-energy',  label: '⚡ Low energy',        where: ['task', 'habit'] },
+  { id: 'no-time',     label: '⏱ No time',           where: ['task', 'habit'] },
+  { id: 'meetings',    label: '📞 Meetings ran over', where: ['task', 'habit'] },
+  { id: 'unclear',     label: '❓ Unclear next step',  where: ['task', 'habit'] },
+  { id: 'blocked',     label: '⛔ Waiting / blocked',  where: ['task'] },
+  { id: 'scary',       label: '😬 Feels big',         where: ['task', 'habit'] },
+  { id: 'boring',      label: '😶 Just boring',       where: ['task', 'habit'] },
+  { id: 'notnow',      label: '⏳ Not relevant now',   where: ['task'] },
+  { id: 'distraction', label: '📱 Distraction',       where: ['task', 'habit'] },
+  { id: 'scheduling',  label: '📅 Scheduled badly',   where: ['task', 'habit'] },
+  { id: 'travel',      label: '✈ Travel',            where: ['habit'] },
+  { id: 'illness',     label: '🤒 Illness',           where: ['habit'] },
 ];
 
+/* Legacy ids from the task modal, mapped so old logs still read correctly.
+   'energy' and 'vague' were that modal's names for causes the unified list
+   calls low-energy and unclear. */
+const FRICTION_ALIASES = { energy: 'low-energy', vague: 'unclear' };
+function frictionCanonical(id) { return FRICTION_ALIASES[id] || id; }
+function frictionCausesFor(surface) {
+  return FRICTION_CAUSES.filter(c => c.where.includes(surface));
+}
+
 function _frictionLabel(id) {
-  return (FRICTION_CAUSES.find(c => c.id === id) || {}).label || id;
+  const c = frictionCanonical(id);
+  return (FRICTION_CAUSES.find(x => x.id === c) || {}).label || c;
 }
 
 function openFrictionLog(habitId) {
@@ -1213,7 +1240,7 @@ function openFrictionLog(habitId) {
     <div class="friction-title">${escHtml(habitActions(h).standard)}</div>
     <div class="friction-sub">A missed day is a system bug, not a character flaw. What was the bug?</div>
     <div class="friction-chips" id="friction-chips">
-      ${FRICTION_CAUSES.map(c => `<button class="friction-chip" data-cause="${c.id}">${escHtml(c.label)}</button>`).join('')}
+      ${frictionCausesFor('habit').map(c => `<button class="friction-chip" data-cause="${c.id}">${escHtml(c.label)}</button>`).join('')}
     </div>
     <div class="friction-field">
       <label class="form-label">System patch — what change stops this tomorrow?</label>
@@ -2815,7 +2842,20 @@ function showPlanningTimeline(projId) {
 }
 
 /* ── Milestone Lists Panel ──────────────────────────────── */
+/* Opening the Lists rail on demand: it is collapsed by default, so selecting a
+   commitment has to reveal it, otherwise the lists render into a hidden panel. */
+function _planOpenListsRail() {
+  const panel = document.getElementById('plan-right-panel');
+  if (!panel || !panel.classList.contains('collapsed')) return;
+  if (localStorage.getItem('cosmodex_plan_right_collapsed') === '1') return; // user asked for it shut
+  panel.classList.remove('collapsed');
+  document.getElementById('plan-right-rail')?.classList.remove('visible');
+  const t = document.getElementById('plan-right-toggle'); if (t) t.textContent = '›';
+  _planRightCollapsed = false;
+}
+
 function renderMilestoneListsPanel(projId) {
+  if (projId) _planOpenListsRail();
   const body = document.getElementById('plan-tl-lists-body');
   if (!body) return;
 
@@ -10232,6 +10272,17 @@ document.getElementById('signin-btn')?.addEventListener('click', () => {
 });
 
 // If returning visitor already has an anonymous session, skip sign-in screen
+/* Keyboard activation for the sidebar. The items are divs with role=button and
+   tabindex, so Enter and Space have to be wired by hand — without this they are
+   reachable by Tab and do nothing. */
+document.getElementById('left-nav')?.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const item = e.target.closest?.('.nav-item');
+  if (!item) return;
+  e.preventDefault();
+  item.click();
+});
+
 window.addEventListener('cdx-auth-ready', () => {
   dismissSigninOverlay();
   // Goals feed the dashboard's quarter line, so they subscribe at boot rather
@@ -10491,6 +10542,13 @@ function openFrictionModal(taskId) {
   _frictionReason = '';
 
   const modal = document.getElementById('friction-modal');
+  /* One taxonomy, rendered rather than hard-coded — the three lists this app
+     used to keep could not be counted against each other. */
+  const reasonsEl = document.getElementById('friction-reasons');
+  if (reasonsEl && typeof frictionCausesFor === 'function') {
+    reasonsEl.innerHTML = frictionCausesFor('task')
+      .map(c => `<button class="friction-reason-btn" data-reason="${escAttr(c.id)}">${escHtml(c.label)}</button>`).join('');
+  }
   if (!modal) return;
 
   const label = document.getElementById('friction-task-label');
@@ -10518,7 +10576,7 @@ function initFrictionModal() {
     btn.addEventListener('click', () => {
       modal.querySelectorAll('.friction-reason-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      _frictionReason = btn.dataset.reason;
+      _frictionReason = (typeof frictionCanonical === 'function') ? frictionCanonical(btn.dataset.reason) : btn.dataset.reason;
     });
   });
 

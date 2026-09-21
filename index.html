@@ -76,20 +76,20 @@
   <div class="nav-sections">
     <div class="nav-section">
       <div class="nav-section-label">Workspace</div>
-      <div class="nav-item active" data-panel="today">
+      <div class="nav-item active" data-panel="today" role="button" tabindex="0">
         <span class="nav-item-icon">◈</span>
         Dashboard
         <span class="nav-item-count" id="nav-count-today">—</span>
       </div>
-      <div class="nav-item" data-panel="lists" id="nav-lists">
+      <div class="nav-item" data-panel="lists" id="nav-lists" role="button" tabindex="0">
         <span class="nav-item-icon">▤</span>
         Lists
       </div>
-      <div class="nav-item" data-panel="alltasks" id="nav-alltasks">
+      <div class="nav-item" data-panel="alltasks" id="nav-alltasks" role="button" tabindex="0">
         <span class="nav-item-icon">✓</span>
         Tasks
       </div>
-      <div class="nav-item" data-panel="calendarx" id="nav-calendarx">
+      <div class="nav-item" data-panel="calendarx" id="nav-calendarx" role="button" tabindex="0">
         <span class="nav-item-icon">▦</span>
         Calendar
       </div>
@@ -97,27 +97,27 @@
 
     <div class="nav-section">
       <div class="nav-section-label">Life OS</div>
-      <div class="nav-item" data-panel="planning" id="nav-planning">
+      <div class="nav-item" data-panel="planning" id="nav-planning" role="button" tabindex="0">
         <span class="nav-item-icon">◉</span>
         Planning
       </div>
-      <div class="nav-item" data-panel="habits" id="nav-habits">
+      <div class="nav-item" data-panel="habits" id="nav-habits" role="button" tabindex="0">
         <span class="nav-item-icon">◎</span>
         Habits
       </div>
-      <div class="nav-item" data-panel="consolidation" id="nav-consolidation">
+      <div class="nav-item" data-panel="consolidation" id="nav-consolidation" role="button" tabindex="0">
         <span class="nav-item-icon">◍</span>
         Consolidation
       </div>
-      <div class="nav-item" data-panel="insights" id="nav-insights">
+      <div class="nav-item" data-panel="insights" id="nav-insights" role="button" tabindex="0">
         <span class="nav-item-icon">◈</span>
         Insights
       </div>
-      <div class="nav-item" data-panel="drill" id="nav-drill">
+      <div class="nav-item" data-panel="drill" id="nav-drill" role="button" tabindex="0">
         <span class="nav-item-icon">◆</span>
         Drill
       </div>
-      <div class="nav-item" data-panel="timedrift" id="nav-timedrift">
+      <div class="nav-item" data-panel="timedrift" id="nav-timedrift" role="button" tabindex="0">
         <span class="nav-item-icon">◌</span>
         Timedrift
       </div>
@@ -127,28 +127,28 @@
   <div class="nav-section nav-tools-section collapsed" style="padding:0 8px 4px;border-top:1px solid rgba(255,255,255,0.07)">
     <div class="nav-section-label nav-tools-toggle" id="tools-toggle" title="Toggle tools">Tools <span class="tools-chevron">›</span></div>
     <div class="nav-tools-items">
-      <div class="nav-item" id="btn-notes">
+      <div class="nav-item" id="btn-notes" role="button" tabindex="0">
         <span class="nav-item-icon">✎</span>
         Notes
       </div>
-      <div class="nav-item" id="btn-commit">
+      <div class="nav-item" id="btn-commit" role="button" tabindex="0">
         <span class="nav-item-icon">◈</span>
         Commit
       </div>
-      <div class="nav-item" id="btn-cosmodex-bubble" data-panel="cosmodex-bubble">
+      <div class="nav-item" id="btn-cosmodex-bubble" data-panel="cosmodex-bubble" role="button" tabindex="0">
         <span class="nav-item-icon">◉</span>
         Bubble
       </div>
       <!-- Ask Cosmos hidden until a free AI API is wired up; code/overlay kept intact -->
-      <div class="nav-item" id="btn-cosmos" style="display:none">
+      <div class="nav-item" id="btn-cosmos" style="display:none" role="button" tabindex="0">
         <span class="nav-item-icon">✦</span>
         Ask Cosmos
       </div>
-      <div class="nav-item" id="btn-mindmap" data-panel="mindmap">
+      <div class="nav-item" id="btn-mindmap" data-panel="mindmap" role="button" tabindex="0">
         <span class="nav-item-icon">⬡</span>
         Mind Map
       </div>
-      <div class="nav-item" id="btn-archived" data-panel="archived">
+      <div class="nav-item" id="btn-archived" data-panel="archived" role="button" tabindex="0">
         <span class="nav-item-icon">⊡</span>
         Archived
       </div>
@@ -1843,12 +1843,9 @@
     <div class="friction-body">
       <div class="friction-section-label">What's causing the friction?</div>
       <div class="friction-reasons" id="friction-reasons">
-        <button class="friction-reason-btn" data-reason="unclear">? Unclear next action</button>
-        <button class="friction-reason-btn" data-reason="blocked">⛔ Waiting / blocked</button>
-        <button class="friction-reason-btn" data-reason="energy">⚡ Wrong energy level</button>
-        <button class="friction-reason-btn" data-reason="scary">😬 Feels scary / big</button>
-        <button class="friction-reason-btn" data-reason="boring">😶 Just boring</button>
-        <button class="friction-reason-btn" data-reason="notnow">⏳ Not relevant now</button>
+        <!-- Filled by _frictionRenderReasons() from the one shared taxonomy in
+             03-habits.js, so a cause logged here counts alongside the same
+             cause logged against a habit. -->
       </div>
       <div class="friction-actions">
         <button class="friction-action-btn kill" id="friction-kill-btn">✕ Delete task</button>

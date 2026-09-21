@@ -2724,18 +2724,24 @@ function renderMilestoneDashboard() {
     outer.className = 'ms-dash-card-outer ms-oneliner';
     outer.dataset.msDashCard = proj.id;
     outer.style.setProperty('--commit-clr', clr);
+    /* The title gets the row to itself. It used to share one line with a BAU
+       pill, a category pill, the percentage and the archive button, so the
+       name — the only thing you scan this list for — was the first thing to be
+       truncated. The badges belong with the dates: metadata, not identity. */
     outer.innerHTML = `
       <div class="ms-ol-inner">
         <div class="ms-ol-row">
           <span class="ms-ol-dot" style="background:${clr}"></span>
-          <span class="ms-ol-title">${escHtml(proj.title)}</span>
-          ${proj.bigRock ? `<span class="ms-ol-bau">⛰ BAU</span>` : ''}
-          ${cat ? `<span class="plan-pill">${escHtml(cat.label.toUpperCase())}</span>` : ''}
-          <span style="flex:1"></span>
-          <span class="ms-ol-pct">${cTasks.length ? `${doneN}/${cTasks.length} · ` : ''}${pct}%</span>
+          <span class="ms-ol-title" title="${escAttr(proj.title)}">${escHtml(proj.title)}</span>
           <button class="ms-ol-archive" data-ms-archive="${proj.id}" title="Mark done & archive">✓</button>
         </div>
-        ${dates ? `<div class="ms-ol-meta">${escHtml(dates)}</div>` : ''}
+        <div class="ms-ol-meta">
+          ${proj.bigRock ? `<span class="ms-ol-bau">⛰ BAU</span>` : ''}
+          ${cat ? `<span class="plan-pill">${escHtml(cat.label.toUpperCase())}</span>` : ''}
+          ${dates ? `<span class="ms-ol-dates">${escHtml(dates)}</span>` : ''}
+          <span style="flex:1"></span>
+          <span class="ms-ol-pct">${cTasks.length ? `${doneN}/${cTasks.length} · ` : ''}${pct}%</span>
+        </div>
         <div class="ms-ol-track"><div class="ms-ol-fill" style="width:${pct}%;background:${clr}"></div></div>
       </div>`;
     grid.appendChild(outer);

@@ -49,6 +49,14 @@ src = src.replace('Your data is stored anonymously in Firebase Firestore under t
 src = src.replace('Live connection to Firebase Firestore.',
                   'There is no cloud sync in this build — the folder above is your durability.')
 src = src.replace('Connected — real-time sync active', 'Local only — no cloud sync')
+# The Appearance pane has its own Firebase copy, which the rules above missed —
+# this build has no Firebase, so it was reporting a connection it does not have.
+src = src.replace('<div class="settings-section-title">Firebase Status</div>',
+                  '<div class="settings-section-title">Storage</div>')
+src = src.replace('Real-time sync connection state.',
+                  'Where this build keeps your data.')
+src = src.replace('<span id="settings-fb-label">Connected</span>',
+                  '<span id="settings-fb-label">Local SQLite file</span>')
 src = src.replace('<div class="settings-section-title">Firebase Account</div>',
                   '<div class="settings-section-title">Local Account</div>')
 src = src.replace('<div class="settings-section-title">Sync Status</div>',

@@ -1464,11 +1464,11 @@
               <button id="settings-theme-btn" class="btn-secondary" style="font-size:12px;padding:8px 18px;" onclick="document.getElementById('theme-btn')?.click(); this.textContent = document.documentElement.dataset.theme === 'light' ? '☀ Light mode active' : '◐ Dark mode active';">◐ Dark mode active</button>
             </div>
             <div class="settings-section">
-              <div class="settings-section-title">Firebase Status</div>
-              <div class="settings-desc">Real-time sync connection state.</div>
+              <div class="settings-section-title">Storage</div>
+              <div class="settings-desc">Where this build keeps your data.</div>
               <div id="settings-firebase-status" style="display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);">
                 <span id="settings-fb-dot" style="width:8px;height:8px;border-radius:50%;background:var(--neon);display:inline-block;"></span>
-                <span id="settings-fb-label">Connected</span>
+                <span id="settings-fb-label">Local SQLite file</span>
               </div>
             </div>
           </div>

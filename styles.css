@@ -6313,12 +6313,13 @@ select.atk-inline option { background:#141414; color:#fff; }
 .ms-oneliner .ms-ol-inner { position:relative; z-index:2; padding:11px 15px; }
 .ms-ol-row { display:flex; align-items:center; gap:8px; }
 .ms-ol-dot { width:9px; height:9px; border-radius:50%; flex:none; box-shadow:0 0 7px var(--commit-clr,#fff); }
-.ms-ol-title { font-family:var(--font-display); font-weight:300; font-size:15px; color:rgba(255,255,255,.92); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ms-ol-title { flex:1; min-width:0; font-family:var(--font-display); font-weight:300; font-size:15px; color:rgba(255,255,255,.92); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ms-ol-bau { font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; color:rgba(255,255,255,.72); border:1px solid rgba(255,255,255,.28); border-radius:100px; padding:1px 6px; flex:none; }
 .ms-ol-pct { font-family:var(--font-mono); font-size:10px; color:rgba(255,255,255,.6); flex:none; font-variant-numeric:tabular-nums; }
 .ms-ol-archive { background:none; border:1px solid rgba(255,255,255,.15); color:rgba(255,255,255,.5); border-radius:6px; width:24px; height:22px; cursor:pointer; flex:none; font-size:11px; line-height:1; }
 .ms-ol-archive:hover { border-color:rgba(53,249,47,.5); color:rgb(53,249,47); }
-.ms-ol-meta { font-family:var(--font-mono); font-size:10px; letter-spacing:.05em; color:rgba(255,255,255,.4); margin:5px 0 0 17px; }
+.ms-ol-meta { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin:7px 0 0 17px; }
+.ms-ol-dates { font-family:var(--font-mono); font-size:10px; letter-spacing:.05em; color:rgba(255,255,255,.4); }
 .ms-ol-track { height:3px; background:rgba(255,255,255,.07); border-radius:2px; margin:8px 0 0 17px; overflow:hidden; }
 .ms-ol-fill { height:100%; border-radius:2px; }
 
@@ -7079,3 +7080,29 @@ textarea:focus-visible {
    you to select one of the lists you do not have. It collapses until there is
    something to select. */
 .lists-col-right.is-blank { display: none; }
+
+/* ══ RECOVERED ═══════════════════════════════════════════════════════════
+   These rules were removed by the dead-CSS sweeps earlier in this session.
+   The sweep matched a selector on its first class, and these components are
+   built at runtime by JS whose class strings the scan did not see, so they
+   looked unused. Restored from the pre-sweep stylesheet verbatim.
+   ══════════════════════════════════════════════════════════════════════ */
+.friction-card .friction-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 16px 20px 14px; border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+.friction-card .friction-body { padding: 14px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+.ritual-momentum-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--elevated);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.ritual-momentum-trend {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--muted-readable);
+}

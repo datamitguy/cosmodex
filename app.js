@@ -17164,35 +17164,43 @@ function getGoalsUid() {
    A horizon is a kind of window ('quarter'); a period is a specific one
    ('2026-Q4'). Storing the period string rather than two dates means a goal
    keeps its meaning when it is carried forward, and the dates stay derivable. */
+/* Year → Quarter → Month. Half was the horizon nobody thinks in, and the app
+   already had a monthly commitment cadence with no goal horizon to match it.
+   'half' stays a recognised period so existing half goals keep their dates and
+   their label; they render in the Year column rather than disappearing. */
 const GOAL_HORIZONS = [
   { id: 'year',    label: 'Year',    glyph: '◉' },
-  { id: 'half',    label: 'Half',    glyph: '◎' },
   { id: 'quarter', label: 'Quarter', glyph: '◈' },
+  { id: 'month',   label: 'Month',   glyph: '◇' },
 ];
+const GOAL_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function goalPeriodNow(horizon, when) {
   const d = when || new Date();
   const y = d.getFullYear();
-  if (horizon === 'year') return String(y);
-  if (horizon === 'half') return `${y}-H${d.getMonth() < 6 ? 1 : 2}`;
+  if (horizon === 'year')  return String(y);
+  if (horizon === 'half')  return `${y}-H${d.getMonth() < 6 ? 1 : 2}`;   // legacy
+  if (horizon === 'month') return `${y}-M${String(d.getMonth() + 1).padStart(2, '0')}`;
   return `${y}-Q${Math.floor(d.getMonth() / 3) + 1}`;
 }
 
 // '2026-Q4' → { start: Date, end: Date } — end is the last day, inclusive.
 function goalPeriodRange(period) {
   const y = parseInt(String(period).slice(0, 4), 10);
-  const m = /-Q(\d)/.exec(period), h = /-H(\d)/.exec(period);
+  const q = /-Q(\d)/.exec(period), h = /-H(\d)/.exec(period), mo = /-M(\d{2})/.exec(period);
   let m0 = 0, m1 = 11;
-  if (m) { m0 = (parseInt(m[1], 10) - 1) * 3; m1 = m0 + 2; }
-  else if (h) { m0 = (parseInt(h[1], 10) - 1) * 6; m1 = m0 + 5; }
+  if (q)       { m0 = (parseInt(q[1], 10) - 1) * 3; m1 = m0 + 2; }
+  else if (h)  { m0 = (parseInt(h[1], 10) - 1) * 6; m1 = m0 + 5; }
+  else if (mo) { m0 = parseInt(mo[1], 10) - 1;      m1 = m0; }
   return { start: new Date(y, m0, 1), end: new Date(y, m1 + 1, 0) };
 }
 
 function goalPeriodLabel(period) {
   const y = String(period).slice(0, 4);
-  const m = /-Q(\d)/.exec(period), h = /-H(\d)/.exec(period);
-  if (m) return `Q${m[1]} ${y}`;
-  if (h) return `H${h[1]} ${y}`;
+  const q = /-Q(\d)/.exec(period), h = /-H(\d)/.exec(period), mo = /-M(\d{2})/.exec(period);
+  if (q)  return `Q${q[1]} ${y}`;
+  if (h)  return `H${h[1]} ${y}`;
+  if (mo) return `${GOAL_MONTHS[parseInt(mo[1], 10) - 1]} ${y}`;
   return y;
 }
 
@@ -17204,18 +17212,20 @@ function goalDaysLeft(period) {
 }
 
 function goalHorizonOf(period) {
-  if (/-Q\d/.test(period)) return 'quarter';
-  if (/-H\d/.test(period)) return 'half';
+  if (/-Q\d/.test(period))    return 'quarter';
+  if (/-M\d{2}/.test(period)) return 'month';
+  if (/-H\d/.test(period))    return 'half';
   return 'year';
 }
 
 /* The period one step out: a quarter's parent half, a half's parent year.
    Used to suggest a parent when a goal is created, never to enforce one. */
+/* One step out: a month's quarter, a quarter's year. */
 function goalParentPeriod(period) {
   const y = String(period).slice(0, 4);
-  const m = /-Q(\d)/.exec(period);
-  if (m) return `${y}-H${parseInt(m[1], 10) <= 2 ? 1 : 2}`;
-  if (/-H\d/.test(period)) return y;
+  const mo = /-M(\d{2})/.exec(period);
+  if (mo) return `${y}-Q${Math.floor((parseInt(mo[1], 10) - 1) / 3) + 1}`;
+  if (/-Q\d/.test(period) || /-H\d/.test(period)) return y;
   return null;
 }
 
@@ -17407,7 +17417,10 @@ function _goalCard(g) {
       <div style="flex:1"></div>
       ${closed
         ? `<button class="goal-act" data-goal-reopen="${escAttr(g.id)}">Reopen</button>`
-        : `<button class="goal-act" data-goal-carry="${escAttr(g.id)}" title="Move to the next period, keeping this one's record">Carry</button>
+        : `${g.horizon === 'year' || g.horizon === 'quarter'
+             ? `<button class="goal-act step" data-goal-step="${escAttr(g.id)}" title="${g.horizon === 'year' ? 'What has to be true this quarter?' : 'What has to be true this month?'}">↓ ${g.horizon === 'year' ? 'Quarter' : 'Month'}</button>`
+             : ''}
+           <button class="goal-act" data-goal-carry="${escAttr(g.id)}" title="Move to the next period, keeping this one's record">Carry</button>
            <button class="goal-act" data-goal-drop="${escAttr(g.id)}" title="Let this go, on the record">Drop</button>
            <button class="goal-act primary" data-goal-done="${escAttr(g.id)}">☐ Mark achieved</button>`}
     </div>
@@ -17418,10 +17431,14 @@ function renderPlanHorizons() {
   const body = document.getElementById('plan-design-body');
   if (!body) return;
   goalsSubscribe();
+  // First paint has no draft yet; fetch once, then repaint with the rows filled.
+  if (_draftDoc === null) { _draftDoc = {}; _draftLoad().then(() => renderPlanHorizons()); }
 
-  const nowP = {
-    year: goalPeriodNow('year'), half: goalPeriodNow('half'), quarter: goalPeriodNow('quarter'),
-  };
+  // One entry per horizon the columns render, or the column has no period and
+  // its label and empty state read "undefined".
+  const nowP = {};
+  GOAL_HORIZONS.forEach(h => { nowP[h.id] = goalPeriodNow(h.id); });
+  nowP.half = goalPeriodNow('half');   // legacy goals still resolve
 
   /* Focus mode: clicking a year or half goal filters the columns to its own
      line of descent, which is the only way to see whether this quarter's work
@@ -17440,7 +17457,9 @@ function renderPlanHorizons() {
 
   const cols = GOAL_HORIZONS.map(h => {
     const all = GOALS
-      .filter(g => g.horizon === h.id && inLine(g))
+      // A goal saved under the retired 'half' horizon still belongs somewhere;
+      // the year that contains it is the closest honest home.
+      .filter(g => (g.horizon === h.id || (h.id === 'year' && g.horizon === 'half')) && inLine(g))
       /* Live work first, then by period. Sorting on period first put a goal
          you had just closed above the one you carried it into. */
       .sort((a, b) =>
@@ -17485,9 +17504,11 @@ function renderPlanHorizons() {
       'A goal is an outcome you check off yourself. Commitments are how you get there.',
       focus ? `<button class="plan-liquid-btn" id="hz-clearfocus">✕ Showing only: ${escHtml(focus.title || 'goal')}</button>` : '')}
     ${typeof _planNorthBandHtml === 'function' ? _planNorthBandHtml() : ''}
+    ${_draftHtml()}
     <div class="horizon-grid">${cols}</div>`;
 
   if (typeof _wireNorthBand === 'function') _wireNorthBand();
+  _wireDraft();
   _wireHorizons(body);
 }
 
@@ -17539,6 +17560,10 @@ function _wireHorizons(body) {
     await goalSetStatus(el.dataset.goalDrop, 'dropped');
   });
 
+  body.querySelectorAll('[data-goal-step]').forEach(el => el.onclick = e => {
+    e.stopPropagation(); goalStepDown(el.dataset.goalStep);
+  });
+
   body.querySelectorAll('[data-goal-carry]').forEach(el => el.onclick = e => {
     e.stopPropagation(); goalCarryForward(el.dataset.goalCarry);
   });
@@ -17572,7 +17597,7 @@ function openGoalModal(id) {
   set('goal-category', g.category || '');
 
   // Parent picker — only goals at a longer horizon can be a parent.
-  const order = { quarter: 0, half: 1, year: 2 };
+  const order = { month: 0, quarter: 1, half: 2, year: 3 };
   const parentSel = document.getElementById('goal-parent');
   if (parentSel) {
     const cands = GOALS.filter(x => x.id !== g.id && order[x.horizon] > order[g.horizon]);
@@ -17810,3 +17835,171 @@ window.GOALS_API = {
   subscribe: goalsSubscribe, unsubscribe: goalsUnsubscribe,
   summary: goalsQuarterSummary, render: renderPlanHorizons, open: openGoalModal,
 };
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DRAFT — how you arrive at a goal
+   ──────────────────────────────────────────────────────────────────────────
+   Horizons was a place to record goals and gave you no way to reach them. A
+   blank "what is your year goal" field is not a prompt, it is an exam
+   question, and the North Star sitting above it is free text that nothing
+   reads or checks anything against.
+
+   This is the on-ramp. One row per area of life. Each row shows what the app
+   already knows about that area — hours logged, commitments running, habits
+   held — so the gap you write is written against evidence rather than mood.
+   Then the gap becomes a year goal in one click, with the why carried over,
+   and a year goal offers the same step down to a quarter.
+
+   Deliberately not here: satisfaction scores out of ten. They feel like
+   measurement, nothing reads them back, and this codebase has enough fields
+   that nothing reads.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const GOAL_AREAS = [
+  { id: 'v_health',        name: 'Health',        emoji: '💪' },
+  { id: 'v_craft',         name: 'Craft',         emoji: '🛠️' },
+  { id: 'v_relationships', name: 'Relationships', emoji: '🤝' },
+  { id: 'v_growth',        name: 'Growth',        emoji: '🌱' },
+  { id: 'v_contribution',  name: 'Contribution',  emoji: '🎁' },
+  { id: 'v_play',          name: 'Play',          emoji: '🎨' },
+  { id: 'v_rest',          name: 'Rest',          emoji: '🌙' },
+  { id: 'v_meaning',       name: 'Meaning',       emoji: '✨' },
+];
+
+let _draftDoc = null;      // { areas: { [id]: { now, want } } }
+
+/* What the app can say about an area without being asked. Matching is by the
+   area's name against the category on tasks and habits, which is loose on
+   purpose: a rough signal beats a precise number nobody entered. */
+function _areaEvidence(area) {
+  const key = area.name.toLowerCase();
+  const matches = v => typeof v === 'string' && v.toLowerCase().includes(key);
+
+  const commitments = (typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : [])
+    .filter(p => !p.isArchived && (matches(p.category) || matches(p.title)));
+
+  const habits = (typeof _habits !== 'undefined' ? _habits : [])
+    .filter(h => h.status !== 'archived' && h.status !== 'graduated')
+    .filter(h => matches(h.category) || (h.valueTags || []).includes(area.id));
+
+  const bestStreak = habits.reduce(
+    (b, h) => Math.max(b, (typeof _todayStreakDays === 'function' ? _todayStreakDays(h.id) : 0)), 0);
+
+  const goals = GOALS.filter(g => g.status === 'active' && (g.areaId === area.id || matches(g.category)));
+
+  const bits = [];
+  if (goals.length)       bits.push(`${goals.length} goal${goals.length === 1 ? '' : 's'}`);
+  if (commitments.length) bits.push(`${commitments.length} commitment${commitments.length === 1 ? '' : 's'}`);
+  if (habits.length)      bits.push(`${habits.length} habit${habits.length === 1 ? '' : 's'}${bestStreak ? ` · ${bestStreak}d` : ''}`);
+  return { text: bits.join(' · '), empty: !bits.length, goals: goals.length };
+}
+
+function _draftLoad() {
+  return _planLoadDoc('planningMeta', 'draft').then(d => { _draftDoc = d || {}; return _draftDoc; });
+}
+
+function _draftSave() {
+  _planDebSave('planningMeta', 'draft', () => ({ areas: (_draftDoc && _draftDoc.areas) || {} }));
+}
+
+function _draftAreaRow(area) {
+  const saved = ((_draftDoc && _draftDoc.areas) || {})[area.id] || {};
+  const ev = _areaEvidence(area);
+  return `<div class="draft-row" data-draft-area="${escAttr(area.id)}">
+    <div class="draft-area">
+      <span class="draft-emoji">${area.emoji}</span>
+      <div>
+        <div class="draft-name">${escHtml(area.name)}</div>
+        <div class="draft-ev${ev.empty ? ' none' : ''}">${ev.empty ? 'nothing here yet' : escHtml(ev.text)}</div>
+      </div>
+    </div>
+    <input class="draft-in" data-draft-now="${escAttr(area.id)}"
+           value="${escAttr(saved.now || '')}" placeholder="Where it is now…" autocomplete="off">
+    <input class="draft-in" data-draft-want="${escAttr(area.id)}"
+           value="${escAttr(saved.want || '')}" placeholder="Where you want it in a year…" autocomplete="off">
+    <button class="draft-promote" data-draft-promote="${escAttr(area.id)}"
+            title="Turn this gap into a year goal"${saved.want ? '' : ' disabled'}>Make it a goal →</button>
+  </div>`;
+}
+
+function _draftHtml() {
+  const rows = GOAL_AREAS.map(_draftAreaRow).join('');
+  return `<details class="draft-band" id="draft-band">
+    <summary class="draft-summary">
+      <span class="eyebrow">DRAFT</span>
+      <span class="draft-line">Not sure what the goal is yet? Start from the gap.</span>
+      <span class="plan-north-chev">›</span>
+    </summary>
+    <div class="draft-inner">
+      <div class="draft-help">One line for where each area is, one for where you want it in a year.
+        The difference between them is the goal. What the app already knows sits next to each,
+        so you are writing against evidence rather than mood.</div>
+      <div class="draft-head">
+        <span>Area</span><span>Now</span><span>In a year</span><span></span>
+      </div>
+      ${rows}
+    </div>
+  </details>`;
+}
+
+function _wireDraft() {
+  const band = document.getElementById('draft-band');
+  if (!band) return;
+  const set = (id, field, value) => {
+    _draftDoc = _draftDoc || {};
+    _draftDoc.areas = _draftDoc.areas || {};
+    _draftDoc.areas[id] = { ...(_draftDoc.areas[id] || {}), [field]: value };
+    _draftSave();
+  };
+  band.querySelectorAll('[data-draft-now]').forEach(i =>
+    i.oninput = () => set(i.dataset.draftNow, 'now', i.value));
+  band.querySelectorAll('[data-draft-want]').forEach(i =>
+    i.oninput = () => {
+      set(i.dataset.draftWant, 'want', i.value);
+      const btn = band.querySelector(`[data-draft-promote="${i.dataset.draftWant}"]`);
+      if (btn) btn.disabled = !i.value.trim();
+    });
+
+  band.querySelectorAll('[data-draft-promote]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.draftPromote;
+    const area = GOAL_AREAS.find(a => a.id === id);
+    const saved = ((_draftDoc && _draftDoc.areas) || {})[id] || {};
+    const want = (saved.want || '').trim();
+    if (!want) return;
+    /* The gap becomes the goal: the want-line is the title, and the now-line is
+       the why, because "where it is today" is exactly the reason you are
+       bothering. Both stay in the draft so the row still reads as a record. */
+    const why = saved.now
+      ? `Today: ${saved.now.trim()}`
+      : `Because ${area.name.toLowerCase()} is not where I want it.`;
+    const ref = await addGoal({
+      title: want, why, horizon: 'year', period: goalPeriodNow('year'),
+      areaId: id, category: area.name,
+    });
+    showToast(`Year goal drafted from ${area.name}`, 'success');
+    renderPlanHorizons();
+    if (ref?.id) setTimeout(() => openGoalModal(ref.id), 120);
+  });
+}
+
+/* Step down a horizon. A year goal that never becomes a quarter goal is a wish;
+   this is the one click that makes the ladder real, and it carries the parent
+   link so the columns can filter to a single line of descent. */
+async function goalStepDown(parentId) {
+  const parent = GOALS.find(g => g.id === parentId);
+  if (!parent) return;
+  const childHorizon = parent.horizon === 'year' ? 'quarter' : 'month';
+  const ref = await addGoal({
+    title: '',
+    why: parent.title ? `Serves: ${parent.title}` : '',
+    horizon: childHorizon,
+    period: goalPeriodNow(childHorizon),
+    parentId: parent.id,
+    areaId: parent.areaId || null,
+    category: parent.category || '',
+  });
+  showToast(childHorizon === 'quarter'
+    ? 'What has to be true this quarter?'
+    : 'What has to be true this month?', 'info');
+  if (ref?.id) openGoalModal(ref.id);
+}

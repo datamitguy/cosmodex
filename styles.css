@@ -7143,3 +7143,55 @@ textarea:focus-visible {
 .dash-welcome-b { font-family:var(--font-body); font-size:12px; line-height:1.5; color:rgba(255,255,255,.5); margin-top:3px; }
 .dash-welcome-foot { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .dash-welcome-hint { flex:1; font-family:var(--font-body); font-size:12px; font-style:italic; color:rgba(255,255,255,.45); }
+
+/* ══ DRAFT ════════════════════════════════════════════════════════════════
+   The on-ramp to Horizons: one row per area of life, the evidence the app
+   already holds beside it, and the gap between now and a year from now. */
+.draft-band {
+  margin-bottom:14px; border:1px solid rgba(255,255,255,.07);
+  border-radius:12px; background:rgba(255,255,255,.02);
+}
+.draft-summary { display:flex; align-items:center; gap:12px; padding:11px 14px; cursor:pointer; list-style:none; }
+.draft-summary::-webkit-details-marker { display:none; }
+.draft-line { flex:1; font-family:var(--font-body); font-size:13px; font-style:italic; color:rgba(255,255,255,.55); }
+.draft-band[open] .plan-north-chev { transform:rotate(90deg); }
+.draft-inner { padding:0 14px 14px; display:flex; flex-direction:column; gap:6px; }
+.draft-help {
+  font-family:var(--font-body); font-size:12.5px; line-height:1.6;
+  color:rgba(255,255,255,.45); max-width:var(--measure-read); margin-bottom:8px;
+}
+.draft-head, .draft-row {
+  display:grid; grid-template-columns:minmax(150px,1fr) minmax(0,1.2fr) minmax(0,1.2fr) auto;
+  gap:10px; align-items:center;
+}
+.draft-head {
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+  color:rgba(255,255,255,.3); padding:0 2px 4px;
+}
+.draft-row { padding:6px 2px; border-top:1px solid rgba(255,255,255,.05); }
+.draft-area { display:flex; align-items:center; gap:9px; min-width:0; }
+.draft-emoji { font-size:15px; flex:none; }
+.draft-name { font-family:var(--font-body); font-size:13.5px; color:rgba(255,255,255,.85); }
+.draft-ev { font-family:var(--font-mono); font-size:10px; color:rgba(255,255,255,.45); margin-top:2px; }
+.draft-ev.none { color:rgba(255,255,255,.22); font-style:italic; }
+.draft-in {
+  width:100%; box-sizing:border-box; background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.09); border-radius:7px; padding:7px 9px;
+  color:#fff; font-family:var(--font-body); font-size:12.5px; outline:none;
+}
+.draft-in:focus { border-color:rgba(255,255,255,.3); }
+.draft-promote {
+  background:none; border:1px dashed rgba(255,255,255,.18); color:rgba(255,255,255,.5);
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.08em;
+  padding:6px 10px; border-radius:7px; cursor:pointer; white-space:nowrap;
+  transition:all .18s var(--ease-glass);
+}
+.draft-promote:hover:not(:disabled) { border-style:solid; border-color:rgba(53,249,47,.5); color:rgb(53,249,47); }
+.draft-promote:disabled { opacity:.3; cursor:default; }
+.goal-act.step { border-color:rgba(255,255,255,.28); color:rgba(255,255,255,.75); }
+.goal-act.step:hover { border-color:#fff; color:#fff; }
+
+@media (max-width:1100px) {
+  .draft-head { display:none; }
+  .draft-row { grid-template-columns:1fr; gap:6px; }
+}

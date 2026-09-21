@@ -2557,8 +2557,11 @@ textarea.form-input { resize: vertical; min-height: 60px; }
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+/* 300px truncated most commitment titles at the default sidebar width
+   ("Ship the tradin…", "Weekly marke…"). The Lists rail now collapses until a
+   commitment is selected, so there is room to give this pane what it needs. */
 .plan-left {
-  width: 300px; min-width: 300px;
+  width: 360px; min-width: 360px;
   position: relative;
   background: rgba(255,255,255,0.035);
   backdrop-filter: var(--glass-blur-panel);
@@ -6035,7 +6038,12 @@ select.atk-inline option { background:#141414; color:#fff; }
 /* TODAY · daily ritual list */
 .hx-ritual-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px; }
 .hx-ritual-title { font-family:var(--font-display); font-weight:300; font-size:20px; color:rgba(255,255,255,0.9); }
-.hx-hrow { display:grid; grid-template-columns:24px 1fr auto auto auto; gap:14px; align-items:center; padding:14px 0; border-top:1px solid rgba(255,255,255,0.06); }
+/* Flex, not a fixed 5-column grid. The row gained an MVE toggle and a friction
+   flag, both conditional, so a grid with a fixed column count pushed them onto
+   a second line — and the streak and manage button with them. */
+.hx-hrow { display:flex; align-items:center; gap:14px; padding:14px 0; border-top:1px solid rgba(255,255,255,0.06); }
+.hx-hrow > div:nth-child(2) { flex:1; min-width:0; }
+.hx-hrow .hx-hname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hx-row-manage { background:none; border:none; color:rgba(255,255,255,0.4); font-size:16px; cursor:pointer; padding:0 4px; line-height:1; letter-spacing:1px; transition:color 0.15s; }
 .hx-row-manage:hover { color:#fff; }
 .hx-hrow:first-child { border-top:none; }
@@ -7061,3 +7069,13 @@ textarea:focus-visible {
 }
 /* A mouse press should not leave a ring behind. */
 :focus:not(:focus-visible) { outline: none; }
+
+/* The search field is the flexible one in the Tasks toolbar; the filters are
+   fixed. Without this the search shrank first and clipped its placeholder. */
+.atk-search { flex: 1 1 260px; min-width: 200px; }
+.atk-sortwrap { flex: 0 0 auto; }
+
+/* Lists: with no lists at all, the right column was a large empty box telling
+   you to select one of the lists you do not have. It collapses until there is
+   something to select. */
+.lists-col-right.is-blank { display: none; }

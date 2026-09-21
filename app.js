@@ -659,6 +659,12 @@ async function toggleListSubItem(listId, itemId, subId) {
 
 /* ══ LISTS PAGE — RENDER ══ */
 function renderLists() {
+  /* Hide the detail column entirely when there is nothing to select. It used to
+     hold a large empty panel saying "select a list or create one" next to an
+     empty sidebar. */
+  const rightCol = document.querySelector('.lists-col-right');
+  if (rightCol) rightCol.classList.toggle('is-blank', !LISTS.length);
+
   const sidebar = document.getElementById('lists-sidebar-items');
   if (!sidebar) return;
   const q = (document.getElementById('lists-search')?.value || '').toLowerCase().trim();
@@ -1152,6 +1158,12 @@ function habitActions(h) {
     ? { standard: h.tinyBehavior || h.name || 'Habit', mve: h.fullBehavior || '' }
     : { standard: h.fullBehavior || h.name || h.tinyBehavior || 'Habit', mve: h.tinyBehavior || '' };
 }
+
+/* Shorthand for the many read-only surfaces that just want a habit's display
+   name. Insights, the chart widget and the dashboard all used h.name directly,
+   which is the 30-second version for anything built by the older wizard — so
+   the "keystone habit" panel could name a habit's minimum. */
+function _hName(h) { return habitActions(h).standard; }
 
 /* ══ EFFORT LEVEL — the MVE safety net, recorded ═════════════════════════
    One value per habit per day: 'full' or 'mve'. Without it the log is binary
@@ -3598,148 +3610,21 @@ function initMilestonesPanel() {
 
 /* ══ PLANNING WIDGETS (Week / Month panels in Planning page) ══ */
 (function(){
-  let _planWeekOffset = 0;
-  let _planMonthOffset = 0;
-  let _planSaveTimer = null;
-
-  function isoWeekKey(date) {
-    const d = new Date(date || new Date());
-    d.setHours(0,0,0,0);
-    d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
-    const w1 = new Date(d.getFullYear(), 0, 4);
-    const wn = 1 + Math.round(((d - w1) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7);
-    return `${d.getFullYear()}-W${String(wn).padStart(2,'0')}`;
-  }
-  function monthKey(date) {
-    const d = date || new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  }
-  function getWeekStart(offset) {
-    const now = new Date();
-    const dow = now.getDay();
-    const mon = new Date(now);
-    mon.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1) + (offset || 0) * 7);
-    mon.setHours(0,0,0,0);
-    return mon;
-  }
 
 
+
+  /* Only Buckets is left in this view; the Week and Month panes were removed
+     with their unreachable markup. Kept as a function because showPlanBuckets()
+     calls it through window._switchPlanCalTab. */
   function switchPlanRightTab(tab) {
-    document.querySelectorAll('.plan-center-tab').forEach(b => b.classList.toggle('active', b.dataset.ptab === tab));
-    document.getElementById('plan-right-week').style.display  = tab === 'week'  ? '' : 'none';
-    document.getElementById('plan-right-month').style.display = tab === 'month' ? '' : 'none';
-    document.getElementById('plan-right-focus').style.display = tab === 'focus' ? '' : 'none';
-    if (tab === 'week')  buildWeekPlan();
-    if (tab === 'month') buildMonthPlan();
-    if (tab === 'focus') buildFocusBuckets();
+    const focus = document.getElementById('plan-right-focus');
+    if (focus) focus.style.display = '';
+    if (tab === 'focus' || !tab) buildFocusBuckets();
   }
 
-  async function buildWeekPlan() {
-    const ws = getWeekStart(_planWeekOffset);
-    const we = new Date(ws); we.setDate(ws.getDate() + 6);
-    const fmt = d => d.toLocaleDateString('en-GB', { month:'short', day:'numeric' });
-    const labelEl = document.getElementById('plan-week-label');
-    if (labelEl) labelEl.textContent = `Week of ${fmt(ws)} – ${fmt(we)}`;
-    const key = isoWeekKey(ws);
 
-    let data = {};
-    const uid = window.CDX_USER?.uid;
-    if (uid && window.CDX_FB && window.CDX_DB) {
-      try {
-        const { doc, getDoc, collection } = window.CDX_FB;
-        const snap = await getDoc(doc(collection(window.CDX_DB, 'users', uid, 'weeklyPlans'), key));
-        if (snap.exists()) data = snap.data();
-      } catch(e) {}
-    }
 
-    const ids = ['pw-intention','pw-p1','pw-p2','pw-p3','pw-went-well','pw-carry-fwd'];
-    const vals = [data.intention||'', ...(data.priorities||[]).slice(0,3), data.reviewWentWell||'', data.reviewCarryForward||''];
-    ids.forEach((id, i) => {
-      const el = document.getElementById(id);
-      if (el) { el.value = vals[i] || ''; el.oninput = () => scheduleSave('week', key); }
-    });
 
-    // 7-column task grid
-    const days = Array.from({length:7}, (_,i) => { const d = new Date(ws); d.setDate(ws.getDate()+i); return localDateStr(d); });
-    renderWeekTaskData(days);
-  }
-
-  async function buildMonthPlan() {
-    const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth() + _planMonthOffset, 1);
-    const key = monthKey(target);
-    const labelEl = document.getElementById('plan-month-label');
-    if (labelEl) labelEl.textContent = target.toLocaleDateString('en-GB', {month:'long', year:'numeric'});
-
-    let data = {};
-    const uid = window.CDX_USER?.uid;
-    if (uid && window.CDX_FB && window.CDX_DB) {
-      try {
-        const { doc, getDoc, collection } = window.CDX_FB;
-        const snap = await getDoc(doc(collection(window.CDX_DB, 'users', uid, 'monthlyPlans'), key));
-        if (snap.exists()) data = snap.data();
-      } catch(e) {}
-    }
-
-    const intentEl = document.getElementById('pm-intention');
-    if (intentEl) { intentEl.value = data.intention||''; intentEl.oninput = () => scheduleSave('month', key); }
-
-    // Calendar grid
-    const daysInMonth = new Date(target.getFullYear(), target.getMonth()+1, 0).getDate();
-    const firstDow = (new Date(target.getFullYear(), target.getMonth(), 1).getDay() + 6) % 7;
-    const todayStr = localDateStr(new Date());
-    const calEl = document.getElementById('pm-cal-grid');
-    if (calEl) {
-      let html = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d =>
-        `<div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);text-align:center;padding:2px">${d}</div>`).join('');
-      for (let i = 0; i < firstDow; i++) html += `<div></div>`;
-      for (let d = 1; d <= daysInMonth; d++) {
-        const ds = `${key}-${String(d).padStart(2,'0')}`;
-        const hasEv = CAL_EVENTS.some(e => e.date === ds);
-        const isToday = ds === todayStr;
-        html += `<div class="plan-month-day-cell${isToday?' today':''}">
-          <span>${d}</span>${hasEv?`<div class="plan-event-dot"></div>`:''}
-        </div>`;
-      }
-      calEl.innerHTML = html;
-    }
-
-    renderPlanMilestones(data.milestones || [], key);
-
-    renderMonthTaskData(key);
-  }
-
-  function renderWeekTaskData(days) {
-    const grid = document.getElementById('pw-task-grid');
-    if (grid) grid.innerHTML = `<div class="plan-week-grid">
-      ${days.map(d => `<div class="plan-week-grid-day">${new Date(d+'T00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric'})}</div>`).join('')}
-      ${days.map(d => {
-        const dt = TASKS.filter(t => (t.dueDate||t.due) === d && !t._parent);
-        return `<div class="plan-week-grid-cell">
-          ${dt.map(t => `<div style="padding:1px 0;color:${t.done?'var(--muted)':'var(--cream)'};text-decoration:${t.done?'line-through':'none'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px" title="${escAttr(t.title||'')}">${escHtml(t.title||'')}</div>`).join('')}
-        </div>`;
-      }).join('')}
-    </div>`;
-    const done = TASKS.filter(t => t.done && days.includes(t.dueDate||t.due)).length;
-    const total = TASKS.filter(t => days.includes(t.dueDate||t.due)).length;
-    const stats = document.getElementById('pw-stats');
-    if (stats) stats.innerHTML = `<div class="plan-stat-bar" style="margin-top:8px">
-      <div class="plan-stat-bar-label"><span>Tasks Done</span><span>${done}/${total}</span></div>
-      <div class="plan-stat-bar-track"><div class="plan-stat-bar-fill" style="width:${total?Math.round(done/total*100):0}%"></div></div>
-    </div>`;
-    renderWeekDueSection(days);
-  }
-
-  function renderMonthTaskData(key) {
-    const done = TASKS.filter(t => t.done && (t.dueDate||t.due)?.startsWith(key)).length;
-    const total = TASKS.filter(t => (t.dueDate||t.due)?.startsWith(key)).length;
-    const stats = document.getElementById('pm-stats');
-    if (stats) stats.innerHTML = `<div class="plan-stat-bar" style="margin-top:12px">
-      <div class="plan-stat-bar-label"><span>Tasks Done</span><span>${done}/${total}</span></div>
-      <div class="plan-stat-bar-track"><div class="plan-stat-bar-fill" style="width:${total?Math.round(done/total*100):0}%"></div></div>
-    </div>`;
-    renderMonthDueSection(key);
-  }
 
   function refreshPlanTaskViews() {
     // Keep the focused commitment's calendar + linked-task list live as tasks
@@ -3753,162 +3638,17 @@ function initMilestonesPanel() {
     }
     const calView = document.getElementById('plan-view-calendar');
     if (!calView || calView.style.display === 'none') return;
-    const weekEl = document.getElementById('plan-right-week');
-    if (weekEl && weekEl.style.display !== 'none') {
-      const days = Array.from({length:7}, (_,i) => { const d = new Date(getWeekStart(_planWeekOffset)); d.setDate(d.getDate()+i); return localDateStr(d); });
-      renderWeekTaskData(days);
-    } else {
-      const target = new Date(new Date().getFullYear(), new Date().getMonth() + _planMonthOffset, 1);
-      renderMonthTaskData(monthKey(target));
-    }
+    // The Week and Month panes this used to refresh are gone; Buckets redraws
+    // from its own data when it is shown.
   }
 
-  function renderWeekDueSection(days) {
-    const el = document.getElementById('pw-due-section');
-    if (!el) return;
-    // Tasks due this week (not sub-tasks)
-    const tasks = TASKS.filter(t => !t._parent && days.includes(t.dueDate||t.due))
-      .sort((a,b) => (a.dueDate||a.due||'').localeCompare(b.dueDate||b.due||''));
-    // Milestone events due this week
-    const msEvents = (typeof MILESTONE_EVENTS !== 'undefined' ? MILESTONE_EVENTS : [])
-      .filter(e => days.includes(e.date));
 
-    if (!tasks.length && !msEvents.length) {
-      el.innerHTML = '';
-      return;
-    }
-    const fmtDate = ds => new Date(ds+'T00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric'});
-    let rows = '';
-    msEvents.forEach(e => {
-      rows += `<div class="plan-due-row">
-        <span class="plan-due-badge milestone">Milestone</span>
-        <span class="plan-due-title" title="${escAttr(e.title||'')}">${escHtml(e.title||'Untitled')}</span>
-        <span class="plan-due-date">${e.date ? fmtDate(e.date) : ''}</span>
-      </div>`;
-    });
-    tasks.forEach(t => {
-      const d = t.dueDate||t.due||'';
-      rows += `<div class="plan-due-row">
-        <span class="plan-due-badge task${t.done?' done':''}">Task</span>
-        <span class="plan-due-title${t.done?' done':''}" title="${escAttr(t.title||'')}">${escHtml(t.title||'Untitled')}</span>
-        <span class="plan-due-date">${d ? fmtDate(d) : ''}</span>
-      </div>`;
-    });
-    el.innerHTML = `<div class="plan-due-section">
-      <div class="plan-due-section-title">Due this week</div>
-      ${rows}
-    </div>`;
-  }
 
-  function renderMonthDueSection(key) {
-    const el = document.getElementById('pm-due-section');
-    if (!el) return;
-    // Tasks due this month (not sub-tasks)
-    const tasks = TASKS.filter(t => !t._parent && (t.dueDate||t.due||'').startsWith(key))
-      .sort((a,b) => (a.dueDate||a.due||'').localeCompare(b.dueDate||b.due||''));
-    // Milestone events due this month
-    const msEvents = (typeof MILESTONE_EVENTS !== 'undefined' ? MILESTONE_EVENTS : [])
-      .filter(e => e.date && e.date.startsWith(key))
-      .sort((a,b) => (a.date||'').localeCompare(b.date||''));
 
-    if (!tasks.length && !msEvents.length) {
-      el.innerHTML = '';
-      return;
-    }
-    const fmtDate = ds => new Date(ds+'T00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'});
-    let rows = '';
-    msEvents.forEach(e => {
-      rows += `<div class="plan-due-row">
-        <span class="plan-due-badge milestone">Milestone</span>
-        <span class="plan-due-title" title="${escAttr(e.title||'')}">${escHtml(e.title||'Untitled')}</span>
-        <span class="plan-due-date">${e.date ? fmtDate(e.date) : ''}</span>
-      </div>`;
-    });
-    tasks.forEach(t => {
-      const d = t.dueDate||t.due||'';
-      rows += `<div class="plan-due-row">
-        <span class="plan-due-badge task${t.done?' done':''}">Task</span>
-        <span class="plan-due-title${t.done?' done':''}" title="${escAttr(t.title||'')}">${escHtml(t.title||'Untitled')}</span>
-        <span class="plan-due-date">${d ? fmtDate(d) : ''}</span>
-      </div>`;
-    });
-    el.innerHTML = `<div class="plan-due-section">
-      <div class="plan-due-section-title">Due this month</div>
-      ${rows}
-    </div>`;
-  }
 
-  function renderPlanMilestones(milestones, key) {
-    const container = document.getElementById('pm-milestones');
-    if (!container) return;
-    container.innerHTML = milestones.map((m, i) => `
-      <div class="plan-milestone-row" data-id="${escAttr(m.id||String(i))}">
-        <input type="checkbox"${m.done?' checked':''} onchange="window._schedulePlanSave('month','${escAttr(key)}')">
-        <input type="date" value="${escAttr(m.date||'')}" onchange="window._schedulePlanSave('month','${escAttr(key)}')">
-        <input type="text" value="${escAttr(m.title||'')}" placeholder="Milestone…" oninput="window._schedulePlanSave('month','${escAttr(key)}')">
-        <button onclick="this.closest('.plan-milestone-row').remove();window._schedulePlanSave('month','${escAttr(key)}')" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0 4px;font-size:14px;line-height:1">✕</button>
-      </div>`).join('');
-  }
-
-  function addPlanMonthMilestone() {
-    const target = new Date();
-    target.setMonth(target.getMonth() + _planMonthOffset);
-    const key = monthKey(target);
-    const container = document.getElementById('pm-milestones');
-    if (!container) return;
-    const row = document.createElement('div');
-    row.className = 'plan-milestone-row';
-    row.dataset.id = Date.now();
-    row.innerHTML = `
-      <input type="checkbox">
-      <input type="date" value="${localDateStr(new Date())}" onchange="window._schedulePlanSave('month','${key}')">
-      <input type="text" placeholder="Milestone…" oninput="window._schedulePlanSave('month','${key}')">
-      <button onclick="this.closest('.plan-milestone-row').remove();window._schedulePlanSave('month','${key}')" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0 4px;font-size:14px;line-height:1">✕</button>`;
-    container.appendChild(row);
-    row.querySelector('input[type="text"]').focus();
-  }
-
-  function scheduleSave(tab, key) {
-    clearTimeout(_planSaveTimer);
-    _planSaveTimer = setTimeout(() => savePlanData(tab, key), 800);
-  }
-  window._schedulePlanSave = scheduleSave;
   window.togglePlanPanel = togglePlanPanel;
   window._refreshPlanTaskViews = refreshPlanTaskViews;
 
-  async function savePlanData(tab, key) {
-    const uid = window.CDX_USER?.uid;
-    if (!uid || !window.CDX_FB || !window.CDX_DB) return;
-    const { doc, setDoc, collection, serverTimestamp } = window.CDX_FB;
-    let payload;
-    if (tab === 'week') {
-      payload = {
-        intention: document.getElementById('pw-intention')?.value || '',
-        priorities: ['pw-p1','pw-p2','pw-p3'].map(id => document.getElementById(id)?.value || ''),
-        reviewWentWell: document.getElementById('pw-went-well')?.value || '',
-        reviewCarryForward: document.getElementById('pw-carry-fwd')?.value || '',
-        updatedAt: serverTimestamp(),
-      };
-    } else {
-      const milestones = [];
-      document.querySelectorAll('#pm-milestones .plan-milestone-row').forEach(row => {
-        milestones.push({
-          id: row.dataset.id,
-          date: row.querySelector('input[type="date"]')?.value || '',
-          title: row.querySelector('input[type="text"]')?.value || '',
-          done: row.querySelector('input[type="checkbox"]')?.checked || false,
-        });
-      });
-      payload = {
-        intention: document.getElementById('pm-intention')?.value || '',
-        milestones,
-        updatedAt: serverTimestamp(),
-      };
-    }
-    try {
-      await setDoc(doc(collection(window.CDX_DB, 'users', uid, tab === 'week' ? 'weeklyPlans' : 'monthlyPlans'), key), payload, { merge: true });
-    } catch(e) { console.warn('Plan save error:', e); }
-  }
 
   function closeMilestoneDetail() {
     // Deselect the commitment and fall back to the all-commitments calendar
@@ -3951,13 +3691,6 @@ function initMilestonesPanel() {
       document.querySelectorAll('.plan-center-tab').forEach(btn => {
         btn.addEventListener('click', () => switchPlanRightTab(btn.dataset.ptab));
       });
-      document.getElementById('plan-week-prev')?.addEventListener('click', () => { _planWeekOffset--; buildWeekPlan(); });
-      document.getElementById('plan-week-next')?.addEventListener('click', () => { _planWeekOffset++; buildWeekPlan(); });
-      document.getElementById('plan-week-today')?.addEventListener('click', () => { _planWeekOffset = 0; buildWeekPlan(); });
-      document.getElementById('plan-month-prev')?.addEventListener('click', () => { _planMonthOffset--; buildMonthPlan(); });
-      document.getElementById('plan-month-next')?.addEventListener('click', () => { _planMonthOffset++; buildMonthPlan(); });
-      document.getElementById('plan-month-today')?.addEventListener('click', () => { _planMonthOffset = 0; buildMonthPlan(); });
-      document.getElementById('plan-add-month-ms')?.addEventListener('click', addPlanMonthMilestone);
       document.getElementById('plan-left-toggle')?.addEventListener('click',  () => togglePlanPanel('left'));
       document.getElementById('plan-right-toggle')?.addEventListener('click', () => togglePlanPanel('right'));
       document.getElementById('plan-left-expand')?.addEventListener('click',  e => { e.stopPropagation(); togglePlanPanel('left'); });
@@ -4356,7 +4089,12 @@ window.showPlanTab2 = function(tab) {
   window._planTab2 = tab;
   document.querySelectorAll('#plan-tabs2 .plan-tab2').forEach(b =>
     b.classList.toggle('active', b.dataset.ptab2 === tab));
-  if (tab === 'commitments') { _planShowView('projects'); renderMilestones(); return; }
+  if (tab === 'commitments') {
+    // This tab renders its own layout and never calls _planHeader, so the hero
+    // would keep whatever the previous tab left in it.
+    _planSetHero('COMMITMENTS', 'How you intend to get there.');
+    _planShowView('projects'); renderMilestones(); return;
+  }
   _planShowView('design');
   if      (tab === 'horizons') renderPlanHorizons();
   else if (tab === 'reflect')  renderPlanReflect();
@@ -4462,6 +4200,15 @@ function _planWeekMonday() {
   return mon;
 }
 function _planWeekKey() { return localDateStr(_planWeekMonday()); }
+
+/* The key format the retired Week pane used, so its documents can be found. */
+function _planIsoWeekKey() {
+  const d = _planWeekMonday();
+  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+  const w1 = new Date(d.getFullYear(), 0, 4);
+  const wn = 1 + Math.round(((d - w1) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7);
+  return `${d.getFullYear()}-W${String(wn).padStart(2, '0')}`;
+}
 function _planWeekDays() {
   const mon = _planWeekMonday();
   return Array.from({ length: 7 }, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return localDateStr(d); });
@@ -4480,11 +4227,15 @@ function _ptwWeekLabel() {
    so every tab opened with four typographic levels and three sentences of voice
    before any content. The voice now lives in the hero, which this updates, and
    the section header keeps only the italic line and the tab's own controls. */
+function _planSetHero(eyebrow, title) {
+  const h = document.querySelector('.plan-hero-title');
+  if (h) h.textContent = title;
+  const e = document.querySelector('.plan-hero-eyebrow');
+  if (e) e.textContent = String(eyebrow).split('·')[0].trim() || 'PLANNING';
+}
+
 function _planHeader(eyebrow, title, italic, rightHtml) {
-  const heroTitle = document.querySelector('.plan-hero-title');
-  if (heroTitle) heroTitle.textContent = title;
-  const heroEyebrow = document.querySelector('.plan-hero-eyebrow');
-  if (heroEyebrow) heroEyebrow.textContent = String(eyebrow).split('·')[0].trim() || 'PLANNING';
+  _planSetHero(eyebrow, title);
   return `<div class="plan-dsn-head">
     <div>${italic ? `<div class="plan-dsn-italic">${escHtml(italic)}</div>` : ''}</div>
     ${rightHtml || ''}
@@ -4663,6 +4414,25 @@ function renderPlanReflect() {
       <div class="ptw-shape-grid">${shapedCells}</div>
     </div>
 
+    <!-- Folded in from the old Week pane, which became unreachable when its tab
+         was removed: its switcher buttons left the markup and the only caller
+         now passes 'focus'. Anything written there is migrated on load below,
+         so nothing typed into it is lost. -->
+    <div class="plan-two">
+      <div class="plan-glass">
+        <div class="eyebrow">INTENTION</div>
+        <div class="plan-glass-title" style="margin:2px 0 6px">What is this week for?</div>
+        <textarea class="plan-dsn-textarea" id="ptw-intention" rows="3" placeholder="One sentence. If the week only achieved this, it worked…"></textarea>
+      </div>
+      <div class="plan-glass">
+        <div class="eyebrow">TOP 3 PRIORITIES</div>
+        <div class="plan-glass-title" style="margin:2px 0 6px">Three, at most</div>
+        <input class="plan-priority-input" id="ptw-p1" placeholder="1." autocomplete="off">
+        <input class="plan-priority-input" id="ptw-p2" placeholder="2." autocomplete="off">
+        <input class="plan-priority-input" id="ptw-p3" placeholder="3." autocomplete="off">
+      </div>
+    </div>
+
     <div class="plan-two">
       <div class="plan-glass">
         <div class="plan-dsn-eyebrow">ENERGY FORECAST</div>
@@ -4721,6 +4491,10 @@ function renderPlanReflect() {
           <textarea class="plan-dsn-textarea" id="prv-worked" rows="4" placeholder="Keep doing this…"></textarea>
         </div>
         <div class="plan-glass">
+            <div class="plan-dsn-eyebrow">CARRY FORWARD</div>
+          <textarea class="plan-dsn-textarea" id="prv-carryfwd" rows="3" placeholder="What follows you into next week…"></textarea>
+        </div>
+        <div class="plan-glass">
           <div class="plan-dsn-eyebrow">GRATITUDE</div>
           <textarea class="plan-dsn-textarea" id="prv-gratitude" rows="3" placeholder="Three small things worth keeping…"></textarea>
         </div>
@@ -4750,6 +4524,8 @@ function _wirePlanReflect(body, key) {
   // Both halves of the page write to one weeklyPlans document, which is what
   // they always did — the split was only ever in the UI.
   const readAll = () => ({
+    intention: document.getElementById('ptw-intention')?.value || '',
+    priorities: ['ptw-p1','ptw-p2','ptw-p3'].map(id => document.getElementById(id)?.value || ''),
     notDoing: document.getElementById('ptw-notdoing')?.value || '',
     weekShaped: Array.from(body.querySelectorAll('[data-shape]')).map(i => i.value),
     energy: Object.fromEntries(Array.from(body.querySelectorAll('[data-energy]')).map(s => [s.dataset.energy, s.value])),
@@ -4759,18 +4535,46 @@ function _wirePlanReflect(body, key) {
       exec:      document.getElementById('prv-exec')?.value || '',
       change:    document.getElementById('prv-change')?.value || '',
       worked:    document.getElementById('prv-worked')?.value || '',
+      carryFwd:  document.getElementById('prv-carryfwd')?.value || '',
       gratitude: document.getElementById('prv-gratitude')?.value || '',
     },
   });
   const save = () => _planDebSave('weeklyPlans', key, readAll);
 
-  ['ptw-notdoing','prv-goal','prv-plan','prv-exec','prv-change','prv-worked','prv-gratitude']
+  ['ptw-notdoing','ptw-intention','ptw-p1','ptw-p2','ptw-p3',
+   'prv-goal','prv-plan','prv-exec','prv-change','prv-worked','prv-carryfwd','prv-gratitude']
     .forEach(id => { const el = document.getElementById(id); if (el) el.oninput = save; });
   body.querySelectorAll('[data-shape]').forEach(i => i.oninput = save);
   body.querySelectorAll('[data-energy]').forEach(s => s.onchange = () => { applyEnergyBar(s.dataset.energy, s.value); save(); });
 
-  _planLoadDoc('weeklyPlans', key).then(d => {
+  _planLoadDoc('weeklyPlans', key).then(async d => {
     const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v || ''; };
+
+    /* One-time recovery. The retired Week pane wrote to the same collection
+       under an ISO key ("2026-W38") while this page uses the Monday's date
+       ("2026-09-21"), so its intention, priorities, went-well and carry-forward
+       are still in Firestore but were unreachable once its tab was removed.
+       Pull them across when this week's document has no value of its own, then
+       write them back under this key so the recovery happens once. */
+    const legacy = await _planLoadDoc('weeklyPlans', _planIsoWeekKey());
+    const recovered = {};
+    if (!d.intention && legacy.intention) recovered.intention = legacy.intention;
+    if (!(d.priorities || []).some(Boolean) && (legacy.priorities || []).some(Boolean)) {
+      recovered.priorities = legacy.priorities;
+    }
+    const rv = d.review || {};
+    const legacyReview = {};
+    if (!rv.worked && legacy.reviewWentWell) legacyReview.worked = legacy.reviewWentWell;
+    if (!rv.carryFwd && legacy.reviewCarryForward) legacyReview.carryFwd = legacy.reviewCarryForward;
+    if (Object.keys(legacyReview).length) recovered.review = { ...rv, ...legacyReview };
+    if (Object.keys(recovered).length) {
+      d = { ...d, ...recovered, review: recovered.review || rv };
+      _planSaveDoc('weeklyPlans', key, recovered);
+      showToast('Recovered notes from the old weekly planner', 'success');
+    }
+
+    set('ptw-intention', d.intention);
+    (d.priorities || []).forEach((v, i) => set('ptw-p' + (i + 1), v));
     set('ptw-notdoing', d.notDoing);
     (d.weekShaped || []).forEach((v, i) => {
       const el = body.querySelector(`[data-shape="${i}"]`);
@@ -4786,6 +4590,7 @@ function _wirePlanReflect(body, key) {
     set('prv-exec', r.exec || r.didnt);
     set('prv-change', r.change);
     set('prv-worked', r.worked);
+    set('prv-carryfwd', r.carryFwd);
     set('prv-gratitude', r.gratitude);
   });
 }
@@ -11428,8 +11233,10 @@ function renderTasksPage() {
                 <span class="atk-shown" id="atk-shown"></span>
               </div>
               <div class="atk-sortwrap">
-                <span class="atk-eyebrow">COMMITMENT</span>
-                <select class="atk-commit-sel" id="atk-commit-sel"></select>
+                <!-- No label: the select's own first option reads "All
+                     commitments", and the longer word squeezed the search
+                     field until its placeholder clipped. -->
+                <select class="atk-commit-sel" id="atk-commit-sel" aria-label="Filter by commitment"></select>
               </div>
               <div class="atk-sortwrap">
                 <span class="atk-eyebrow">SORT</span>
@@ -14361,7 +14168,7 @@ async function _hxCreateHabit() {
         frictionTags: [], frictionFallbacks: {}, restDaysPlanned: [],
         status: 'active', graduatedAt: null, createdAt: serverTimestamp(), archivedAt: null,
       });
-      showToast('Habit added to your daily ritual', 'success');
+      showToast('Habit added to today', 'success');
     } catch (e) { console.warn('hx create habit error:', e); _habits = _habits.filter(h => h.id !== id); showToast('Could not save habit', 'error'); }
   }
   _hxBuilder = { identity: '', name: '', anchor: '', cue: '', reward: '', minimum: '', cat: 'Craft', cadence: 'daily', dow: [] };
@@ -15067,7 +14874,7 @@ function _insxOverview() {
   // keystone habits (real: by 30-day rate)
   const kh = (_habits || []).map(h => {
     const done = dates.filter(ds => !!_habitLogs[ds]?.completions?.[h.id]).length;
-    return { name: h.name, rate: dates.length ? done / dates.length : 0, days: done };
+    return { name: _hName(h), rate: dates.length ? done / dates.length : 0, days: done };
   }).sort((a, b) => b.rate - a.rate).slice(0, 4);
   const khHtml = kh.length ? kh.map(h => `<div>
       <div class="insx2-kh-top"><span class="insx2-kh-name">${escHtml(h.name)}</span><span class="insx2-tel">${h.days}D · ${Math.round(h.rate * 100)}%</span></div>
@@ -15269,7 +15076,7 @@ function _insxPatterns() {
   const bestDow = dowAvg.indexOf(Math.max(...dowAvg)), worstDow = dowAvg.indexOf(Math.min(...dowAvg.filter(v => v >= 0)));
   if (Math.max(...dowAvg) > 0) patterns.push({ icon: '◉', color: _INSX_GREEN, title: `${_INSX_DOW[bestDow]} is your deepest day`, body: `You log the most focus on ${_INSX_DOW[bestDow]} (${_insxFmtHrs(dowAvg[bestDow])}/day avg). Protect it — schedule the hard thing here.` });
   // keystone habit
-  const kh = (_habits || []).map(h => ({ name: h.name, rate: dates.filter(ds => !!_habitLogs[ds]?.completions?.[h.id]).length / dates.length })).sort((a, b) => b.rate - a.rate)[0];
+  const kh = (_habits || []).map(h => ({ name: _hName(h), rate: dates.filter(ds => !!_habitLogs[ds]?.completions?.[h.id]).length / dates.length })).sort((a, b) => b.rate - a.rate)[0];
   if (kh && kh.rate > 0) patterns.push({ icon: '◐', color: 'rgba(255,255,255,.65)', title: `${kh.name} is your keystone`, body: `Kept ${Math.round(kh.rate * 100)}% of the last ${n} days — your most consistent habit. The rest tends to follow it.` });
   // overdue
   const today = localDateStr(new Date());
@@ -16154,7 +15961,7 @@ document.getElementById('settings-backup-btn')?.addEventListener('click', functi
       habits: (_habits || [])
         .filter(h => h.status !== 'graduated' && h.status !== 'archived')
         // Streak is derived from the logs, not stored on the habit.
-        .map(h => ({ id: h.id, title: h.name, done: !!comp[h.id], streak: _todayStreakDays(h.id) })),
+        .map(h => ({ id: h.id, title: _hName(h), done: !!comp[h.id], streak: _todayStreakDays(h.id) })),
       commit: (MILESTONE_PROJECTS || [])
         .filter(p => !p.isArchived)
         .map(p => ({
@@ -17823,7 +17630,12 @@ function initGoalsModal() {
    page built for it. */
 function goalsQuarterSummary() {
   const per = goalPeriodNow('quarter');
-  const q = GOALS.filter(g => g.horizon === 'quarter' && g.period === per);
+  /* Same rule the Horizons column uses: this period, plus anything still active
+     in a later one. Filtering on the current period alone meant that the moment
+     you carried a goal forward, every summary showed the closed original and
+     not the live goal. */
+  const q = GOALS.filter(g => g.horizon === 'quarter' &&
+    (g.period === per || (g.status === 'active' && String(g.period) > String(per))));
   /* Four statuses, and the count has to survive all of them. Reporting
      "done / total" alone produced "0/1 all closed" for a quarter whose only
      goal had been carried forward: neither done nor active, and the line

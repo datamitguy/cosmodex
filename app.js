@@ -5077,11 +5077,11 @@ const _TD_CX = 500, _TD_CY = 500;
    the on-screen radius so a large office display gets the same dial as a laptop.
    The ring scale is pinned to _TD_RING_R, so reserving room for the gauge makes
    the drawing wider without shrinking the rings. */
-const _TD_RING_R = 240;
-const _TD_GAUGE_R = 262;
-const _TD_VB_R = 272;
-const _TD_R_MAX = 380;
-const _TD_R_OF_BAND = 0.72;   // ring radius as a fraction of the top band's height
+const _TD_RING_R = 328;
+const _TD_GAUGE_R = 348;
+const _TD_VB_R = 360;
+const _TD_R_MAX = 760;
+const _TD_R_OF_BAND = 1.0;    // the whole visible half fits the band, no more
 
 /* The visible span of any ring: SVG's y axis points down, so the on-screen
    lower half is 0..180 degrees and six o'clock — where every ring shows its
@@ -5149,27 +5149,27 @@ function _tdRingExact(ring, cur, now){
 const _tdLerp2 = (a,b,t) => a+(b-a)*t;
 
 const TD_RINGS = [
-  { id:'dom', r:55,  bw:41, items:Array.from({length:31},(_,i)=>String(i+1)),
+  { id:'dom', r:120, bw:28, items:Array.from({length:31},(_,i)=>String(i+1)),
     cur:d=>d.getDate()-1,
     sub:d=>0,
-    maj:1,th:5.2,tm:5.2,fs:7.2,lr:48,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
-  { id:'mon', r:96, bw:41, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    maj:1,th:7.0,tm:7.0,fs:11,lr:109,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
+  { id:'mon', r:160, bw:28, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     cur:d=>d.getMonth(),
     sub:d=>0,
-    maj:1,th:5.2,tm:5.2,fs:7.2,lr:89,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
-  { id:'dow', r:137, bw:41, items:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+    maj:1,th:7.0,tm:7.0,fs:11,lr:149,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
+  { id:'dow', r:200, bw:28, items:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
     cur:d=>d.getDay(),
     sub:d=>0,
-    maj:1,th:5.6,tm:5.6,fs:7.5,lr:130,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.50 },
-  { id:'hr',  r:178, bw:41, items:Array.from({length:24},(_,i)=>String(i)),
+    maj:1,th:7.4,tm:7.4,fs:11,lr:189,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.50 },
+  { id:'hr',  r:240, bw:28, items:Array.from({length:24},(_,i)=>String(i)),
     cur:d=>d.getHours(),
     sub:d=>0,
-    maj:1,th:4.8,tm:2.0,fs:6.8,lr:171,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.44 },
-  { id:'min', r:219, bw:41, items:Array.from({length:60},(_,i)=>String((60-i)%60).padStart(2,'0')),
+    maj:1,th:6.6,tm:3.2,fs:10,lr:229,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.44 },
+  { id:'min', r:280, bw:28, items:Array.from({length:60},(_,i)=>String((60-i)%60).padStart(2,'0')),
     cur:d=>(60-d.getMinutes())%60,
     sub:d=>0,
-    maj:1,th:4.4,tm:1.6,fs:6.2,lr:212,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.38 },
-  { id:'sec', r:260, bw:41, items:Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),
+    maj:1,th:6.0,tm:2.4,fs:9.5,lr:269,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.38 },
+  { id:'sec', r:320, bw:28, items:Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),
     cur:d=>d.getSeconds(),
     /* The one deliberate departure from timedrift.live. Sampled over 176
        elements, nothing on that dial moves between unit changes — it is still
@@ -5179,7 +5179,7 @@ const TD_RINGS = [
        does. */
     sub:d=>d.getMilliseconds()/1000,
 
-    maj:1,th:4.4,tm:1.6,fs:6.0,lr:253,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.32 },
+    maj:1,th:6.0,tm:2.4,fs:9,lr:309,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.32 },
 ];
 
 let _tdSvg=null, _tdElYear=null, _tdElTime=null, _tdElDate=null;
@@ -5547,10 +5547,10 @@ function _tdInit(){
 
   // Year text in center hub
   _tdElYear=_tdMk('text');
-  _tdElYear.setAttribute('x',_TD_CX); _tdElYear.setAttribute('y',String(_TD_CY+42));
+  _tdElYear.setAttribute('x',_TD_CX); _tdElYear.setAttribute('y',String(_TD_CY+64));
   _tdElYear.setAttribute('text-anchor','middle'); _tdElYear.setAttribute('dominant-baseline','middle');
   _tdElYear.setAttribute('font-family',"'DM Mono',monospace");
-  _tdElYear.setAttribute('font-size','9'); _tdElYear.setAttribute('font-weight','300');
+  _tdElYear.setAttribute('font-size','12'); _tdElYear.setAttribute('font-weight','300');
   _tdElYear.setAttribute('fill','rgba(255,255,255,0.70)'); _tdElYear.setAttribute('letter-spacing','1.5');
   _tdElYear.textContent=String(new Date().getFullYear());
   gOver.appendChild(_tdElYear);
@@ -5581,7 +5581,7 @@ function _tdInit(){
 
   // Center hub — explicit black fill so year text sits on pure black
   const hubCirc=_tdMk('circle'); hubCirc.setAttribute('cx',_TD_CX); hubCirc.setAttribute('cy',_TD_CY);
-  hubCirc.setAttribute('r','42');
+  hubCirc.setAttribute('r','86');
   /* Design Language V2: glass hub — semi-transparent fill lets rings ghost through,
      with a crisper stroke + subtle inner shadow-like double-ring for the frosted
      bezel effect. Revert by setting _TD_DLV2_ENABLED = false. */
@@ -5616,9 +5616,8 @@ function _tdInit(){
       const aDeg=i*step-90, aRad=aDeg*Math.PI/180;
       const cosA=Math.cos(aRad), sinA=Math.sin(aRad);
       const ig=_tdMk('g'); ig.setAttribute('class','td-ri'); ig.dataset.i=i; ig.dataset.maj=isMaj?'1':'0';
-      const half=tH/2;
-      const ox=_TD_CX+(ring.r-half)*cosA, oy=_TD_CY+(ring.r-half)*sinA;
-      const ox2=_TD_CX+(ring.r+half)*cosA, oy2=_TD_CY+(ring.r+half)*sinA;
+      const ox=_TD_CX+ring.r*cosA, oy=_TD_CY+ring.r*sinA;
+      const ox2=_TD_CX+(ring.r+tH)*cosA, oy2=_TD_CY+(ring.r+tH)*sinA;
       const tk=_tdMk('line');
       tk.setAttribute('x1',ox); tk.setAttribute('y1',oy); tk.setAttribute('x2',ox2); tk.setAttribute('y2',oy2);
       tk.setAttribute('stroke',_TD_DIM); tk.setAttribute('stroke-width',isMaj?'0.7':'0.4');
@@ -5735,13 +5734,17 @@ function _tdLayout(){
   // width and swallowed a wide office monitor.
   const R=narrow
     ? Math.min(vw*0.55, vh*0.98)
-    : Math.min(vh*_TD_R_OF_BAND, vw*0.30, _TD_R_MAX);
+    : Math.min(vh*_TD_R_OF_BAND, vw*0.50, _TD_R_MAX);
   // px per viewBox unit, pinned to the calendar rings so the session gauge can
   // be given room outside them without the rings themselves changing size.
   const U=R/_TD_RING_R;
   // The drawing is _TD_VB_R wide in units, not _TD_RING_R — on a narrow screen
   // the gauge would hang off both edges unless the whole box is made to fit.
-  const fitU=(vw*0.98)/(_TD_VB_R*2);
+  /* Fit to the rings, not to the viewBox. The gauge reserve outside them was
+     costing 13% of the width even when no session was running, which is why
+     the dial sat small in the middle of a wide panel. The rings run to the
+     edges now and the reserve is simply clipped, as it is on the reference. */
+  const fitU=(vw*1.02)/(_TD_RING_R*2);
   const U2=Math.min(U,fitU);
   const pw=Math.round(_TD_VB_R*2*U2), ph=Math.round(_TD_VB_R*U2);
   // The nebula glow is sized off the rings, not the panel, so it stays a halo
@@ -5750,6 +5753,12 @@ function _tdLayout(){
   // viewBox starts at the ring centre, so the top half is cropped away.
   _tdSvg.setAttribute('viewBox',`${_TD_CX-_TD_VB_R} ${_TD_CY} ${_TD_VB_R*2} ${_TD_VB_R}`);
   _tdSvg.style.width=pw+'px'; _tdSvg.style.height=ph+'px';
+  /* Pin the readout to where the outermost ring actually bottoms out rather
+     than to a fixed percentage of the panel. The dial is width-limited on a
+     short wide window and height-limited on a tall one, so a fixed percentage
+     leaves a dead band under it at some sizes and collides with it at others. */
+  const panel=document.getElementById('panel-timedrift');
+  if(panel) panel.style.setProperty('--td-clock-y', Math.round(320*U2+34)+'px');
   const stage=document.getElementById('td-stage');
   if(stage){ stage.style.width=pw+'px'; stage.style.height=ph+'px'; }
   // Glass disc tracks the outer ring (r=234 in viewBox units); its centre is
@@ -5799,7 +5808,8 @@ function _tdUpdateRing(info,now,animEase){
     } else {
       if(tk){tk.setAttribute('stroke',_TD_DIM);tk.setAttribute('stroke-width',maj?'0.5':'0.22');tk.removeAttribute('filter');}
       if(rl){rl.setAttribute('fill',_TD_DIM);rl.setAttribute('font-weight','300');rl.setAttribute('font-size',String(ring.fs));rl.removeAttribute('filter');}
-      item.style.opacity=opac<0.02?'0':String(opac);
+      const ringA=opac*(ring.dimA*1.9);
+      item.style.opacity=ringA<0.02?'0':String(Math.min(1,ringA));
     }
   });
 }

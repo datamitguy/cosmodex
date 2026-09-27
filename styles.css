@@ -4926,7 +4926,9 @@ select.sched-input { background: #181818; }
    Sits in the clear band between the dial (hung off the top edge) and the
    horizon arc, as on timedrift.live. */
 #td-clock {
-  position: absolute; left: 0; right: 0; top: 53%;
+  /* The dial's band is two thirds of the panel now, so the readout sits just
+     below where the outermost ring bottoms out rather than halfway up. */
+  position: absolute; left: 0; right: 0; top: var(--td-clock-y, 69%);
   z-index: 2; pointer-events: none;
   display: flex; flex-direction: column; align-items: center; gap: 12px;
 }
@@ -6519,7 +6521,7 @@ select.atk-inline option { background:#141414; color:#fff; }
   .insx2-rail { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 
   /* Timedrift: give the ring-dial more of the screen on a phone */
-  #td-top { height: 58% !important; }
+  #td-top { height: 72% !important; }
 
   /* Lists: stack the index over the detail instead of a 264px + sliver split */
   .lists-grid { grid-template-columns: 1fr; gap: 16px; }

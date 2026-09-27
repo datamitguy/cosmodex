@@ -7238,26 +7238,31 @@ textarea:focus-visible {
 }
 
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
-   One motion for every button that has a hovered or selected state: a circle
-   of pure white, larger than the button and clipped by it, travels upward —
-   in from below on hover, out through the top on leave, so it never rewinds.
-   The button inverts as the white passes: white ground, black label. Black
-   and white only, plus the light the white throws around itself.
+   One motion for every button in the app: a circle of pure white, larger than
+   the button and clipped by it, travels upward — in from below on hover, out
+   through the top on leave, so it never rewinds. The button inverts as the
+   white passes: white ground, black label. Black and white only, plus the
+   light the white throws around itself.
 
    This block sits last on purpose. Each component declares its own `.active`
    background further up; landing here lets those rules stay untouched and be
-   settled in one place. .btn-primary runs the motion inverted, since it is
-   already white at rest — black sweeps in over it.
+   settled in one place.
 
-   Deliberately excluded: .nav-item, .settings-nav-item and .mob-nav-btn are
-   navigation rather than buttons; .dash-pill and .pomo-preset carry the neon
-   accent, which means something; .mm-tool-btn holds icons, not a label; and
-   .btn-danger keeps its red, because a delete must not read as an affirmative
-   white button sitting next to Save.
+   Buttons that are already white at rest run the motion inverted — black
+   sweeps in over them, and the label goes white.
+
+   Excluded, deliberately: .btn-danger, .friction-action-btn.kill and .cr-leave
+   are destructive or abandon work, and must not read as an affirmative white
+   button beside Save; the bare ✕ dismiss controls are not choices, and a white
+   pill blooming under one would pull the eye to the exit.
    ──────────────────────────────────────────────────────────────────────── */
-.plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab, .cns-pill,
-.ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
-.btn-ghost, .btn-primary {
+.plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
+.cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
+.dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item, .mob-nav-btn,
+.nav-item, .dash-btn, .energy-pill, .ritual-energy-btn, .cr-begin,
+.ritual-skip-btn, .commit-action-btn, .nav-footer-btn, .orb-gadget-btn,
+.friction-action-btn:not(.kill), .btn-ghost:not(.btn-danger),
+.btn-primary, .ritual-start-btn, .sched-confirm-btn, .btn-secondary {
   position:relative; overflow:hidden; isolation:isolate;
   /* The clip needs the label to fit: these sit in flex rows beside inputs that
      grow, and a squeezed button used to spill its text over its own border. */
@@ -7265,52 +7270,93 @@ textarea:focus-visible {
   /* Leaving uses this delay: the ink holds until the white has cleared. */
   transition:color .22s cubic-bezier(.25,1,.5,1) .28s,
              border-color .3s cubic-bezier(.3,1,.3,1),
+             border-radius .3s cubic-bezier(.3,1,.3,1),
              box-shadow .4s cubic-bezier(.3,1,.3,1),
              transform .1s;
 }
 .plan-tab2::before, .hx-tab::before, .insx-tab::before, .insx2-tab::before,
-.insx2-rbtn::before, .cns-tab::before, .cns-pill::before, .ins-viz-tab::before,
-.view-tab::before, .pcal-vt::before, .calx-vtog::before, .cr-dur::before,
-.btn-ghost::before, .btn-primary::before {
-  content:''; position:absolute; z-index:-1;
+.insx2-rbtn::before, .cns-tab::before, .cns-pill::before,
+.ins-viz-tab::before, .view-tab::before, .pcal-vt::before,
+.calx-vtog::before, .cr-dur::before, .dash-pill::before,
+.pomo-preset::before, .mm-tool-btn::before, .settings-nav-item::before,
+.mob-nav-btn::before, .nav-item::before, .dash-btn::before,
+.energy-pill::before, .ritual-energy-btn::before, .cr-begin::before,
+.ritual-skip-btn::before, .commit-action-btn::before,
+.nav-footer-btn::before, .orb-gadget-btn::before,
+.friction-action-btn:not(.kill)::before, .btn-ghost:not(.btn-danger)::before,
+.btn-primary::before, .ritual-start-btn::before,
+.sched-confirm-btn::before, .btn-secondary::before {
+  content:''; position:absolute; z-index:-1; opacity:1;
   left:-25%; top:-50%; width:150%; height:200%; border-radius:50%;
   background:var(--gold);
   transform:translateY(-76%);
   transition:transform .5s cubic-bezier(.3,1,.3,1);
 }
-.btn-primary::before { background:var(--ink); }
+.btn-primary::before, .ritual-start-btn::before,
+.sched-confirm-btn::before, .btn-secondary::before { background:var(--ink); }
 
 /* Filled: hovering an unselected button, or resting on the selected one. */
-:is(.plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab, .cns-pill,
-    .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur):not(.active):is(:hover, :focus-visible)::before,
-:is(.btn-ghost:not(.btn-danger), .btn-primary):is(:hover, :focus-visible)::before {
+:is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
+    .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
+    .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item,
+    .mob-nav-btn, .nav-item, .dash-btn, .energy-pill, .ritual-energy-btn,
+    .cr-begin, .ritual-skip-btn, .commit-action-btn, .nav-footer-btn,
+    .orb-gadget-btn, .friction-action-btn:not(.kill),
+    .btn-ghost:not(.btn-danger)):not(.active):is(:hover, :focus-visible)::before,
+:is(    .btn-primary, .ritual-start-btn, .sched-confirm-btn, .btn-secondary):is(:hover, :focus-visible)::before {
   /* The animation plays the rise; the transform holds the resting value at 0
      so leaving transitions 0 → -76% and the circle exits through the top. */
-  transform:translateY(0); animation:cdx-sweep-up .5s cubic-bezier(.3,1,.3,1);
+  transform:translateY(0); opacity:1;
+  animation:cdx-sweep-up .5s cubic-bezier(.3,1,.3,1);
 }
-:is(.plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab, .cns-pill,
-    .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur).active::before {
-  transform:translateY(0);
-}
+:is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
+    .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
+    .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item,
+    .mob-nav-btn, .nav-item, .dash-btn, .energy-pill, .ritual-energy-btn,
+    .cr-begin, .ritual-skip-btn, .commit-action-btn, .nav-footer-btn,
+    .orb-gadget-btn, .friction-action-btn:not(.kill),
+    .btn-ghost:not(.btn-danger)).active::before { transform:translateY(0); opacity:1; }
 @keyframes cdx-sweep-up { from { transform:translateY(74%); } to { transform:translateY(0); } }
 
 /* The inversion, and the shine — thrown around the button, not painted on it.
    Box shadow is not clipped by the overflow above. Arriving flips the ink on
    a shorter delay, once the white is nearly there. */
-:is(.plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab, .cns-pill,
-    .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur):not(.active):is(:hover, :focus-visible),
-:is(.plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab, .cns-pill,
-    .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur).active,
-.btn-ghost:not(.btn-danger):is(:hover, :focus-visible) {
+:is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
+    .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
+    .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item,
+    .mob-nav-btn, .nav-item, .dash-btn, .energy-pill, .ritual-energy-btn,
+    .cr-begin, .ritual-skip-btn, .commit-action-btn, .nav-footer-btn,
+    .orb-gadget-btn, .friction-action-btn:not(.kill),
+    .btn-ghost:not(.btn-danger)):not(.active):is(:hover, :focus-visible),
+:is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
+    .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
+    .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item,
+    .mob-nav-btn, .nav-item, .dash-btn, .energy-pill, .ritual-energy-btn,
+    .cr-begin, .ritual-skip-btn, .commit-action-btn, .nav-footer-btn,
+    .orb-gadget-btn, .friction-action-btn:not(.kill),
+    .btn-ghost:not(.btn-danger)).active {
   background:transparent; color:var(--ink); border-color:var(--gold); text-shadow:none;
   box-shadow:0 0 18px rgba(255,255,255,.34);
   transition:color .28s cubic-bezier(.25,1,.5,1) .12s,
              border-color .3s cubic-bezier(.3,1,.3,1),
+             border-radius .3s cubic-bezier(.3,1,.3,1),
              box-shadow .4s cubic-bezier(.3,1,.3,1);
 }
-.btn-primary:is(:hover, :focus-visible) {
-  background:var(--gold); color:var(--gold);
+:is(    .btn-primary, .ritual-start-btn, .sched-confirm-btn, .btn-secondary):is(:hover, :focus-visible) {
+  background:var(--gold); color:var(--gold); border-color:var(--ink);
   box-shadow:0 0 18px rgba(255,255,255,.34);
   transition:color .28s cubic-bezier(.25,1,.5,1) .12s,
              box-shadow .4s cubic-bezier(.3,1,.3,1);
 }
+
+/* The left nav already spent both its pseudo-elements: ::before on a grey
+   glow bleed, ::after on a specular hairline. Both are the painted-on sheen
+   this pattern replaces, so ::before becomes the sweep and the hairline goes.
+   Its dark inset shadows and white text-shadow would also dirty a white
+   ground, and the icon's white drop-shadow would vanish into it. */
+.nav-item:is(:hover, .active) {
+  border-radius:100px; backdrop-filter:none; -webkit-backdrop-filter:none;
+}
+.nav-item.active::after { display:none; }
+.nav-item.active .nav-item-icon { filter:none; }
+.nav-item:is(:hover, .active) .nav-item-count { color:rgba(0,0,0,.55); }

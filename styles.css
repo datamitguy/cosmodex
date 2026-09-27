@@ -7432,7 +7432,7 @@ textarea:focus-visible {
    puts 12 HOUR / 36 HOUR under its own. They take the sweep like every other
    button in the app. */
 #td-range, #td-clockfmt {
-  position: absolute; bottom: 14px; z-index: 2;
+  position: absolute; bottom: 5px; z-index: 2;
   display: flex; gap: 6px;
 }
 #td-range    { left: 24px; }

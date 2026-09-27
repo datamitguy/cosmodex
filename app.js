@@ -5317,6 +5317,12 @@ function _tdTlWindow(now){
 /* What the marker calls itself. The line is where you are in the day, so it
    is labelled with what you are doing there: the task a running session is
    against, else the meeting you are inside, else — with neither — the time. */
+/* Two labels are the same thing if one is the other's truncation. */
+function _tdSameLabel(a,b){
+  const n=x=>String(x||'').replace(/…$/,'').trim().toLowerCase();
+  const A=n(a), B=n(b);
+  return !!A && !!B && (A===B || A.startsWith(B) || B.startsWith(A));
+}
 function _tdMarkerLabel(now, todayStr){
   const clip=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
   const S=window.CDX_SESSION;
@@ -5380,12 +5386,15 @@ function _tdDrawTimeline(now){
      tick scale on the floor, its numbers directly above their own ticks, the
      event axis above those, and one line of readout underneath. It used to
      reserve 70px below the ruler, which is the empty band you could see. */
-  const bandH=Math.max(12, Math.min(30, H*0.06));
-  const readoutY=H-10;                      // one line, on the floor
-  const rulerBot=H-24;
+  /* Lanes, from the floor up. The bottom 32px are reserved for the switches
+     and the readout — they were being drawn over the tick scale. */
+  const bandH=Math.max(12, Math.min(26, H*0.055));
+  const readoutY=H-11;
+  const rulerBot=H-32;
   const rulerTop=rulerBot-bandH*0.9;
-  const labelBase=rulerTop-3;               // numbers sit on their ticks
-  const axisY=Math.round(labelBase-15)+0.5;
+  const labelBase=rulerTop-3;               // numbers sit on their own ticks
+  const axisY=Math.round(labelBase-16)+0.5;
+  const evTop=axisY-13, evH=11;             // events get their own lane
 
   const todayStr=localDateStr(now);
   const dayStart=_tdDayStart(now);
@@ -5421,11 +5430,13 @@ function _tdDrawTimeline(now){
      brighter. Cadence comes from the range: a three-hour window gets a label
      an hour and a tick a quarter, a day-and-a-half gets a label every two
      hours and a tick an hour. */
-  const spanH=(t1-t0)/3600000;
-  for(let m=0; m<=spanH*60; m+=R.minorMin){
-    const ms=t0+m*60000; if(!inWin(ms)) continue;
+  const stepMs=R.minorMin*60000;
+  for(let i=Math.ceil((t0-dayStart)/stepMs); ; i++){
+    const ms=dayStart+i*stepMs;
+    if(ms>t1) break;
+    if(!inWin(ms)) continue;
     const x=Math.round(xAt(ms))+0.5;
-    const hourAbs=(t0-dayStart)/3600000 + m/60;
+    const hourAbs=(ms-dayStart)/3600000;
     const isLabel=Math.abs(hourAbs % R.labelStepH)<1e-6;
     const isMajor=Math.abs(hourAbs % R.majorStepH)<1e-6;
     const len=isMajor?rulerBot-rulerTop:(isLabel?(rulerBot-rulerTop)*0.62:(rulerBot-rulerTop)*0.34);
@@ -5440,48 +5451,55 @@ function _tdDrawTimeline(now){
     }
   }
 
-  // ── Events: band, waveform, start dot, title on a leader ──
-  const phase=performance.now()*0.001;
-  /* On a 36-hour ruler two meetings an hour apart are a few pixels apart, and
-     their titles overprint each other. A title is skipped when its box would
-     touch one already placed — the band, the dot and the leader still mark the
-     event, and the readout underneath still names the next one. */
+  /* ── Events ───────────────────────────────────────────────
+     A bar in its own lane above the axis rather than a thin wash across it.
+     The old version drew a 8px band centred on the axis line, which the
+     marker then covered — so whatever you were about to do disappeared under
+     where you are now. Three weights: what is done is barely there, what is
+     running is solid, what is coming is outlined and bright along its top
+     edge, because that is the one you need to see. */
   const placedTitles=[];
-  evtSpans.forEach(({cS,cE,isPast,ev})=>{
-    const x0=xAt(cS), x1=xAt(cE);
-    ctx.fillStyle=isPast?'rgba(255,255,255,0.04)':'rgba(255,255,255,0.10)';
-    ctx.fillRect(x0, axisY-4, Math.max(1,x1-x0), 8);
-    /* Only what is still ahead of you animates; the past lies flat. */
-    if((x1-x0)>6 && !isPast){
-      const steps=Math.max(20,Math.round(x1-x0));
+  const nowT=now.getTime();
+  /* Whatever the marker pill is about to say. The running event is already
+     named up there, so naming it again twelve pixels below is just the same
+     words twice. */
+  const pillSays=_tdMarkerLabel(now, todayStr);
+  evtSpans.forEach(({cS,cE,sMs,isPast,ev})=>{
+    const x0=xAt(cS), x1=xAt(cE), w=Math.max(2,x1-x0);
+    const running = sMs<=nowT && nowT<cE;
+    ctx.fillStyle = isPast&&!running ? 'rgba(255,255,255,0.07)'
+                  : running          ? 'rgba(255,255,255,0.34)'
+                                     : 'rgba(255,255,255,0.16)';
+    ctx.fillRect(x0, evTop, w, evH);
+    if(!isPast || running){
+      // A bright top edge is what makes an upcoming block legible at 2px wide.
       ctx.beginPath();
-      for(let i=0;i<=steps;i++){
-        const t=i/steps, x=x0+(x1-x0)*t;
-        const ef=Math.min(t*6,(1-t)*6,1);
-        const y=axisY+Math.sin(t*(x1-x0)*0.30+phase*2.8)*(bandH*0.30)*ef;
-        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-      }
-      ctx.strokeStyle='rgba(255,255,255,0.40)'; ctx.lineWidth=1.1; ctx.stroke();
+      ctx.moveTo(x0, evTop+0.5); ctx.lineTo(x0+w, evTop+0.5);
+      ctx.strokeStyle = running ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.62)';
+      ctx.lineWidth=1; ctx.stroke();
+      // and a tick down to the axis, so the block is tied to its start time
+      ctx.beginPath();
+      ctx.moveTo(Math.round(x0)+0.5, evTop); ctx.lineTo(Math.round(x0)+0.5, axisY);
+      ctx.strokeStyle='rgba(255,255,255,0.45)'; ctx.stroke();
     }
-    ctx.beginPath(); ctx.arc(x0,axisY,2.5,0,TWO_PI);
-    ctx.fillStyle=isPast?'rgba(255,255,255,0.20)':'rgba(255,255,255,0.50)'; ctx.fill();
-    if(ev.title && x1-x0>2){
-      const mx=(x0+x1)/2, ly0=axisY-6, ly1=axisY-34;
-      const a=isPast?0.35:0.9;
-      ctx.beginPath(); ctx.moveTo(mx,ly0); ctx.lineTo(mx,ly1);
-      ctx.strokeStyle=`rgba(255,255,255,${(a*0.16).toFixed(2)})`; ctx.lineWidth=4; ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx,ly0); ctx.lineTo(mx,ly1);
-      ctx.strokeStyle=`rgba(255,255,255,${(a*0.55).toFixed(2)})`; ctx.lineWidth=0.8; ctx.stroke();
-      const t=ev.title.length>18?ev.title.slice(0,17)+'…':ev.title;
-      ctx.font="500 10px 'DM Mono',monospace";
-      const tw=ctx.measureText(t).width, tx0=mx-tw/2-6, tx1=mx+tw/2+6;
+
+    if(ev.title && !(running && _tdSameLabel(ev.title, pillSays))){
+      const t=ev.title.length>22?ev.title.slice(0,21)+'…':ev.title;
+      ctx.font=running?"500 10px 'DM Mono',monospace":"400 10px 'DM Mono',monospace";
+      const tw=ctx.measureText(t).width, mx=x0+w/2;
+      const tx0=mx-tw/2-7, tx1=mx+tw/2+7;
+      /* Skip a title that would touch one already placed, or the marker pill.
+         Leaders used to run 34px up into the pill's row and overprint it. */
       if(!placedTitles.some(([a,b])=>tx0<b&&tx1>a)){
         placedTitles.push([tx0,tx1]);
-        if('letterSpacing' in ctx) ctx.letterSpacing='0.04em';
+        ctx.beginPath();
+        ctx.moveTo(Math.round(mx)+0.5, evTop-2); ctx.lineTo(Math.round(mx)+0.5, evTop-9);
+        ctx.strokeStyle=isPast&&!running?'rgba(255,255,255,0.20)':'rgba(255,255,255,0.45)';
+        ctx.lineWidth=1; ctx.stroke();
         ctx.textAlign='center'; ctx.textBaseline='bottom';
-        ctx.fillStyle=`rgba(255,255,255,${isPast?0.35:0.95})`;
-        ctx.fillText(t, mx, ly1-4);
-        if('letterSpacing' in ctx) ctx.letterSpacing='0em';
+        ctx.fillStyle=isPast&&!running?'rgba(255,255,255,0.32)'
+                     :running?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.72)';
+        ctx.fillText(t, mx, evTop-12);
       }
     }
   });
@@ -5519,8 +5537,8 @@ function _tdDrawTimeline(now){
   /* The pill rides at the top of the strip and the line drops from it, so it
      clears the event titles on their leaders whatever the range. Hanging it a
      fixed distance above the axis put it straight through them. */
-  const pillH=20, pillY=Math.max(2, axisY-58);
-  const mTop=pillY+pillH+3, mBot=rulerBot+2;
+  const pillH=20, pillY=Math.max(2, evTop-40);
+  const mTop=pillY+pillH+3, mBot=rulerBot;
   ctx.beginPath(); ctx.moveTo(markX,mTop); ctx.lineTo(markX,mBot);
   /* The only colour on this screen. It marks now, and when a session is
      running it is also what you are working inside — the same green line the
@@ -5570,7 +5588,7 @@ function _tdDrawTimeline(now){
   ctx.textAlign='left'; ctx.textBaseline='alphabetic';
   ctx.fillStyle='rgba(255,255,255,0.34)';
   /* Left aligned, starting clear of the two switches that sit in this corner. */
-  ctx.fillText(line.toUpperCase(), padX+150, readoutY);
+  ctx.fillText(line.toUpperCase(), padX+152, readoutY);
   if('letterSpacing' in ctx) ctx.letterSpacing='0em';
 
   // Drift indicator — shown while the rings are scrubbed away from now

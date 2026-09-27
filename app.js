@@ -461,7 +461,7 @@ function _showMainPanelPaint(name) {
   document.getElementById('panel-mindmap').style.display     = name === 'mindmap' ? 'flex' : 'none';
   const notesPanel = document.getElementById('panel-notes');
   if (notesPanel) notesPanel.style.display = name === 'notes' ? 'flex' : 'none';
-  const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Timedrift', mindmap:'Mind Map', notes:'Notes' };
+  const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Stillwater', mindmap:'Mind Map', notes:'Notes' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = (name === 'timedrift' && _tdSessionOpen) ? 'Focus' : (titles[name] || 'Today');
   if (name === 'default') { window.renderDashboardBoard?.(); }
@@ -5163,8 +5163,8 @@ const _tdLerp2 = (a,b,t) => a+(b-a)*t;
    so 0.033 of it. Ticks are 0.044 of the outer radius long and 2-3px thick:
    short chunky marks, not the hairlines this had. */
 const TD_RINGS = [
-  { id:'yr',  r:64,  bw:20, items:Array.from({length:12},(_,i)=>String(new Date().getFullYear()-5+i)),
-    cur:d=>5,
+  { id:'yr',  r:64,  bw:20, items:[String(new Date().getFullYear())],
+    cur:d=>0,
     sub:d=>0,
     maj:1,th:10,tm:10,tw:1.0,fs:10.6,lr:54,bandStroke:_TD_HAIR,dimA:0.54 },
   { id:'mon', r:96,  bw:24, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
@@ -5235,8 +5235,20 @@ function _tdSetRange(id){
   _tdSyncRangeBtns();
 }
 function _tdSyncRangeBtns(){
-  document.querySelectorAll('#td-range .td-range-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.tdRange === _tdRange));
+  const b=document.querySelector('#td-range .td-range-btn');
+  if(!b) return;
+  const R=TD_RANGES[_tdRange]||TD_RANGES.focus;
+  b.textContent=R.label;
+  b.title='Timeline span — click for the next one, shift-click for the previous';
+}
+/* One switch, not a row of four. timedrift.live puts a single small pill down
+   here and clicking it moves to the next span; four buttons was a toolbar
+   where a toggle belonged. Shift-click steps back. */
+const TD_RANGE_ORDER = ['focus','day','24h','36h'];
+function _tdCycleRange(back){
+  const i=TD_RANGE_ORDER.indexOf(_tdRange);
+  const n=TD_RANGE_ORDER.length;
+  _tdSetRange(TD_RANGE_ORDER[((i+(back?-1:1))%n+n)%n]);
 }
 function _tdInitRange(){
   const wrap=document.getElementById('td-range');
@@ -5244,7 +5256,7 @@ function _tdInitRange(){
   wrap.dataset.wired='1';
   wrap.addEventListener('click', e => {
     const b=e.target.closest('.td-range-btn'); if(!b) return;
-    _tdSetRange(b.dataset.tdRange);
+    _tdCycleRange(e.shiftKey);
   });
   _tdSyncRangeBtns();
 }
@@ -5292,8 +5304,11 @@ function _tdDrawTimeline(now){
      range like 06:00-22:00 can hold still while the marker walks across it. */
   const {t0,t1,R}=_tdTlWindow(now);
   const padX=W*0.03, plotW=W-padX*2;
-  const axisY=Math.round(H*0.40)+0.5;
-  const bandH=Math.max(12, H*0.07);
+  const bandH=Math.max(12, Math.min(34, H*0.07));
+  const readoutTop=H-58;                    // the what-is-next block
+  const rulerBot=readoutTop-12;
+  const rulerTop=rulerBot-bandH*0.9;
+  const axisY=Math.round(rulerTop-bandH*0.35)+0.5;
 
   const todayStr=localDateStr(now);
   const dayStart=_tdDayStart(now);
@@ -5329,7 +5344,6 @@ function _tdDrawTimeline(now){
      brighter. Cadence comes from the range: a three-hour window gets a label
      an hour and a tick a quarter, a day-and-a-half gets a label every two
      hours and a tick an hour. */
-  const rulerTop=axisY+bandH*0.35, rulerBot=rulerTop+bandH*0.9;
   const spanH=(t1-t0)/3600000;
   for(let m=0; m<=spanH*60; m+=R.minorMin){
     const ms=t0+m*60000; if(!inWin(ms)) continue;
@@ -5431,11 +5445,16 @@ function _tdDrawTimeline(now){
   /* The pill rides at the top of the strip and the line drops from it, so it
      clears the event titles on their leaders whatever the range. Hanging it a
      fixed distance above the axis put it straight through them. */
-  const pillY=6, pillH=20;
+  const pillH=20, pillY=Math.max(2, axisY-bandH*2.4-pillH);
   const mTop=pillY+pillH+3, mBot=rulerBot+2;
   ctx.beginPath(); ctx.moveTo(markX,mTop); ctx.lineTo(markX,mBot);
-  ctx.strokeStyle=offRange?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.9)';
-  ctx.lineWidth=1; ctx.stroke();
+  /* The only colour on this screen. It marks now, and when a session is
+     running it is also what you are working inside — the same green line the
+     reference uses for the current moment. */
+  ctx.strokeStyle=offRange?'rgba(57,255,20,0.30)':'rgba(57,255,20,0.95)';
+  ctx.lineWidth=1.4;
+  if(!offRange){ ctx.shadowColor='rgba(57,255,20,0.45)'; ctx.shadowBlur=6; }
+  ctx.stroke(); ctx.shadowBlur=0;
 
   const pillTxt=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
   ctx.font="400 11px 'DM Mono',monospace";
@@ -5452,7 +5471,7 @@ function _tdDrawTimeline(now){
   ctx.beginPath();
   ctx.moveTo(markX, arrowY); ctx.lineTo(markX-4, arrowY+7); ctx.lineTo(markX+4, arrowY+7);
   ctx.closePath();
-  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fill();
+  ctx.fillStyle='rgba(57,255,20,0.9)'; ctx.fill();
 
   // ── What you are in, and what is next ─────────────────────
   ctx.textAlign='center'; ctx.textBaseline='top';
@@ -5469,7 +5488,7 @@ function _tdDrawTimeline(now){
     });
   const ongoing=allTodayEvts.find(ev=>ev.sMins<=nowMins&&nowMins<ev.eMins);
   const soon=allTodayEvts.filter(ev=>ev.sMins>nowMins&&ev.sMins-nowMins<=30).sort((a,b)=>a.sMins-b.sMins);
-  let ey=arrowY+20;
+  let ey=readoutTop;
   /* Colour is not doing the work here — spacing and weight are — so nothing on
      this readout competes with the session line. */
   const _eyebrow=(t,y)=>{
@@ -9660,7 +9679,7 @@ const CMD_COMMANDS_BASE = [
   { label: 'Today',            icon: '◈', action: () => {}, keys: '' },
   { label: 'Open Calendar',    icon: '◻', action: () => {}, keys: '' },
   { label: 'New Task',         icon: '+', action: () => {}, keys: 'N' },
-  { label: 'Focus — Timedrift', icon: '◎', action: () => { showMainPanel('focus'); document.getElementById('left-nav')?.classList.add('collapsed'); }, keys: 'F' },
+  { label: 'Focus — Stillwater', icon: '◎', action: () => { showMainPanel('focus'); document.getElementById('left-nav')?.classList.add('collapsed'); }, keys: 'F' },
   { label: 'Open Notes',       icon: '✎', action: () => openNotesPage(), keys: '' },
   { label: 'Ask Cosmos',       icon: '✦', action: () => openOverlay('claude-panel'), keys: '' },
   { label: 'Insights',         icon: '◈', action: () => showMainPanel('insights'), keys: '' },

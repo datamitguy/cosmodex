@@ -124,13 +124,22 @@
         Drill
       </div>
       <div class="nav-item" data-panel="timedrift" id="nav-timedrift" role="button" tabindex="0">
-        <span class="nav-item-icon">◌</span>
-        Timedrift
+        <!-- Stillwater's mark: a still surface with one ring spreading from a
+             dropped point. The old ◌ was an empty circle shared with half the
+             icon set. -->
+        <span class="nav-item-icon nav-icon-stillwater" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.1">
+            <circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/>
+            <circle cx="8" cy="8" r="4" opacity=".7"/>
+            <circle cx="8" cy="8" r="6.6" opacity=".35"/>
+          </svg>
+        </span>
+        Stillwater
       </div>
     </div>
   </div>
 
-  <div class="nav-section nav-tools-section collapsed" style="padding:0 8px 4px;border-top:1px solid rgba(255,255,255,0.07)">
+  <div class="nav-section nav-tools-section collapsed" style="padding:0 8px 0;margin-bottom:4px;border-top:1px solid rgba(255,255,255,0.07)">
     <div class="nav-section-label nav-tools-toggle" id="tools-toggle" title="Toggle tools">Tools <span class="tools-chevron">›</span></div>
     <div class="nav-tools-items">
       <div class="nav-item" id="btn-notes" role="button" tabindex="0">
@@ -493,11 +502,8 @@
           <!-- How much of the day the strip shows. timedrift.live puts 12 HOUR
                and 36 HOUR down here; these are the same idea with a waking-day
                range added, since that is the window most days are lived in. -->
-          <div id="td-range" role="group" aria-label="Timeline range">
-            <button class="td-range-btn" data-td-range="focus" title="Three hours either side of now">±3H</button>
-            <button class="td-range-btn" data-td-range="day"   title="06:00 to 22:00 today">DAY</button>
-            <button class="td-range-btn" data-td-range="24h"   title="Midnight to midnight">24H</button>
-            <button class="td-range-btn" data-td-range="36h"   title="Today and tomorrow morning">36H</button>
+          <div id="td-range">
+            <button class="td-range-btn" title="Timeline span">±3H</button>
           </div>
         </div>
         <!-- Centre readout — the dial hangs off the top edge, the clock sits

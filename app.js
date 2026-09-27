@@ -12014,7 +12014,14 @@ function _dashPrioRank(p) { return p === 'high' ? 3 : p === 'low' ? 1 : 2; }
    "Due today" card are dragged onto a block to schedule them; placed events can
    be dragged to a new block. Drag state is held in a page-local var (reliable
    in-page; dataTransfer is also set so the browser initiates the drag). */
-const DASH_H0 = 8, DASH_H1 = 22, DASH_SLOT_H = 30;
+const DASH_H0 = 8, DASH_H1 = 22;
+/* The day grid used to be a fixed 840px — 28 half-hours at 30px — whatever the
+   window, so on a tall screen the card ran on for a few hundred pixels of
+   nothing under the last hour. The rows flex to fill the card now and
+   everything laid over them is positioned as a percentage of the day rather
+   than in pixels, so there is no height to keep in step. 30px is the floor,
+   below which the card scrolls. */
+const DASH_SLOT_MIN = 30;
 const DASH_SLOTS = (DASH_H1 - DASH_H0) * 2;
 let _dashDragPayload = null;
 
@@ -12043,8 +12050,8 @@ function _dashRenderTodayLine() {
   for (let s = 0; s < DASH_SLOTS; s++) {
     const time = _dashSlotTime(s);
     const onHour = time.endsWith(':00');
-    rail  += `<div class="dash-slot-rail${onHour ? ' hour' : ''}" style="height:${DASH_SLOT_H}px">${onHour ? escHtml(_dashFmtTime(time)) : ''}</div>`;
-    slots += `<div class="dash-slot${onHour ? ' hour' : ''}" data-slot="${time}" style="height:${DASH_SLOT_H}px"></div>`;
+    rail  += `<div class="dash-slot-rail${onHour ? ' hour' : ''}">${onHour ? escHtml(_dashFmtTime(time)) : ''}</div>`;
+    slots += `<div class="dash-slot${onHour ? ' hour' : ''}" data-slot="${time}"></div>`;
   }
 
   // 3. Timed events → positioned chips (draggable to move)
@@ -12059,13 +12066,14 @@ function _dashRenderTodayLine() {
   let chips = '';
   laid.forEach(item => {
     const ev = item.ev, startMins = item._start, dur = ev.duration || 30;
-    const top = Math.max(0, (startMins - gridStart) / 30) * DASH_SLOT_H;
-    const height = Math.max((dur / 30) * DASH_SLOT_H - 2, 22);
+    const span = gridEnd - gridStart;
+    const top = Math.max(0, (startMins - gridStart) / span) * 100;
+    const height = Math.max((dur / span) * 100, 2.2);
     const task = ev.taskId ? TASKS.find(t => t.id === ev.taskId) : null;
     const color = getCatColor(task?.category);
     const past = isToday && (item._end <= nowMins);
     chips += `<div class="dash-chip${task?.done ? ' done' : ''}${past ? ' past' : ''}${item._lanes > 1 ? ' shared' : ''}" draggable="true"
-        data-ev-chip="${escAttr(ev.id)}" style="top:${top}px;height:${height}px;${calLaneStyle(item, 4, 10)}--nc:${color}">
+        data-ev-chip="${escAttr(ev.id)}" style="top:${top.toFixed(3)}%;height:calc(${height.toFixed(3)}% - 2px);${calLaneStyle(item, 4, 10)}--nc:${color}">
         <span class="dash-chip-time">${escHtml(_dashFmtTime(ev.startTime))}</span>
         <span class="dash-chip-title">${escHtml(ev.title)}</span>
       </div>`;
@@ -12074,8 +12082,8 @@ function _dashRenderTodayLine() {
   // 4. Now-line — only when the calendar is actually showing today
   let nowLine = '';
   if (isToday && nowMins >= gridStart && nowMins <= gridEnd) {
-    const top = ((nowMins - gridStart) / 30) * DASH_SLOT_H;
-    nowLine = `<div class="dash-nowline" style="top:${top}px"><span class="dash-nowline-dot"></span></div>`;
+    const top = ((nowMins - gridStart) / (gridEnd - gridStart)) * 100;
+    nowLine = `<div class="dash-nowline" style="top:${top.toFixed(3)}%"><span class="dash-nowline-dot"></span></div>`;
   }
 
   body.innerHTML =
@@ -12098,14 +12106,14 @@ function _dashWireGrid(body, dateStr) {
   if (col && marker) {
     const slotIdxAt = clientY => {
       const r = col.getBoundingClientRect();
-      return Math.max(0, Math.min(DASH_SLOTS - 1, Math.floor((clientY - r.top) / DASH_SLOT_H)));
+      return Math.max(0, Math.min(DASH_SLOTS - 1, Math.floor(((clientY - r.top) / r.height) * DASH_SLOTS)));
     };
     col.addEventListener('dragover', e => {
       if (!_dashDragPayload) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       marker.style.display = 'block';
-      marker.style.top = (slotIdxAt(e.clientY) * DASH_SLOT_H) + 'px';
+      marker.style.top = ((slotIdxAt(e.clientY) / DASH_SLOTS) * 100).toFixed(3) + '%';
     });
     col.addEventListener('dragleave', e => { if (!col.contains(e.relatedTarget)) marker.style.display = 'none'; });
     col.addEventListener('drop', e => {

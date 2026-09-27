@@ -5748,7 +5748,10 @@ select.atk-inline option { background:#141414; color:#fff; }
 /* Columns stretch to fill the board; their last flexible child grows to close
    the empty space below (item: "today does not fill the full page"). */
 .dash-cal { min-height:0; }
-.dash-cal-body { flex:1 1 auto; }
+/* min-height:0 or the grid inside sizes the body instead of the other way
+   round — and since the grid's row height is measured from the body, that is
+   a feedback loop: a taller grid makes a taller body makes a taller grid. */
+.dash-cal-body { flex:1 1 auto; min-height:0; }
 .dash-side { min-height:0; }
 .dash-tasks-card { flex:1 1 auto; display:flex; flex-direction:column; min-height:120px; }
 @media (max-width:900px){ .dash-grid { grid-template-columns:1fr; min-height:auto; } }
@@ -5881,7 +5884,11 @@ select.atk-inline option { background:#141414; color:#fff; }
 
 /* ── Today = 30-minute drag-to-schedule grid (08:00–22:00) ── */
 .dash-cal-body { overflow-y:auto; }
-.dash-day-grid { display:grid; grid-template-columns:54px 1fr; position:relative; padding-top:8px; }
+/* The grid fills the card, and its rows share that height between them. A
+   30px floor keeps a half-hour legible; below that the card scrolls. */
+.dash-day-grid { display:grid; grid-template-columns:54px 1fr; position:relative; padding-top:8px;
+  min-height:100%; box-sizing:border-box; }
+.dash-slot-rail, .dash-slot { flex:1 1 0; min-height:30px; }
 .dash-slot-railcol { display:flex; flex-direction:column; }
 .dash-slot-rail {
   font-family:var(--font-mono); font-size:var(--fs-micro); color:rgba(255,255,255,0.4);

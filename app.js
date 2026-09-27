@@ -5519,65 +5519,11 @@ function _tdDrawTimeline(now){
     }
   });
 
-  /* ── The queue ─────────────────────────────────────────────
-     Tasks that are due but not timeboxed. They have no time, so they get no
-     position on the axis — they sit in a lane of their own, starting at now
-     and running forward, on a dashed baseline that says "not placed yet".
-     Without this the marker could name a task that had nothing to point at.
-
-     A task that has been timeboxed carries a calEventId and is already drawn
-     as a block above, so it is excluded here rather than shown twice. */
-  const queueTop = evTop - 34;
-  const pending = (typeof TASKS !== 'undefined' ? TASKS : [])
-    .filter(t => !t.done && !t.someday && !t.calEventId && t.dueDate && t.dueDate <= todayStr)
-    .sort((a,b) => (_dashPrioRank(b.priority) - _dashPrioRank(a.priority))
-                || (a.dueDate < b.dueDate ? -1 : 1));
-  if (pending.length){
-    const startX = Math.max(padX, Math.min(xAt(clampMs(nowT)), W - 150));
-    /* Say what this row is. Sitting unlabelled beside the marker, a queue of
-       due-but-unscheduled work reads as the day's plan — which is the one
-       thing it is not. The label is at the left edge of the strip so it does
-       not crowd the chips, which start at now. */
-    ctx.font = "300 8.5px 'DM Mono',monospace";
-    if('letterSpacing' in ctx) ctx.letterSpacing='0.22em';
-    ctx.textAlign='left'; ctx.textBaseline='middle';
-    ctx.fillStyle='rgba(255,255,255,0.26)';
-    ctx.fillText('UNPLACED', padX, queueTop + 7.5);
-    if('letterSpacing' in ctx) ctx.letterSpacing='0em';
-    ctx.font = "400 9.5px 'DM Mono',monospace";
-    let qx = startX + 10;
-    let shown = 0;
-    const QUEUE_MAX = 3;   // a tray, not a second task list
-    // Dashed rule under the lane: these are ahead of you, but unplaced.
-    ctx.save();
-    ctx.setLineDash([2,4]);
-    ctx.beginPath();
-    ctx.moveTo(startX, queueTop+13.5); ctx.lineTo(W-padX, queueTop+13.5);
-    ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1; ctx.stroke();
-    ctx.restore();
-    for (const t of pending){
-      const label = (t.title||'').length>20 ? (t.title||'').slice(0,19)+'…' : (t.title||'');
-      const w = ctx.measureText(label).width + 16;
-      if (qx + w > W - padX - 4) break;
-      const isLive = _tdSameLabel(label, pillSays);
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(qx, queueTop, w, 14, 7); else ctx.rect(qx, queueTop, w, 14);
-      ctx.fillStyle = isLive ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.05)';
-      ctx.fill();
-      ctx.strokeStyle = isLive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.18)';
-      ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = isLive ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.55)';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(label, qx + w/2, queueTop + 7.5);
-      qx += w + 7; shown++;
-    }
-    const left = pending.length - shown;
-    if (left > 0 && qx < W - padX - 30){
-      ctx.fillStyle='rgba(255,255,255,0.38)';
-      ctx.textAlign='left'; ctx.textBaseline='middle';
-      ctx.fillText('+'+left, qx, queueTop + 7.5);
-    }
-  }
+  /* No lane for unplaced work. Tasks that are due but not timeboxed have no
+     time, so they have no place on a timeline — put on the axis they read as
+     the day's plan, which is the one thing they are not. Anything you schedule
+     becomes a calendar block and is drawn above. The marker's pill still names
+     what now is for, whether or not that thing has been placed yet. */
 
   /* ── Session band ────────────────────────────────────────
      The gauge says how much is left; this says what it is left before. Drawn
@@ -5612,7 +5558,7 @@ function _tdDrawTimeline(now){
   /* The pill rides at the top of the strip and the line drops from it, so it
      clears the event titles on their leaders whatever the range. Hanging it a
      fixed distance above the axis put it straight through them. */
-  const pillH=20, pillY=Math.max(2, evTop-58);
+  const pillH=20, pillY=Math.max(2, evTop-40);
   const mTop=pillY+pillH+3, mBot=axisY+9;
   ctx.beginPath(); ctx.moveTo(markX,mTop); ctx.lineTo(markX,mBot);
   /* The only colour on this screen. It marks now, and when a session is

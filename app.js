@@ -5210,6 +5210,39 @@ function _tdInitTimeline(){
   _tdTlCtx=_tdTlCvs.getContext('2d');
 }
 
+/* ══ CLOCK FORMAT ════════════════════════════════════════════════════════
+   12 or 24 hour, as timedrift.live offers. It is one setting: the big readout
+   and the ruler's hour labels both follow it, so the screen never shows you
+   19:00 in one place and 7 PM in another. */
+let _tdClock12 = false;
+try { _tdClock12 = localStorage.getItem('cdx_td_clock12') === '1'; } catch(e){}
+function _tdToggleClock12(){
+  _tdClock12 = !_tdClock12;
+  try { localStorage.setItem('cdx_td_clock12', _tdClock12 ? '1' : '0'); } catch(e){}
+  _tdSyncClockBtn();
+  _tdLastClockStr='';          // force the readout to repaint in the new format
+}
+function _tdSyncClockBtn(){
+  const b=document.querySelector('#td-clockfmt .td-range-btn');
+  if(b){ b.textContent = _tdClock12 ? '12H' : '24H'; b.title='Clock format'; }
+}
+/* Hours since midnight -> what the ruler prints. In 24-hour it is the hour
+   itself, and a 36-hour window keeps counting past 24 so the scale reads
+   00..36 as the reference's does. In 12-hour it wraps with a meridiem. */
+function _tdHourLabel(hourAbs){
+  const h=Math.round(hourAbs);
+  if(!_tdClock12) return String(h).padStart(2,'0');
+  const hh=((h%24)+24)%24;
+  const disp=hh%12===0?12:hh%12;
+  return String(disp)+(hh<12?'a':'p');
+}
+function _tdFmtClock(d, withSecs){
+  const p2=n=>String(n).padStart(2,'0');
+  if(!_tdClock12) return p2(d.getHours())+':'+p2(d.getMinutes())+(withSecs?':'+p2(d.getSeconds()):'');
+  const h=d.getHours(), disp=h%12===0?12:h%12;
+  return disp+':'+p2(d.getMinutes())+(withSecs?':'+p2(d.getSeconds()):'')+' '+(h<12?'AM':'PM');
+}
+
 /* ══ STRIP RANGE ══════════════════════════════════════════════════════════
    How much of the day the bottom strip shows. timedrift.live offers 12 HOUR
    and 36 HOUR; DAY is added here because a waking day is the window most days
@@ -5252,13 +5285,22 @@ function _tdCycleRange(back){
 }
 function _tdInitRange(){
   const wrap=document.getElementById('td-range');
-  if (!wrap || wrap.dataset.wired) return;
-  wrap.dataset.wired='1';
-  wrap.addEventListener('click', e => {
-    const b=e.target.closest('.td-range-btn'); if(!b) return;
-    _tdCycleRange(e.shiftKey);
-  });
+  if (wrap && !wrap.dataset.wired){
+    wrap.dataset.wired='1';
+    wrap.addEventListener('click', e => {
+      const b=e.target.closest('.td-range-btn'); if(!b) return;
+      _tdCycleRange(e.shiftKey);
+    });
+  }
+  const fmt=document.getElementById('td-clockfmt');
+  if (fmt && !fmt.dataset.wired){
+    fmt.dataset.wired='1';
+    fmt.addEventListener('click', e => {
+      if(e.target.closest('.td-range-btn')) _tdToggleClock12();
+    });
+  }
   _tdSyncRangeBtns();
+  _tdSyncClockBtn();
 }
 
 /* The window the strip covers, in ms, plus the tick cadence for it. */
@@ -5290,7 +5332,16 @@ function _tdMarkerLabel(now, todayStr){
     return s0<=mins && mins<e0;
   });
   if (ongoing && ongoing.title) return clip(ongoing.title,26);
-  return String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  /* Nothing running and nothing booked: fall back to what you said today was
+     for — the week's anchor if there is one, else the highest-priority thing
+     due or overdue. The line marks now, and this is what now is for. */
+  const anchor=(typeof _dashWeekAnchor==='object' && _dashWeekAnchor && _dashWeekAnchor.text) || '';
+  if (anchor) return clip(anchor,26);
+  const pool=(typeof TASKS!=='undefined'?TASKS:[]||[])
+    .filter(t=>!t.someday&&!t.done&&t.dueDate&&t.dueDate<=todayStr)
+    .sort((a,b)=>(_dashPrioRank(b.priority)-_dashPrioRank(a.priority))||(a.dueDate<b.dueDate?-1:1));
+  if (pool[0] && pool[0].title) return clip(pool[0].title,26);
+  return 'NO TASK';
 }
 
 /* ══ BOTTOM STRIP ═════════════════════════════════════════════════════════
@@ -5325,11 +5376,16 @@ function _tdDrawTimeline(now){
      range like 06:00-22:00 can hold still while the marker walks across it. */
   const {t0,t1,R}=_tdTlWindow(now);
   const padX=W*0.03, plotW=W-padX*2;
-  const bandH=Math.max(12, Math.min(34, H*0.07));
-  const readoutTop=H-58;                    // the what-is-next block
-  const rulerBot=readoutTop-12;
+  /* Laid out from the bottom edge up, the way the reference's strip is: the
+     tick scale on the floor, its numbers directly above their own ticks, the
+     event axis above those, and one line of readout underneath. It used to
+     reserve 70px below the ruler, which is the empty band you could see. */
+  const bandH=Math.max(12, Math.min(30, H*0.06));
+  const readoutY=H-10;                      // one line, on the floor
+  const rulerBot=H-24;
   const rulerTop=rulerBot-bandH*0.9;
-  const axisY=Math.round(rulerTop-bandH*0.35)+0.5;
+  const labelBase=rulerTop-3;               // numbers sit on their ticks
+  const axisY=Math.round(labelBase-15)+0.5;
 
   const todayStr=localDateStr(now);
   const dayStart=_tdDayStart(now);
@@ -5377,13 +5433,10 @@ function _tdDrawTimeline(now){
     ctx.strokeStyle=isMajor?'rgba(255,255,255,0.55)':(isLabel?'rgba(255,255,255,0.34)':'rgba(255,255,255,0.16)');
     ctx.lineWidth=1; ctx.stroke();
     if(isLabel){
-      /* Hours past midnight, so a 36-hour window reads 00..36 rather than
-         wrapping back to 00 at noon tomorrow — the same as the reference. */
-      const shown=Math.round(hourAbs);
       ctx.font=isMajor?"500 10px 'DM Mono',monospace":"300 9px 'DM Mono',monospace";
       ctx.textAlign='center'; ctx.textBaseline='bottom';
       ctx.fillStyle=isMajor?'rgba(255,255,255,0.80)':'rgba(255,255,255,0.42)';
-      ctx.fillText(String(shown).padStart(2,'0'), xAt(ms), axisY-bandH*0.55);
+      ctx.fillText(_tdHourLabel(hourAbs), xAt(ms), labelBase);
     }
   }
 
@@ -5466,7 +5519,7 @@ function _tdDrawTimeline(now){
   /* The pill rides at the top of the strip and the line drops from it, so it
      clears the event titles on their leaders whatever the range. Hanging it a
      fixed distance above the axis put it straight through them. */
-  const pillH=20, pillY=Math.max(2, axisY-bandH*2.4-pillH);
+  const pillH=20, pillY=Math.max(2, axisY-58);
   const mTop=pillY+pillH+3, mBot=rulerBot+2;
   ctx.beginPath(); ctx.moveTo(markX,mTop); ctx.lineTo(markX,mBot);
   /* The only colour on this screen. It marks now, and when a session is
@@ -5494,9 +5547,7 @@ function _tdDrawTimeline(now){
   ctx.closePath();
   ctx.fillStyle='rgba(57,255,20,0.9)'; ctx.fill();
 
-  // ── What you are in, and what is next ─────────────────────
-  ctx.textAlign='center'; ctx.textBaseline='top';
-
+  // ── What you are in, and what is next — one line, on the floor ────
   const nowMins=now.getHours()*60+now.getMinutes();
   const allTodayEvts=(CAL_EVENTS||[])
     .filter(ev=>ev.date===todayStr&&ev.startTime&&!ev.allDay)
@@ -5509,36 +5560,18 @@ function _tdDrawTimeline(now){
     });
   const ongoing=allTodayEvts.find(ev=>ev.sMins<=nowMins&&nowMins<ev.eMins);
   const soon=allTodayEvts.filter(ev=>ev.sMins>nowMins&&ev.sMins-nowMins<=30).sort((a,b)=>a.sMins-b.sMins);
-  let ey=readoutTop;
-  /* Colour is not doing the work here — spacing and weight are — so nothing on
-     this readout competes with the session line. */
-  const _eyebrow=(t,y)=>{
-    ctx.font="300 8.5px 'DM Mono',monospace";
-    if('letterSpacing' in ctx) ctx.letterSpacing='0.22em';
-    ctx.fillStyle='rgba(255,255,255,0.30)';
-    ctx.fillText(t.toUpperCase(),cx,y);
-    if('letterSpacing' in ctx) ctx.letterSpacing='0em';
-  };
-  const _subject=(t,y)=>{ ctx.font="400 12px 'DM Mono',monospace"; ctx.fillStyle='rgba(255,255,255,0.82)'; ctx.fillText(t,cx,y); };
-  const _detail=(t,y)=>{ ctx.font="300 9px 'DM Mono',monospace"; ctx.fillStyle='rgba(255,255,255,0.28)'; ctx.fillText(t,cx,y); };
   const _clip=(t,n)=>t?(t.length>n?t.slice(0,n-1)+'…':t):'event';
-
-  /* Build the blocks first, then draw only the ones that actually fit. */
-  const blocks=[];
-  if(ongoing) blocks.push(['ongoing',_clip(ongoing.title,22),(ongoing.eMins-nowMins)+'m remaining']);
-  soon.slice(0,ongoing?1:2).forEach(ev=>
-    blocks.push(['in '+(ev.sMins-nowMins)+' min',_clip(ev.title,22),null]));
-  if(!blocks.length) blocks.push(['clear for 30 min',null,null]);
-
-  const BLOCK_H=b=>14+(b[1]?15:0)+(b[2]?14:0);
-  const bottom=H-6;
-  for(const b of blocks){
-    if(ey+BLOCK_H(b)>bottom) break;
-    _eyebrow(b[0],ey); ey+=14;
-    if(b[1]){ _subject(b[1],ey); ey+=15; }
-    if(b[2]){ _detail(b[2],ey); ey+=14; }
-    ey+=12;
-  }
+  let line;
+  if(ongoing) line=`NOW · ${_clip(ongoing.title,30)} · ${ongoing.eMins-nowMins}M LEFT`;
+  else if(soon[0]) line=`IN ${soon[0].sMins-nowMins} MIN · ${_clip(soon[0].title,30)}`;
+  else line='CLEAR FOR 30 MIN';
+  ctx.font="300 9px 'DM Mono',monospace";
+  if('letterSpacing' in ctx) ctx.letterSpacing='0.18em';
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillStyle='rgba(255,255,255,0.34)';
+  /* Left aligned, starting clear of the two switches that sit in this corner. */
+  ctx.fillText(line.toUpperCase(), padX+150, readoutY);
+  if('letterSpacing' in ctx) ctx.letterSpacing='0em';
 
   // Drift indicator — shown while the rings are scrubbed away from now
   if (Math.abs(_tdScrubOffset) > 500) {
@@ -5899,7 +5932,7 @@ function _tdUpdateCenter(now){
   if(!_tdElClockT) return;
   const p2=n=>String(n).padStart(2,'0');
   // 24h to match the rest of Cosmodex; the reference site uses 12h.
-  const t=`${p2(now.getHours())}:${p2(now.getMinutes())}:${p2(now.getSeconds())}`;
+  const t=_tdFmtClock(now, true);
   if(t===_tdLastClockStr) return;   // once a second, not every frame
   _tdLastClockStr=t;
   _tdElClockT.textContent=t;

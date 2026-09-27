@@ -5864,7 +5864,7 @@ select.atk-inline option { background:#141414; color:#fff; }
 .dash-cal-actions { display:flex; gap:6px; flex-wrap:nowrap; justify-content:flex-end; margin-left:auto; }
 .dash-btn {
   font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.08em; text-transform:uppercase;
-  padding:6px 11px; border-radius:var(--r-sm); cursor:pointer;
+  padding:3px 10px; border-radius:var(--r-sm); cursor:pointer;
   background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.75);
   transition:all .25s var(--ease-glass);
 }
@@ -7431,10 +7431,12 @@ textarea:focus-visible {
    The strip's span control, sitting under the ruler the way timedrift.live
    puts 12 HOUR / 36 HOUR under its own. They take the sweep like every other
    button in the app. */
-#td-range {
-  position: absolute; left: 24px; bottom: 26px; z-index: 2;
+#td-range, #td-clockfmt {
+  position: absolute; bottom: 14px; z-index: 2;
   display: flex; gap: 6px;
 }
+#td-range    { left: 24px; }
+#td-clockfmt { left: 86px; }
 .td-range-btn {
   font-family: var(--font-mono); font-size: var(--fs-micro);
   letter-spacing: 0.12em; text-transform: uppercase;

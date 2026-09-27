@@ -5388,10 +5388,11 @@ function _tdDrawTimeline(now){
      reserve 70px below the ruler, which is the empty band you could see. */
   /* Lanes, from the floor up. The bottom 32px are reserved for the switches
      and the readout — they were being drawn over the tick scale. */
-  const bandH=Math.max(12, Math.min(26, H*0.055));
   const readoutY=H-11;
   const rulerBot=H-32;
-  const rulerTop=rulerBot-bandH*0.9;
+  const TICK_MAJ=11;                        // the tallest tick, and the band
+  const rulerTop=rulerBot-TICK_MAJ;         // ticks hang from here, nothing floats
+  const bandH=TICK_MAJ;
   const labelBase=rulerTop-3;               // numbers sit on their own ticks
   const axisY=Math.round(labelBase-16)+0.5;
   const evTop=axisY-13, evH=11;             // events get their own lane
@@ -5406,13 +5407,26 @@ function _tdDrawTimeline(now){
   const clampMs=ms=>Math.max(t0,Math.min(t1,ms));
 
   // ── Calendar events, clipped to the visible span ──────────
-  const todayEvts=(CAL_EVENTS||[]).filter(e=>e.date===todayStr&&e.startTime&&!e.allDay);
+  /* Every day the window touches, not just today. A 36-hour range runs into
+     tomorrow morning and a rolling window can start yesterday evening, and
+     events are stored against their own date — so reading only today's meant
+     anything either side of midnight simply never appeared. */
+  const dayKeys=new Set();
+  for(let ms=t0-86400000; ms<=t1+86400000; ms+=86400000) dayKeys.add(localDateStr(new Date(ms)));
+  const midnightOf=key=>{ const [y,m,d]=key.split('-').map(Number); return new Date(y,m-1,d,0,0,0,0).getTime(); };
   const evtSpans=[];
-  todayEvts.forEach(ev=>{
+  (CAL_EVENTS||[]).forEach(ev=>{
+    if(!ev.startTime||ev.allDay||!dayKeys.has(ev.date)) return;
+    const base=midnightOf(ev.date);
     const [sh,sm]=(ev.startTime||'0:0').split(':').map(Number);
-    const sMs=msOf((sh*60+sm)/1440);
+    const sMs=base+(sh*60+sm)*60000;
     let eMs=sMs+3600000;
-    if(ev.endTime){const [eh,em]=(ev.endTime||'0:0').split(':').map(Number);eMs=msOf((eh*60+em)/1440);}
+    if(ev.endTime){
+      const [eh,em]=(ev.endTime||'0:0').split(':').map(Number);
+      eMs=base+(eh*60+em)*60000;
+      // An end before its start means the block runs past midnight.
+      if(eMs<=sMs) eMs+=86400000;
+    }
     if(eMs<t0||sMs>t1) return;
     evtSpans.push({cS:clampMs(sMs), cE:clampMs(eMs), sMs, isPast:sMs<now.getTime(), ev});
   });
@@ -5439,7 +5453,7 @@ function _tdDrawTimeline(now){
     const hourAbs=(ms-dayStart)/3600000;
     const isLabel=Math.abs(hourAbs % R.labelStepH)<1e-6;
     const isMajor=Math.abs(hourAbs % R.majorStepH)<1e-6;
-    const len=isMajor?rulerBot-rulerTop:(isLabel?(rulerBot-rulerTop)*0.62:(rulerBot-rulerTop)*0.34);
+    const len=isMajor?11:(isLabel?7:4);
     ctx.beginPath(); ctx.moveTo(x,rulerTop); ctx.lineTo(x,rulerTop+len);
     ctx.strokeStyle=isMajor?'rgba(255,255,255,0.55)':(isLabel?'rgba(255,255,255,0.34)':'rgba(255,255,255,0.16)');
     ctx.lineWidth=1; ctx.stroke();
@@ -5467,21 +5481,22 @@ function _tdDrawTimeline(now){
   evtSpans.forEach(({cS,cE,sMs,isPast,ev})=>{
     const x0=xAt(cS), x1=xAt(cE), w=Math.max(2,x1-x0);
     const running = sMs<=nowT && nowT<cE;
-    ctx.fillStyle = isPast&&!running ? 'rgba(255,255,255,0.07)'
-                  : running          ? 'rgba(255,255,255,0.34)'
-                                     : 'rgba(255,255,255,0.16)';
+    const done = isPast && !running;
+    ctx.fillStyle = done ? 'rgba(255,255,255,0.13)'
+                  : running ? 'rgba(255,255,255,0.42)'
+                            : 'rgba(255,255,255,0.24)';
     ctx.fillRect(x0, evTop, w, evH);
-    if(!isPast || running){
-      // A bright top edge is what makes an upcoming block legible at 2px wide.
-      ctx.beginPath();
-      ctx.moveTo(x0, evTop+0.5); ctx.lineTo(x0+w, evTop+0.5);
-      ctx.strokeStyle = running ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.62)';
-      ctx.lineWidth=1; ctx.stroke();
-      // and a tick down to the axis, so the block is tied to its start time
-      ctx.beginPath();
-      ctx.moveTo(Math.round(x0)+0.5, evTop); ctx.lineTo(Math.round(x0)+0.5, axisY);
-      ctx.strokeStyle='rgba(255,255,255,0.45)'; ctx.stroke();
-    }
+    // The top edge is what makes a block legible when it is only 2px wide.
+    ctx.beginPath();
+    ctx.moveTo(x0, evTop+0.5); ctx.lineTo(x0+w, evTop+0.5);
+    ctx.strokeStyle = done ? 'rgba(255,255,255,0.38)'
+                    : running ? 'rgba(255,255,255,0.98)' : 'rgba(255,255,255,0.75)';
+    ctx.lineWidth=1; ctx.stroke();
+    // and a tick down to the axis, so a block is tied to its start time
+    ctx.beginPath();
+    ctx.moveTo(Math.round(x0)+0.5, evTop); ctx.lineTo(Math.round(x0)+0.5, axisY);
+    ctx.strokeStyle=done?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.5)';
+    ctx.stroke();
 
     if(ev.title && !(running && _tdSameLabel(ev.title, pillSays))){
       const t=ev.title.length>22?ev.title.slice(0,21)+'…':ev.title;
@@ -5494,11 +5509,11 @@ function _tdDrawTimeline(now){
         placedTitles.push([tx0,tx1]);
         ctx.beginPath();
         ctx.moveTo(Math.round(mx)+0.5, evTop-2); ctx.lineTo(Math.round(mx)+0.5, evTop-9);
-        ctx.strokeStyle=isPast&&!running?'rgba(255,255,255,0.20)':'rgba(255,255,255,0.45)';
+        ctx.strokeStyle=done?'rgba(255,255,255,0.32)':'rgba(255,255,255,0.5)';
         ctx.lineWidth=1; ctx.stroke();
         ctx.textAlign='center'; ctx.textBaseline='bottom';
-        ctx.fillStyle=isPast&&!running?'rgba(255,255,255,0.32)'
-                     :running?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.72)';
+        ctx.fillStyle=done?'rgba(255,255,255,0.50)'
+                     :running?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.82)';
         ctx.fillText(t, mx, evTop-12);
       }
     }
@@ -5538,7 +5553,7 @@ function _tdDrawTimeline(now){
      clears the event titles on their leaders whatever the range. Hanging it a
      fixed distance above the axis put it straight through them. */
   const pillH=20, pillY=Math.max(2, evTop-40);
-  const mTop=pillY+pillH+3, mBot=rulerBot;
+  const mTop=pillY+pillH+3, mBot=axisY+9;
   ctx.beginPath(); ctx.moveTo(markX,mTop); ctx.lineTo(markX,mBot);
   /* The only colour on this screen. It marks now, and when a session is
      running it is also what you are working inside — the same green line the

@@ -223,14 +223,14 @@
           <button class="toolbar-nav-btn" id="cal-prev">‹</button>
           <span class="toolbar-date-label" id="cal-date-label">Loading…</span>
           <button class="toolbar-nav-btn" id="cal-next">›</button>
-          <button class="toolbar-nav-btn" id="cal-today" style="width:auto;padding:0 8px;font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;">Today</button>
+          <button class="toolbar-nav-btn" id="cal-today" style="width:auto;padding:0 8px;font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.08em;">Today</button>
         </div>
-        <button class="btn-ghost" id="cal-add-milestone" style="margin-left:auto;font-size:10px;padding:5px 11px" title="Add a milestone">⚑ Milestone</button>
+        <button class="btn-ghost" id="cal-add-milestone" style="margin-left:auto;font-size:var(--fs-micro);padding:5px 11px" title="Add a milestone">⚑ Milestone</button>
       </div>
 
       <!-- All-day event strip (fixed above scroll area) -->
       <div class="cal-allday-row" id="cal-allday-row">
-        <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">All-day</span>
+        <span style="font-size:var(--fs-micro);color:var(--muted);font-family:var(--font-mono)">All-day</span>
       </div>
 
       <!-- Day view (placeholder with hours) -->
@@ -259,7 +259,7 @@
           <button class="task-entropy-btn" id="task-entropy-btn" title="Entropy — let the universe pick (E)" aria-label="Entropy — pick a random task">⚄</button>
         </div>
         <!-- @mention dropdown -->
-        <div id="task-mention-dropdown" style="display:none;position:absolute;top:100%;left:0;z-index:200;background:var(--elevated);border:1px solid var(--border);border-radius:8px;min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,0.4);padding:4px 0;max-height:200px;overflow-y:auto"></div>
+        <div id="task-mention-dropdown" style="display:none;position:absolute;top:100%;left:0;z-index:200;background:var(--elevated);border:1px solid var(--border);border-radius:var(--r-sm);min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,0.4);padding:4px 0;max-height:200px;overflow-y:auto"></div>
         <!-- Selected people pills -->
         <div id="task-people-pills" style="display:none;flex-wrap:wrap;gap:4px;padding:4px 0 2px"></div>
         <div class="task-add-meta">
@@ -391,7 +391,7 @@
           <div class="plan-panel-header">
             <span class="plan-panel-label">Commitments</span>
             <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
-<button id="ms-add-project-btn" class="btn-primary" style="font-size:10px;padding:5px 11px">+ New</button>
+<button id="ms-add-project-btn" class="btn-primary" style="font-size:var(--fs-micro);padding:5px 11px">+ New</button>
               <!-- Buckets lost its top-level tab: it is a way of sorting the work
                    under commitments, not a fourth planning horizon. -->
               <button class="plan-panel-toggle" id="plan-buckets-btn" title="Focus buckets">▤</button>
@@ -410,14 +410,14 @@
           <div class="plan-panel-header">
             <span class="plan-panel-label" id="plan-ctx-title">Milestones</span>
             <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
-              <button id="plan-tl-add-ms" class="btn-primary" style="font-size:10px;padding:5px 11px;display:none">+ Milestone</button>
-              <button id="plan-edit-proj" class="btn-ghost" title="Edit commitment" style="font-size:10px;padding:5px 10px;display:none">✎ Edit</button>
+              <button id="plan-tl-add-ms" class="btn-primary" style="font-size:var(--fs-micro);padding:5px 11px;display:none">+ Milestone</button>
+              <button id="plan-edit-proj" class="btn-ghost" title="Edit commitment" style="font-size:var(--fs-micro);padding:5px 10px;display:none">✎ Edit</button>
               <button id="plan-ms-close" class="plan-panel-toggle" title="Close project view" style="display:none">×</button>
             </div>
           </div>
           <!-- Empty state -->
           <div id="plan-ctx-empty" style="flex:1;display:flex;align-items:center;justify-content:center">
-            <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;text-align:center;padding:20px">Click a commitment<br>to view milestones</span>
+            <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.08em;text-align:center;padding:20px">Click a commitment<br>to view milestones</span>
           </div>
           <!-- Content: milestone timeline -->
           <div id="plan-ctx-content" style="flex:1;min-height:0;flex-direction:column;overflow:hidden;display:none">
@@ -432,7 +432,7 @@
           </div>
           <!-- Empty state -->
           <div id="plan-lists-empty" style="flex:1;display:flex;align-items:center;justify-content:center">
-            <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;text-align:center;padding:20px">Select a commitment<br>to view lists</span>
+            <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.08em;text-align:center;padding:20px">Select a commitment<br>to view lists</span>
           </div>
           <!-- Lists content -->
           <div id="plan-tl-lists-body" style="flex:1;overflow-y:auto;padding:8px 10px 12px;display:none"></div>
@@ -564,14 +564,14 @@
     <!-- Archived Panel (shown via Archived nav item) -->
     <div id="panel-archived" style="display:none;flex:1;min-height:0;flex-direction:column;overflow:hidden;background:#000000">
       <div style="padding:20px 28px 16px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;gap:12px">
-        <span style="font-family:var(--font-display);font-size:22px;color:#fff;font-weight:600">Archived Commitments</span>
-        <span id="archived-count-badge" style="font-family:var(--font-mono);font-size:10px;color:var(--muted);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:100px;padding:2px 8px"></span>
+        <span style="font-family:var(--font-display);font-size:var(--fs-title);color:#fff;font-weight:600">Archived Commitments</span>
+        <span id="archived-count-badge" style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:var(--r-pill);padding:2px 8px"></span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 120px 160px 140px 120px;gap:0;padding:8px 28px;border-bottom:1px solid rgba(255,255,255,0.06)">
-        <span style="font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Commitment</span>
-        <span style="font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Category</span>
-        <span style="font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Date Range</span>
-        <span style="font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Progress</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Commitment</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Category</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Date Range</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Progress</span>
         <span></span>
       </div>
       <div id="archived-page-body" style="flex:1;overflow-y:auto;padding:8px 0"></div>
@@ -732,7 +732,7 @@
           <!-- Right column: selected list detail -->
           <div class="lists-col-right">
             <div id="lists-empty-state" class="lists-empty">
-              <div style="font-size:32px;opacity:0.3">▤</div>
+              <div style="font-size:var(--fs-head);opacity:0.3">▤</div>
               <div class="lists-empty-label">Select a list or create one</div>
             </div>
 
@@ -751,9 +751,9 @@
                   <option value="rated">★ Rated</option>
                 </select>
                 <div id="lists-delete-confirm" class="lists-delete-confirm" style="display:none">
-                  <span style="font-family:var(--font-mono);font-size:10px;color:var(--gold)">Delete?</span>
-                  <button id="lists-delete-yes" class="btn-ghost" style="color:var(--gold);font-size:10px;padding:4px 10px">Yes</button>
-                  <button id="lists-delete-no" class="btn-ghost" style="font-size:10px;padding:4px 10px">No</button>
+                  <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--gold)">Delete?</span>
+                  <button id="lists-delete-yes" class="btn-ghost" style="color:var(--gold);font-size:var(--fs-micro);padding:4px 10px">Yes</button>
+                  <button id="lists-delete-no" class="btn-ghost" style="font-size:var(--fs-micro);padding:4px 10px">No</button>
                 </div>
                 <button id="lists-delete-btn" class="lists-head-del" title="Delete list">🗑</button>
               </div>
@@ -902,9 +902,9 @@
         <!-- ROW 6: Friction Detector + Context Patterns (preserved) -->
         <div class="hb-insight-layout" data-ins-tab="patterns">
           <div class="hb-insight-card">
-            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:18px;">Friction Detector</div>
+            <div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:18px;">Friction Detector</div>
             <div class="hb-friction-insight" id="ins-friction-list">
-              <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;padding:20px 0;text-align:center;">Loading habit data…</div>
+              <div style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.08em;padding:20px 0;text-align:center;">Loading habit data…</div>
             </div>
             <div class="hb-ai-nudge">
               <div class="hb-an-label">Cosmodex Pattern Insight</div>
@@ -912,9 +912,9 @@
             </div>
           </div>
           <div class="hb-insight-card">
-            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:18px;">Habit Success by Context</div>
+            <div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:18px;">Habit Success by Context</div>
             <div class="hb-pattern-wrap" id="ins-context-list">
-              <div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;padding:20px 0;text-align:center;">Loading…</div>
+              <div style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.08em;padding:20px 0;text-align:center;">Loading…</div>
             </div>
           </div>
         </div>
@@ -938,16 +938,18 @@
         <button class="mm-tool-btn" id="mm-btn-center" title="Center view (Space)">⊕</button>
         <button class="mm-tool-btn" id="mm-btn-clear" title="Clear all">⊘</button>
         <div style="flex:1"></div>
-        <span style="font-family:var(--font-mono);font-size:0.68rem;color:rgba(255,255,255,0.28);letter-spacing:0.06em">Double-click canvas to add · Drag to move · Connect mode to link</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:rgba(255,255,255,0.28);letter-spacing:0.06em">Double-click canvas to add · Drag to move · Connect mode to link</span>
       </div>
       <!-- Canvas -->
-      <canvas id="mm-canvas" style="flex:1;display:block;cursor:default"></canvas>
+      <!-- min-height:0 or flex:1 cannot shrink the canvas below its own height
+           attribute, and the panel overflows by exactly the toolbar's height. -->
+      <canvas id="mm-canvas" style="flex:1;min-height:0;display:block;cursor:default"></canvas>
     </div>
 
     <!-- Notes Panel (scribble canvas — its own page) -->
     <div id="panel-notes" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:#000000">
       <div class="overlay-header" style="padding:10px 16px;gap:8px;flex-wrap:wrap;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.08)">
-        <span class="overlay-title" style="font-size:15px;flex:none">✎ Notes</span>
+        <span class="overlay-title" style="font-size:var(--fs-body);flex:none">✎ Notes</span>
         <div id="notes-pen-bar" style="display:flex;gap:3px;align-items:center"></div>
         <div id="notes-color-bar" style="display:flex;gap:5px;align-items:center"></div>
         <button class="scribble-btn" id="notes-eraser-btn">Erase</button>
@@ -983,8 +985,8 @@
 <div id="orb-wheel-overlay">
   <div class="orb-wheel-panel">
     <div class="orb-wheel-header">
-      <span style="font-family:var(--font-display);font-size:14px;font-weight:300;color:var(--gold);letter-spacing:0.06em">Spin the Wheel</span>
-      <button id="orb-wheel-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1">✕</button>
+      <span style="font-family:var(--font-display);font-size:var(--fs-body);font-weight:300;color:var(--gold);letter-spacing:0.06em">Spin the Wheel</span>
+      <button id="orb-wheel-close" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-lead);line-height:1">✕</button>
     </div>
     <canvas id="orb-wheel-canvas" width="280" height="280"></canvas>
     <div class="orb-wheel-result" id="orb-wheel-result"></div>
@@ -1009,7 +1011,7 @@
     </svg>
     Continue with Google
   </button>
-  <div id="signin-error" style="display:none;margin-top:18px;font-family:var(--font-body);font-size:12px;color:var(--gold);text-align:center;max-width:280px;line-height:1.5"></div>
+  <div id="signin-error" style="display:none;margin-top:18px;font-family:var(--font-body);font-size:var(--fs-small);color:var(--gold);text-align:center;max-width:280px;line-height:1.5"></div>
 </div>
 
 <!-- Commit ritual overlay (design: "What is the one thing?") -->
@@ -1040,7 +1042,7 @@
 <div class="overlay" id="claude-panel" style="z-index:860;align-items:flex-end;justify-content:flex-end;padding:0">
   <div class="overlay-panel" style="width:min(420px,92vw);height:70dvh;border-radius:20px 20px 0 0;position:absolute;right:0;bottom:0;margin:0">
     <div class="overlay-header">
-      <span class="overlay-title" style="font-size:15px">✦ Ask Cosmos</span>
+      <span class="overlay-title" style="font-size:var(--fs-body)">✦ Ask Cosmos</span>
       <button class="overlay-close" data-close="claude-panel">✕</button>
     </div>
     <div class="overlay-body">
@@ -1116,7 +1118,7 @@
           <!-- Cadence is a review rhythm, not a location. These options used to
                be named after the Planning tabs they appeared on (This Week /
                Month / Quarter); those tabs no longer exist. -->
-          <label class="form-label">Cadence <span style="font-size:10px;color:var(--muted);font-weight:400">(how often you review it)</span></label>
+          <label class="form-label">Cadence <span style="font-size:var(--fs-micro);color:var(--muted);font-weight:400">(how often you review it)</span></label>
           <select id="ms-proj-cadence" class="form-input" style="cursor:pointer">
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
@@ -1133,22 +1135,22 @@
         <textarea id="ms-proj-notes" class="form-input" rows="3" placeholder="Background context, goals, constraints…"></textarea>
       </div>
       <div class="form-group los-narrative-group">
-        <label class="form-label">Mission Brief <span style="font-size:10px;color:var(--muted);font-weight:400">(why this matters)</span></label>
+        <label class="form-label">Mission Brief <span style="font-size:var(--fs-micro);color:var(--muted);font-weight:400">(why this matters)</span></label>
         <textarea id="ms-proj-mission" class="form-input" rows="2" placeholder="The purpose behind this commitment…"></textarea>
       </div>
       <div class="form-group los-narrative-group">
-        <label class="form-label">Anti-Goals <span style="font-size:10px;color:var(--muted);font-weight:400">(what we will NOT do)</span></label>
+        <label class="form-label">Anti-Goals <span style="font-size:var(--fs-micro);color:var(--muted);font-weight:400">(what we will NOT do)</span></label>
         <textarea id="ms-proj-antigoals" class="form-input" rows="2" placeholder="Scope boundaries and explicit non-goals…"></textarea>
       </div>
       <div class="form-group" id="ms-proj-tasks-group" style="display:none">
-        <label class="form-label">Tasks <span style="font-size:10px;color:var(--muted);font-weight:400">(work that delivers this commitment)</span></label>
+        <label class="form-label">Tasks <span style="font-size:var(--fs-micro);color:var(--muted);font-weight:400">(work that delivers this commitment)</span></label>
         <div id="ms-proj-tasks-list" style="margin-bottom:8px;display:flex;flex-direction:column;gap:5px"></div>
         <div style="display:grid;grid-template-columns:1fr 150px auto;gap:6px;align-items:center">
           <input id="ms-proj-task-title" class="form-input" placeholder="New or existing task…" autocomplete="off">
           <input id="ms-proj-task-due" type="date" class="form-input" title="Due date (required)">
           <button id="ms-proj-task-add" class="btn-ghost" style="flex-shrink:0">Add</button>
         </div>
-        <div id="ms-proj-task-search" style="display:none;background:var(--elevated);border:1px solid var(--border);border-radius:8px;margin-top:6px;max-height:160px;overflow-y:auto"></div>
+        <div id="ms-proj-task-search" style="display:none;background:var(--elevated);border:1px solid var(--border);border-radius:var(--r-sm);margin-top:6px;max-height:160px;overflow-y:auto"></div>
       </div>
       <div style="display:flex;justify-content:space-between;gap:8px;margin-top:4px">
         <button id="ms-proj-delete-btn" class="btn-ghost btn-danger" style="color:#e05555;border-color:rgba(224,85,85,.4);display:none">Delete Commitment</button>
@@ -1288,10 +1290,10 @@
       <button class="overlay-close" data-close="ms-event-detail">✕</button>
     </div>
     <div class="overlay-body" style="padding:20px;display:flex;flex-direction:column;gap:16px">
-      <div id="ms-detail-meta" style="font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:0.06em"></div>
-      <div id="ms-detail-desc" style="font-size:14px;color:var(--cream);line-height:1.6;font-family:var(--font-body)"></div>
+      <div id="ms-detail-meta" style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.06em"></div>
+      <div id="ms-detail-desc" style="font-size:var(--fs-body);color:var(--cream);line-height:1.6;font-family:var(--font-body)"></div>
       <div>
-        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Activities</div>
+        <div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Activities</div>
         <div id="ms-detail-activities"></div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
@@ -1385,7 +1387,7 @@
       </div>
       <div>
         <label class="sched-label">Notes</label>
-        <textarea id="te-notes" class="sched-input" rows="3" style="resize:vertical;min-height:64px;font-family:var(--font-body);font-size:13px" placeholder="Optional notes…"></textarea>
+        <textarea id="te-notes" class="sched-input" rows="3" style="resize:vertical;min-height:64px;font-family:var(--font-body);font-size:var(--fs-small)" placeholder="Optional notes…"></textarea>
       </div>
       <button class="sched-confirm-btn" id="te-save-btn">Save Changes</button>
     </div>
@@ -1468,12 +1470,12 @@
             <div class="settings-section">
               <div class="settings-section-title">Theme</div>
               <div class="settings-desc">Toggle between dark and light mode.</div>
-              <button id="settings-theme-btn" class="btn-secondary" style="font-size:12px;padding:8px 18px;" onclick="document.getElementById('theme-btn')?.click(); this.textContent = document.documentElement.dataset.theme === 'light' ? '☀ Light mode active' : '◐ Dark mode active';">◐ Dark mode active</button>
+              <button id="settings-theme-btn" class="btn-secondary" style="font-size:var(--fs-small);padding:8px 18px;" onclick="document.getElementById('theme-btn')?.click(); this.textContent = document.documentElement.dataset.theme === 'light' ? '☀ Light mode active' : '◐ Dark mode active';">◐ Dark mode active</button>
             </div>
             <div class="settings-section">
               <div class="settings-section-title">Storage</div>
               <div class="settings-desc">Where this build keeps your data.</div>
-              <div id="settings-firebase-status" style="display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);">
+              <div id="settings-firebase-status" style="display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-small);color:var(--muted);">
                 <span id="settings-fb-dot" style="width:8px;height:8px;border-radius:50%;background:var(--neon);display:inline-block;"></span>
                 <span id="settings-fb-label">Local SQLite file</span>
               </div>
@@ -1511,9 +1513,9 @@
               <div class="settings-desc">HK public holidays are pre-loaded. Add your own personal holidays below — they appear highlighted on the calendar.</div>
               <div id="settings-holidays-list" style="max-height:260px;overflow-y:auto;margin-bottom:14px"></div>
               <div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto auto;gap:6px;align-items:center">
-                <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">From</span>
+                <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">From</span>
                 <input id="holiday-date" type="date" class="sched-input" />
-                <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">To</span>
+                <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">To</span>
                 <input id="holiday-date-end" type="date" class="sched-input" placeholder="optional" />
                 <select id="holiday-type" class="task-priority-select">
                   <option value="personal">Personal</option>
@@ -1534,32 +1536,32 @@
               <div class="settings-section-title">Local Account</div>
               <div class="settings-desc">This build has no account. Records are keyed to a single local user.</div>
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                <code id="settings-uid-display" style="font-family:var(--font-mono);font-size:11px;color:var(--muted);background:var(--bg);padding:6px 10px;border-radius:var(--r-sm);flex:1;overflow:hidden;text-overflow:ellipsis;">—</code>
-                <button class="btn-secondary" style="font-size:11px;padding:6px 12px;flex-shrink:0" onclick="navigator.clipboard.writeText(window.CDX_USER?.uid||'').then(()=>showToast('UID copied'))">Copy</button>
+                <code id="settings-uid-display" style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);background:var(--bg);padding:6px 10px;border-radius:var(--r-sm);flex:1;overflow:hidden;text-overflow:ellipsis;">—</code>
+                <button class="btn-secondary" style="font-size:var(--fs-micro);padding:6px 12px;flex-shrink:0" onclick="navigator.clipboard.writeText(window.CDX_USER?.uid||'').then(()=>showToast('UID copied'))">Copy</button>
               </div>
             </div>
             <div class="settings-section">
               <div class="settings-section-title">Sync</div>
               <div class="settings-desc">There is no cloud sync in this build — the folder above is your durability.</div>
-              <div style="display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);">
+              <div style="display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-small);color:var(--muted);">
                 <span id="settings-fb-dot2" style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.55);display:inline-block;"></span>
                 <span id="settings-fb-label2">Local only — no cloud sync</span>
               </div>
             </div>
             <div class="settings-section">
               <div class="settings-section-title">Backup &amp; Export</div>
-              <div class="settings-desc">Write a full snapshot — tasks, commitments, events, habit log and a daily roll-up — as one markdown file you can read in Obsidian and mine for patterns. Saves to <code style="font-family:var(--font-mono);font-size:11px">060 ▲ Star logs/Cosmodex Backups/</code> on desktop; downloads in the browser.</div>
-              <button class="btn-secondary" id="settings-backup-btn" style="font-size:11px;padding:8px 16px;color:var(--neon);border-color:var(--neon-dim);">◆ Export backup (.md)</button>
-              <div class="settings-desc" style="margin-top:14px">Records live in <code style="font-family:var(--font-mono);font-size:11px">data/cosmodex.db</code> and the server copies it to <code style="font-family:var(--font-mono);font-size:11px">backups/</code> on every start, so this is for moving between machines rather than for safety. Restore replaces every record and preference, then reloads.</div>
+              <div class="settings-desc">Write a full snapshot — tasks, commitments, events, habit log and a daily roll-up — as one markdown file you can read in Obsidian and mine for patterns. Saves to <code style="font-family:var(--font-mono);font-size:var(--fs-micro)">060 ▲ Star logs/Cosmodex Backups/</code> on desktop; downloads in the browser.</div>
+              <button class="btn-secondary" id="settings-backup-btn" style="font-size:var(--fs-micro);padding:8px 16px;color:var(--neon);border-color:var(--neon-dim);">◆ Export backup (.md)</button>
+              <div class="settings-desc" style="margin-top:14px">Records live in <code style="font-family:var(--font-mono);font-size:var(--fs-micro)">data/cosmodex.db</code> and the server copies it to <code style="font-family:var(--font-mono);font-size:var(--fs-micro)">backups/</code> on every start, so this is for moving between machines rather than for safety. Restore replaces every record and preference, then reloads.</div>
               <div style="display:flex;gap:8px;margin-top:8px">
-                <button class="btn-secondary" id="settings-json-export" style="font-size:11px;padding:8px 16px">⤓ Export data (.json)</button>
-                <button class="btn-secondary" id="settings-json-restore" style="font-size:11px;padding:8px 16px">⤒ Restore from .json</button>
+                <button class="btn-secondary" id="settings-json-export" style="font-size:var(--fs-micro);padding:8px 16px">⤓ Export data (.json)</button>
+                <button class="btn-secondary" id="settings-json-restore" style="font-size:var(--fs-micro);padding:8px 16px">⤒ Restore from .json</button>
               </div>
             </div>
             <div class="settings-section">
               <div class="settings-section-title">Local Cache</div>
               <div class="settings-desc">Clear locally cached settings and preferences (does not affect Firebase data).</div>
-              <button class="btn-secondary" style="font-size:11px;padding:8px 16px;color:var(--gold);" onclick="cdxConfirm('Clear local cache? Firebase data is untouched.',{okLabel:'Clear',okColor:'#e05555',okBg:'rgba(224,85,85,0.18)',okBorder:'rgba(224,85,85,0.4)'}).then(ok=>{if(ok){localStorage.clear();showToast('Local cache cleared');}})">Clear Local Cache</button>
+              <button class="btn-secondary" style="font-size:var(--fs-micro);padding:8px 16px;color:var(--gold);" onclick="cdxConfirm('Clear local cache? Firebase data is untouched.',{okLabel:'Clear',okColor:'#e05555',okBg:'rgba(224,85,85,0.18)',okBorder:'rgba(224,85,85,0.4)'}).then(ok=>{if(ok){localStorage.clear();showToast('Local cache cleared');}})">Clear Local Cache</button>
             </div>
           </div>
 
@@ -1567,7 +1569,7 @@
           <div class="settings-content-panel" id="st-pane-people">
             <div class="settings-section">
               <div class="settings-section-title">People</div>
-              <div class="settings-desc">Add teammates, collaborators, or contacts. Type <code style="font-family:var(--font-mono);font-size:11px;background:var(--elevated);padding:1px 5px;border-radius:3px">@</code> in the task input to link them to tasks.</div>
+              <div class="settings-desc">Add teammates, collaborators, or contacts. Type <code style="font-family:var(--font-mono);font-size:var(--fs-micro);background:var(--elevated);padding:1px 5px;border-radius:var(--r-xs)">@</code> in the task input to link them to tasks.</div>
               <div id="settings-people-list" style="margin-bottom:14px"></div>
               <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
                 <input id="people-name-input" type="text" class="sched-input" placeholder="Full name (e.g. Sarah Chen)" autocomplete="off" />
@@ -1583,8 +1585,8 @@
 </div>
 
 <!-- Time-to-complete popover (shown when ticking a task done) -->
-<div id="task-time-popover" style="display:none;position:fixed;z-index:950;background:#151515;border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:0 12px 32px rgba(0,0,0,0.7);min-width:230px;backdrop-filter:var(--glass-blur-panel);-webkit-backdrop-filter:var(--glass-blur-panel)">
-  <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Time to complete</div>
+<div id="task-time-popover" style="display:none;position:fixed;z-index:950;background:#151515;border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;box-shadow:0 12px 32px rgba(0,0,0,0.7);min-width:230px;backdrop-filter:var(--glass-blur-panel);-webkit-backdrop-filter:var(--glass-blur-panel)">
+  <div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Time to complete</div>
   <div id="task-time-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
     <button class="time-opt-btn" data-mins="5">5m</button>
     <button class="time-opt-btn" data-mins="15">15m</button>
@@ -1595,17 +1597,17 @@
     <button class="time-opt-btn" data-mins="180">3h</button>
   </div>
   <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
-    <input id="task-time-custom" type="number" min="1" max="999" placeholder="Custom (min)" class="form-input" style="font-size:12px;padding:5px 8px;width:100%;flex:1">
-    <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);white-space:nowrap">min</span>
+    <input id="task-time-custom" type="number" min="1" max="999" placeholder="Custom (min)" class="form-input" style="font-size:var(--fs-small);padding:5px 8px;width:100%;flex:1">
+    <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);white-space:nowrap">min</span>
   </div>
   <div id="task-time-theme-wrap" style="margin-bottom:12px">
-    <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Theme</div>
+    <div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Theme</div>
     <div id="task-time-cats" style="display:flex;flex-wrap:wrap;gap:6px"></div>
   </div>
   <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">
-    <span id="task-time-warn" style="flex:1;font-family:var(--font-mono);font-size:10px;color:var(--danger,#e05555);display:none">Pick a theme</span>
-    <button id="task-time-skip" class="btn-ghost" style="font-size:11px;padding:6px 12px">Skip time</button>
-    <button id="task-time-confirm" class="btn-primary" style="font-size:11px;padding:6px 14px">Done</button>
+    <span id="task-time-warn" style="flex:1;font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--danger,#e05555);display:none">Pick a theme</span>
+    <button id="task-time-skip" class="btn-ghost" style="font-size:var(--fs-micro);padding:6px 12px">Skip time</button>
+    <button id="task-time-confirm" class="btn-primary" style="font-size:var(--fs-micro);padding:6px 14px">Done</button>
   </div>
 </div>
 
@@ -1787,14 +1789,14 @@
 
 <!-- ── Confirm Dialog ──────────────────────────────────── -->
 <div id="cdx-confirm-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);backdrop-filter:var(--glass-blur-overlay);-webkit-backdrop-filter:var(--glass-blur-overlay);display:none;align-items:center;justify-content:center">
-  <div style="background:rgba(18,18,18,0.92);border:1px solid rgba(255,255,255,0.14);border-top:1px solid rgba(255,255,255,0.26);border-radius:20px;padding:28px 28px 22px;max-width:360px;width:calc(100% - 48px);box-shadow:0 8px 40px rgba(0,0,0,0.7),inset 0 1px 0 rgba(255,255,255,0.08);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6)">
-    <div id="cdx-confirm-msg" style="font-family:var(--font-body);font-size:13px;color:var(--cream);line-height:1.55;margin-bottom:22px"></div>
+  <div style="background:rgba(18,18,18,0.92);border:1px solid rgba(255,255,255,0.14);border-top:1px solid rgba(255,255,255,0.26);border-radius:var(--r-md);padding:28px 28px 22px;max-width:360px;width:calc(100% - 48px);box-shadow:0 8px 40px rgba(0,0,0,0.7),inset 0 1px 0 rgba(255,255,255,0.08);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6)">
+    <div id="cdx-confirm-msg" style="font-family:var(--font-body);font-size:var(--fs-small);color:var(--cream);line-height:1.55;margin-bottom:22px"></div>
     <!-- Shown only by cdxPrompt(); cdxConfirm() leaves it hidden. Added so the
          app stops falling back to the browser's own prompt() dialog. -->
     <input id="cdx-confirm-input" class="form-input" style="display:none;margin:-10px 0 20px" autocomplete="off">
     <div style="display:flex;justify-content:flex-end;gap:10px">
-      <button id="cdx-confirm-cancel" style="padding:7px 18px;border-radius:100px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);font-family:var(--font-body);font-size:12px;cursor:pointer;transition:background 0.15s">Cancel</button>
-      <button id="cdx-confirm-ok" style="padding:7px 18px;border-radius:100px;border:1px solid rgba(224,85,85,0.4);background:rgba(224,85,85,0.18);color:#e05555;font-family:var(--font-body);font-size:12px;cursor:pointer;font-weight:600;transition:background 0.15s">Delete</button>
+      <button id="cdx-confirm-cancel" style="padding:7px 18px;border-radius:var(--r-pill);border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);font-family:var(--font-body);font-size:var(--fs-small);cursor:pointer;transition:background 0.15s">Cancel</button>
+      <button id="cdx-confirm-ok" style="padding:7px 18px;border-radius:var(--r-pill);border:1px solid rgba(224,85,85,0.4);background:rgba(224,85,85,0.18);color:#e05555;font-family:var(--font-body);font-size:var(--fs-small);cursor:pointer;font-weight:600;transition:background 0.15s">Delete</button>
     </div>
   </div>
 </div>

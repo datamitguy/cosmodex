@@ -670,11 +670,11 @@ function renderLists() {
   const q = (document.getElementById('lists-search')?.value || '').toLowerCase().trim();
   const visible = q ? LISTS.filter(l => (l.title || '').toLowerCase().includes(q)) : LISTS;
   if (!LISTS.length) {
-    sidebar.innerHTML = '<div style="padding:16px;font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;text-align:center">No lists yet</div>';
+    sidebar.innerHTML = '<div style="padding:16px;font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.08em;text-align:center">No lists yet</div>';
     return;
   }
   if (!visible.length) {
-    sidebar.innerHTML = '<div style="padding:16px;font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;text-align:center">No match</div>';
+    sidebar.innerHTML = '<div style="padding:16px;font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.08em;text-align:center">No match</div>';
     return;
   }
   sidebar.innerHTML = visible.map(l => {
@@ -756,7 +756,7 @@ function renderListDetail(listId) {
   const body = document.getElementById('lists-detail-items');
   if (!body) return;
   if (!items.length) {
-    body.innerHTML = '<div style="padding:24px 0;font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;text-align:center">an empty list. even the void keeps notes — add one below</div>';
+    body.innerHTML = '<div style="padding:24px 0;font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.08em;text-align:center">an empty list. even the void keeps notes — add one below</div>';
     return;
   }
   const accentColor = list.color || 'var(--gold)';
@@ -2282,7 +2282,7 @@ function renderInsights() {
         <div class="ins-time-bar-track"><div class="ins-time-bar-fill" style="width:${pct}%;background:rgba(255,255,255,${opacity})"></div></div>
         <div class="ins-time-bar-val">${_insFmtHrs(secs)}</div>
       </div>`;
-    }).join('') || '<div style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">No time logged yet</div>';
+    }).join('') || '<div style="font-size:var(--fs-micro);color:var(--muted);font-family:var(--font-mono)">No time logged yet</div>';
   }
 
   if (!habits.length) {
@@ -2339,7 +2339,7 @@ function renderInsights() {
         </div>`;
       }
     }).join('');
-    if (!habitStats.length) frictionEl.innerHTML = '<div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);padding:20px 0;text-align:center;">No habits tracked yet.</div>';
+    if (!habitStats.length) frictionEl.innerHTML = '<div style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);padding:20px 0;text-align:center;">No habits tracked yet.</div>';
   }
 
   // Pattern insight
@@ -2410,7 +2410,7 @@ function renderInsights() {
       const worst = dowRanked[dowRanked.length - 1];
       if (worst.name !== best.name) html += makeBar('Weakest — ' + worst.name, worst.pct, 'Consider a stripped-down routine on ' + worst.name + 's.');
     }
-    contextEl.innerHTML = html || '<div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);padding:20px 0;text-align:center;">Log more days to see patterns.</div>';
+    contextEl.innerHTML = html || '<div style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);padding:20px 0;text-align:center;">Log more days to see patterns.</div>';
   }
 
   // ── Week Debrief ────────────────────────────────────────
@@ -2420,7 +2420,7 @@ function renderInsights() {
 function _renderInsightsEmpty() {
   const frictionEl = document.getElementById('ins-friction-list');
   const contextEl  = document.getElementById('ins-context-list');
-  const msg = '<div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:0.08em;padding:20px 0;text-align:center;">Add habits in the Tracker tab to see insights.</div>';
+  const msg = '<div style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.08em;padding:20px 0;text-align:center;">Add habits in the Tracker tab to see insights.</div>';
   if (frictionEl) frictionEl.innerHTML = msg;
   if (contextEl)  contextEl.innerHTML  = msg;
 }
@@ -2479,33 +2479,33 @@ function _renderWeekDebrief() {
       return `<span class="hb-wc-tag ${cls}">${escHtml(h.name)} · ${doneCount}/${total}</span>`;
     }).join('');
     habitSection = `
-      <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin:16px 0 10px;">Habit Performance · ${weekPct}% ${prevPct > 0 ? '(' + deltaStr + ')' : ''}</div>
+      <div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin:16px 0 10px;">Habit Performance · ${weekPct}% ${prevPct > 0 ? '(' + deltaStr + ')' : ''}</div>
       <div class="hb-wc-habits">${habitTags}</div>`;
   }
 
   debriefEl.innerHTML = `
-    <div style="font-family:var(--font-display);font-size:20px;font-weight:300;color:var(--cream);margin-bottom:2px">${startLabel} – ${endLabel}</div>
-    <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Current Week</div>
+    <div style="font-family:var(--font-display);font-size:var(--fs-title);font-weight:300;color:var(--cream);margin-bottom:2px">${startLabel} – ${endLabel}</div>
+    <div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.18em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Current Week</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
       <div style="display:flex;align-items:baseline;gap:8px">
-        <span style="font-family:var(--font-display);font-size:28px;font-weight:300;color:${thisWeekTasks.length >= 25 ? 'rgb(57,255,20)' : 'var(--cream)'}">${thisWeekTasks.length}</span>
-        <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;color:var(--muted)">tasks done · ${taskDeltaStr} last week</span>
+        <span style="font-family:var(--font-display);font-size:var(--fs-head);font-weight:300;color:${thisWeekTasks.length >= 25 ? 'rgb(57,255,20)' : 'var(--cream)'}">${thisWeekTasks.length}</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.08em;color:var(--muted)">tasks done · ${taskDeltaStr} last week</span>
       </div>
       <div style="display:flex;align-items:baseline;gap:8px">
-        <span style="font-family:var(--font-display);font-size:20px;font-weight:300;color:var(--cream)">${_insFmtHrs(focusThis)}</span>
-        <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;color:var(--muted)">focus time${focusPrev > 0 ? ` · was ${_insFmtHrs(focusPrev)}` : ''}</span>
+        <span style="font-family:var(--font-display);font-size:var(--fs-title);font-weight:300;color:var(--cream)">${_insFmtHrs(focusThis)}</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.08em;color:var(--muted)">focus time${focusPrev > 0 ? ` · was ${_insFmtHrs(focusPrev)}` : ''}</span>
       </div>
       <div style="display:flex;align-items:baseline;gap:8px">
-        <span style="font-family:var(--font-display);font-size:16px;font-weight:300;color:var(--cream)">${bestDayName}</span>
-        <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;color:var(--muted)">best day · ${bestDay.count} tasks</span>
+        <span style="font-family:var(--font-display);font-size:var(--fs-lead);font-weight:300;color:var(--cream)">${bestDayName}</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.08em;color:var(--muted)">best day · ${bestDay.count} tasks</span>
       </div>
     </div>
-    ${topCats.length ? `<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Top Categories</div>
+    ${topCats.length ? `<div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Top Categories</div>
     <div style="display:flex;flex-direction:column;gap:5px">
       ${topCats.map(([cat, secs]) => {
         const color = getCatColor(cat);
         const label = CATEGORIES[cat]?.label || cat;
-        return `<div style="display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:10px">
+        return `<div style="display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:var(--fs-micro)">
           <span style="width:7px;height:7px;border-radius:50%;background:${color};box-shadow:0 0 5px ${color}80"></span>
           <span style="flex:1;color:var(--cream)">${escHtml(label)}</span>
           <span style="color:var(--muted)">${_insFmtHrs(secs)}</span>
@@ -2726,7 +2726,7 @@ function renderMilestoneDashboard() {
 
 
   if (!MILESTONE_PROJECTS.length) {
-    body.innerHTML = `<div style="color:var(--muted);font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-align:center;margin-top:60px">No commitments yet.<br><br>Click "+ New" to start.</div>`;
+    body.innerHTML = `<div style="color:var(--muted);font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.08em;text-align:center;margin-top:60px">No commitments yet.<br><br>Click "+ New" to start.</div>`;
     return;
   }
 
@@ -2776,7 +2776,7 @@ function renderMilestoneDashboard() {
   });
 
   if (activeProjs.length) body.appendChild(grid);
-  else body.innerHTML = `<div style="color:var(--muted);font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-align:center;margin-top:40px">All commitments archived.</div>`;
+  else body.innerHTML = `<div style="color:var(--muted);font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.08em;text-align:center;margin-top:40px">All commitments archived.</div>`;
 
   grid.querySelectorAll('[data-ms-dash-card]').forEach(card => {
     card.addEventListener('click', e => {
@@ -2797,7 +2797,7 @@ function renderArchivedPage() {
   const archivedProjs = MILESTONE_PROJECTS.filter(p => p.isArchived);
   if (badge) badge.textContent = `${archivedProjs.length} archived`;
   if (archivedProjs.length === 0) {
-    body.innerHTML = `<div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);text-align:center;padding:64px">No archived commitments</div>`;
+    body.innerHTML = `<div style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);text-align:center;padding:64px">No archived commitments</div>`;
     return;
   }
   body.innerHTML = archivedProjs.map(proj => {
@@ -2811,18 +2811,18 @@ function renderArchivedPage() {
     return `<div class="archived-row" data-arch-proj="${proj.id}" style="display:grid;grid-template-columns:1fr 120px 160px 140px 120px;gap:0;padding:13px 28px;border-bottom:1px solid rgba(255,255,255,0.04);align-items:center;transition:background 120ms;cursor:default">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:7px;height:7px;border-radius:50%;background:${proj.color || '#888'};flex-shrink:0"></div>
-        <span style="font-size:13px;color:rgba(255,255,255,0.85)">${escHtml(proj.title)}</span>
+        <span style="font-size:var(--fs-small);color:rgba(255,255,255,0.85)">${escHtml(proj.title)}</span>
       </div>
-      <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">${escHtml(cat)}</span>
-      <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">${start} → ${end}</span>
+      <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">${escHtml(cat)}</span>
+      <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">${start} → ${end}</span>
       <div style="display:flex;align-items:center;gap:8px">
-        <div style="flex:1;height:2px;background:rgba(255,255,255,0.08);border-radius:2px;max-width:80px">
-          <div style="height:2px;background:var(--neon);border-radius:2px;width:${pct}%"></div>
+        <div style="flex:1;height:2px;background:rgba(255,255,255,0.08);border-radius:var(--r-xs);max-width:80px">
+          <div style="height:2px;background:var(--neon);border-radius:var(--r-xs);width:${pct}%"></div>
         </div>
-        <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">${doneActs}/${allActs.length}</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">${doneActs}/${allActs.length}</span>
       </div>
       <div style="display:flex;justify-content:flex-end">
-        <button class="btn-ghost arch-page-unarchive-btn" data-arch-unarchive="${proj.id}" style="font-size:10px;padding:4px 10px;color:var(--muted)">Unarchive</button>
+        <button class="btn-ghost arch-page-unarchive-btn" data-arch-unarchive="${proj.id}" style="font-size:var(--fs-micro);padding:4px 10px;color:var(--muted)">Unarchive</button>
       </div>
     </div>`;
   }).join('');
@@ -2907,7 +2907,7 @@ function renderMilestoneListsPanel(projId) {
 
   const ml = MILESTONE_LISTS.find(m => m.projectId === projId);
   if (!ml) {
-    body.innerHTML = `<div style="font-size:11px;color:var(--muted);text-align:center;padding:20px 0">Loading…</div>`;
+    body.innerHTML = `<div style="font-size:var(--fs-micro);color:var(--muted);text-align:center;padding:20px 0">Loading…</div>`;
     return;
   }
 
@@ -2922,14 +2922,14 @@ function renderMilestoneListsPanel(projId) {
     .sort((a, b) => (a.done - b.done) || String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
   const tasksHtml = linkedTasks.length ? `
     <div style="padding:6px 0 8px">
-      <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--muted);margin-bottom:6px">LINKED TASKS · ${linkedTasks.filter(t => t.done).length}/${linkedTasks.length}</div>
+      <div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:.08em;color:var(--muted);margin-bottom:6px">LINKED TASKS · ${linkedTasks.filter(t => t.done).length}/${linkedTasks.length}</div>
       <div style="display:flex;flex-direction:column;gap:4px">
         ${linkedTasks.map(t => `
           <div style="display:flex;align-items:center;gap:5px">
             <input type="checkbox" data-plink-toggle="${escAttr(t.id)}" ${t.done ? 'checked' : ''} style="cursor:pointer;accent-color:var(--gold);flex-shrink:0">
-            <span data-plink-open="${escAttr(t.id)}" title="Open task" style="font-size:11px;color:${t.done ? 'var(--muted)' : 'var(--cream)'};flex:1;${t.done ? 'text-decoration:line-through' : ''};line-height:1.4;word-break:break-word;cursor:pointer">${escHtml(t.title)}</span>
-            <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);flex-shrink:0">${t.dueDate ? escHtml(fmtDate(t.dueDate)) : (t.someday ? 'Someday' : '—')}</span>
-            <button data-plink-unlink="${escAttr(t.id)}" title="Remove from this commitment (keeps the task)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;line-height:1;flex-shrink:0">×</button>
+            <span data-plink-open="${escAttr(t.id)}" title="Open task" style="font-size:var(--fs-micro);color:${t.done ? 'var(--muted)' : 'var(--cream)'};flex:1;${t.done ? 'text-decoration:line-through' : ''};line-height:1.4;word-break:break-word;cursor:pointer">${escHtml(t.title)}</span>
+            <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);flex-shrink:0">${t.dueDate ? escHtml(fmtDate(t.dueDate)) : (t.someday ? 'Someday' : '—')}</span>
+            <button data-plink-unlink="${escAttr(t.id)}" title="Remove from this commitment (keeps the task)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-small);padding:0 2px;line-height:1;flex-shrink:0">×</button>
           </div>`).join('')}
       </div>
       <div style="height:1px;background:var(--border);margin:10px 0 2px"></div>
@@ -2939,20 +2939,20 @@ function renderMilestoneListsPanel(projId) {
     ${tasksHtml}
     <div style="padding:6px 0 8px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">${doneCount}/${items.length} done</span>
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">${doneCount}/${items.length} done</span>
       </div>
       <div id="ms-items-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
         ${items.map(item => `
           <div style="display:flex;align-items:flex-start;gap:5px">
             <input type="checkbox" data-ms-toggle="${item.id}" ${item.done ? 'checked' : ''} style="cursor:pointer;accent-color:var(--gold);flex-shrink:0;margin-top:3px">
-            <span style="font-size:11px;color:${item.done ? 'var(--muted)' : 'var(--cream)'};flex:1;${item.done ? 'text-decoration:line-through' : ''};line-height:1.4;word-break:break-word">${escHtml(item.text)}</span>
-            <button data-ms-del="${item.id}" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;line-height:1;flex-shrink:0">×</button>
+            <span style="font-size:var(--fs-micro);color:${item.done ? 'var(--muted)' : 'var(--cream)'};flex:1;${item.done ? 'text-decoration:line-through' : ''};line-height:1.4;word-break:break-word">${escHtml(item.text)}</span>
+            <button data-ms-del="${item.id}" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-small);padding:0 2px;line-height:1;flex-shrink:0">×</button>
           </div>
         `).join('')}
       </div>
       <div style="display:flex;gap:4px">
-        <input id="ms-new-item-inp" class="form-input" placeholder="Add item…" style="flex:1;font-size:11px;padding:4px 7px;height:26px">
-        <button id="ms-new-item-btn" class="btn-primary" style="font-size:10px;padding:4px 8px;height:26px;flex-shrink:0">+</button>
+        <input id="ms-new-item-inp" class="form-input" placeholder="Add item…" style="flex:1;font-size:var(--fs-micro);padding:4px 7px;height:26px">
+        <button id="ms-new-item-btn" class="btn-primary" style="font-size:var(--fs-micro);padding:4px 8px;height:26px;flex-shrink:0">+</button>
       </div>
     </div>`;
 
@@ -3016,20 +3016,20 @@ function renderMsActivityList() {
   const el = document.getElementById('ms-event-activities-list');
   if (!el) return;
   if (!_msNewActivities.length) {
-    el.innerHTML = '<p style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:0.06em">No tasks yet.</p>';
+    el.innerHTML = '<p style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:0.06em">No tasks yet.</p>';
     return;
   }
   el.innerHTML = _msNewActivities.map((a, i) => {
     const task = a.taskId ? TASKS.find(t => t.id === a.taskId) : null;
     const cat  = task?.category ? CATEGORIES[task.category] : null;
     const modCatClr = getCatColor(task?.category);
-    const catBadge = cat ? `<span style="font-size:10px;padding:1px 5px;border-radius:100px;background:${modCatClr}22;color:${modCatClr};border:1px solid ${modCatClr}44;font-family:var(--font-mono)">${escHtml(cat.label)}</span>` : '';
-    const linkedBadge = a.taskId ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--neon);padding:1px 5px;border-radius:4px;background:rgba(74,124,94,0.1)">linked</span>` : '';
+    const catBadge = cat ? `<span style="font-size:var(--fs-micro);padding:1px 5px;border-radius:var(--r-pill);background:${modCatClr}22;color:${modCatClr};border:1px solid ${modCatClr}44;font-family:var(--font-mono)">${escHtml(cat.label)}</span>` : '';
+    const linkedBadge = a.taskId ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--neon);padding:1px 5px;border-radius:var(--r-xs);background:rgba(74,124,94,0.1)">linked</span>` : '';
     return `
       <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-        <span style="flex:1;font-family:var(--font-body);font-size:13px;color:var(--cream)">${escHtml(a.text||a.title||'')}</span>
+        <span style="flex:1;font-family:var(--font-body);font-size:var(--fs-small);color:var(--cream)">${escHtml(a.text||a.title||'')}</span>
         ${catBadge}${linkedBadge}
-        <span style="font-size:11px;color:var(--muted);cursor:pointer;padding:2px 6px" data-rm-activity="${i}">✕</span>
+        <span style="font-size:var(--fs-micro);color:var(--muted);cursor:pointer;padding:2px 6px" data-rm-activity="${i}">✕</span>
       </div>`;
   }).join('');
 }
@@ -3081,7 +3081,7 @@ function _renderMsProjTasks(projId) {
   const tasks = TASKS.filter(t => t.projectId === projId)
     .sort((a, b) => (a.done - b.done) || String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
   if (!tasks.length) {
-    listEl.innerHTML = `<div style="font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.06em;padding:3px 0">No tasks yet — add the work that delivers this.</div>`;
+    listEl.innerHTML = `<div style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);letter-spacing:.06em;padding:3px 0">No tasks yet — add the work that delivers this.</div>`;
     return;
   }
   listEl.innerHTML = tasks.map(t => {
@@ -3216,7 +3216,7 @@ function showMsTaskSearchResults(query, evId, containerEl) {
   containerEl.style.display = 'block';
   containerEl.innerHTML = results.map(t => {
     const cat = t.category ? CATEGORIES[t.category] : null;
-    const catBadge = cat ? `<span style="font-size:10px;padding:1px 5px;border-radius:100px;background:${cat.color}22;color:${cat.color};border:1px solid ${cat.color}44;font-family:var(--font-mono)">${escHtml(cat.label)}</span>` : '';
+    const catBadge = cat ? `<span style="font-size:var(--fs-micro);padding:1px 5px;border-radius:var(--r-pill);background:${cat.color}22;color:${cat.color};border:1px solid ${cat.color}44;font-family:var(--font-mono)">${escHtml(cat.label)}</span>` : '';
     const dot = `<div style="width:6px;height:6px;border-radius:50%;background:${t.priority==='high'?'var(--gold)':t.priority==='med'?'rgba(255,255,255,0.55)':'var(--muted)'};flex-shrink:0"></div>`;
     return `<div class="ms-task-search-result" data-task-id="${escAttr(t.id)}" data-ev-id="${escAttr(evId)}">${dot}<span style="flex:1">${escHtml(t.title)}</span>${catBadge}</div>`;
   }).join('');
@@ -3469,7 +3469,7 @@ function initMilestonesPanel() {
         modalSearchRes.style.display = 'block';
         modalSearchRes.innerHTML = results.map(t => {
           const cat = t.category ? CATEGORIES[t.category] : null;
-          const catBadge = cat ? `<span style="font-size:10px;padding:1px 5px;border-radius:100px;background:${cat.color}22;color:${cat.color};border:1px solid ${cat.color}44;font-family:var(--font-mono)">${escHtml(cat.label)}</span>` : '';
+          const catBadge = cat ? `<span style="font-size:var(--fs-micro);padding:1px 5px;border-radius:var(--r-pill);background:${cat.color}22;color:${cat.color};border:1px solid ${cat.color}44;font-family:var(--font-mono)">${escHtml(cat.label)}</span>` : '';
           return `<div class="ms-task-search-result" data-modal-task-id="${escAttr(t.id)}" style="cursor:pointer"><div style="width:6px;height:6px;border-radius:50%;background:${t.priority==='high'?'var(--gold)':t.priority==='med'?'rgba(255,255,255,0.55)':'var(--muted)'};flex-shrink:0"></div><span style="flex:1">${escHtml(t.title)}</span>${catBadge}</div>`;
         }).join('');
       }
@@ -6406,7 +6406,7 @@ function _renderTaskGroup(container, tasks, taskProjMap, rowIdxRef) {
     const isCollapsed = localStorage.getItem(storageKey) !== 'false';
     const indLabel = document.createElement('div');
     indLabel.className = 'tasks-commitment-label';
-    indLabel.innerHTML = `<span style="margin-right:4px;transition:transform 0.2s;display:inline-block;font-size:10px;${isCollapsed ? '' : 'transform:rotate(90deg)'}">\u203A</span><span class="tasks-commitment-dot" style="background:var(--muted)"></span>Independent<span class="tasks-commitment-count">${standalone.length}</span>`;
+    indLabel.innerHTML = `<span style="margin-right:4px;transition:transform 0.2s;display:inline-block;font-size:var(--fs-micro);${isCollapsed ? '' : 'transform:rotate(90deg)'}">\u203A</span><span class="tasks-commitment-dot" style="background:var(--muted)"></span>Independent<span class="tasks-commitment-count">${standalone.length}</span>`;
     const indContainer = document.createElement('div');
     indContainer.style.display = isCollapsed ? 'none' : '';
     indLabel.addEventListener('click', () => {
@@ -6430,7 +6430,7 @@ function _renderTaskGroup(container, tasks, taskProjMap, rowIdxRef) {
 
     const initLabel = document.createElement('div');
     initLabel.className = 'tasks-commitment-label';
-    initLabel.innerHTML = `<span style="margin-right:4px;transition:transform 0.2s;display:inline-block;font-size:10px;${isCollapsed ? '' : 'transform:rotate(90deg)'}">\u203A</span><span class="tasks-commitment-dot" style="background:${escAttr(projGroup.projectColor)}"></span>${escHtml(projGroup.projectTitle)}<span class="tasks-commitment-count">${projGroup.tasks.length}</span>`;
+    initLabel.innerHTML = `<span style="margin-right:4px;transition:transform 0.2s;display:inline-block;font-size:var(--fs-micro);${isCollapsed ? '' : 'transform:rotate(90deg)'}">\u203A</span><span class="tasks-commitment-dot" style="background:${escAttr(projGroup.projectColor)}"></span>${escHtml(projGroup.projectTitle)}<span class="tasks-commitment-count">${projGroup.tasks.length}</span>`;
 
     const initContainer = document.createElement('div');
     initContainer.style.display = isCollapsed ? 'none' : '';
@@ -6579,7 +6579,7 @@ function buildTaskRow(task, idx) {
 
   const PRIORITY_LABELS = { high: 'High', med: 'Med', low: 'Low' };
   const priorityLabel = task.priority ? PRIORITY_LABELS[task.priority] || '' : '';
-  const priorityBadge = priorityLabel ? `<span style="font-family:var(--font-mono);font-size:10px;color:${task.priority==='high'?'var(--gold)':task.priority==='med'?'rgba(255,255,255,0.55)':'var(--muted)'}">${priorityLabel}</span>` : '';
+  const priorityBadge = priorityLabel ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:${task.priority==='high'?'var(--gold)':task.priority==='med'?'rgba(255,255,255,0.55)':'var(--muted)'}">${priorityLabel}</span>` : '';
 
   let recurBadge = '';
   if (task.recurrence) {
@@ -6609,7 +6609,7 @@ function buildTaskRow(task, idx) {
 
   // Time-spent badge
   const timeBadge = (task.done && task.timeSpentMinutes)
-    ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--neon);background:rgba(74,124,94,0.1);border:1px solid rgba(74,124,94,0.3);border-radius:100px;padding:1px 6px">⏱ ${task.timeSpentMinutes < 60 ? task.timeSpentMinutes + 'm' : Math.floor(task.timeSpentMinutes/60) + 'h' + (task.timeSpentMinutes%60 ? ' ' + task.timeSpentMinutes%60 + 'm' : '')}</span>`
+    ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--neon);background:rgba(74,124,94,0.1);border:1px solid rgba(74,124,94,0.3);border-radius:var(--r-pill);padding:1px 6px">⏱ ${task.timeSpentMinutes < 60 ? task.timeSpentMinutes + 'm' : Math.floor(task.timeSpentMinutes/60) + 'h' + (task.timeSpentMinutes%60 ? ' ' + task.timeSpentMinutes%60 + 'm' : '')}</span>`
     : '';
 
   // Friction indicator — a task placed on the calendar 3+ times and still open.
@@ -6623,7 +6623,7 @@ function buildTaskRow(task, idx) {
         const p = PEOPLE.find(p => p.id === id);
         if (!p) return '';
         return `<span class="task-person-badge" style="background:${p.color}18;border-color:${p.color}44;color:${p.color}" title="${escAttr(p.name)}">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:50%;background:${p.color};font-size:10px;font-weight:600;color:#0d0c0a;margin-right:3px">${escHtml(p.initials)}</span>@${escHtml(p.name)}</span>`;
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:50%;background:${p.color};font-size:var(--fs-micro);font-weight:600;color:#0d0c0a;margin-right:3px">${escHtml(p.initials)}</span>@${escHtml(p.name)}</span>`;
       }).join('')
     : '';
 
@@ -6716,7 +6716,7 @@ function buildSubtaskRow(parentId, sub) {
   let schedBadge = '';
   if (sub.calEventId) {
     const ev = CAL_EVENTS.find(e => e.id === sub.calEventId);
-    if (ev?.startTime) schedBadge = `<span class="task-cal-badge" style="font-size:10px">⊙ ${fmtTimeSched(ev.startTime)}</span>`;
+    if (ev?.startTime) schedBadge = `<span class="task-cal-badge" style="font-size:var(--fs-micro)">⊙ ${fmtTimeSched(ev.startTime)}</span>`;
   }
 
   row.innerHTML = `
@@ -7207,10 +7207,10 @@ function handleCheckClick(taskId, clickEvent) {
       const c = CATEGORIES[id];
       const active = id === _timePickerCat;
       return `<button class="time-cat-btn${active ? ' active' : ''}" data-cat="${escAttr(id)}"
-        style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:100px;cursor:pointer;
+        style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r-pill);cursor:pointer;
         background:${active ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)'};
         border:1px solid ${active ? 'rgba(255,255,255,0.35)' : 'var(--border)'};
-        color:${active ? '#fff' : 'var(--muted)'};font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase">
+        color:${active ? '#fff' : 'var(--muted)'};font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.08em;text-transform:uppercase">
         <span style="width:7px;height:7px;border-radius:50%;background:${getCatColor(id)}"></span>${escHtml(c.label)}</button>`;
     }).join('');
   }
@@ -7426,7 +7426,7 @@ function openScheduleModal(date, startTime, taskId, subId) {
       <div class="sched-subtask-item">
         <input type="checkbox" id="sched-sub-${s.id}" value="${escAttr(s.id)}" checked />
         <label for="sched-sub-${s.id}" style="flex:1">${escHtml(s.title)}</label>
-        <input type="time" class="sched-input" style="width:100px;font-size:11px;padding:4px 6px"
+        <input type="time" class="sched-input" style="width:100px;font-size:var(--fs-micro);padding:4px 6px"
                id="sched-sub-time-${s.id}" value="${startTime}" />
       </div>`).join('');
   } else {
@@ -7594,7 +7594,7 @@ function renderDayView(date) {
   if (alldayRow) alldayRow.style.display = '';
   if (alldayRow) alldayRow.innerHTML = msDay + (allDayEvs.length
     ? allDayEvs.map(ev => `<span class="cal-allday-chip" data-event-id="${escAttr(ev.id)}">${escHtml(ev.title)}</span>`).join('')
-    : (msDay ? '' : `<span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">All-day</span>`));
+    : (msDay ? '' : `<span style="font-size:var(--fs-micro);color:var(--muted);font-family:var(--font-mono)">All-day</span>`));
   if (alldayRow) _wireCalMilestones(alldayRow);
 
   // Clear old event chips
@@ -7683,14 +7683,14 @@ function renderWeekView(date) {
     const isToday = ds === today;
     const isWeekend = (i === 5 || i === 6); // Sat=5, Sun=6
     const hol = HOLIDAYS[ds];
-    html += `<div class="week-day-header${isToday ? ' today' : ''}${isWeekend ? ' weekend' : ''}" data-date="${ds}" style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;${isToday ? 'color:rgba(57,255,20,0.9);text-shadow:0 0 8px rgba(57,255,20,0.4);border-bottom:2px solid rgba(57,255,20,0.45)' : ''}">
-      ${DAYS[i]} ${d.getDate()}${hol ? `<br><span style="font-size:10px;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.12);border-radius:2px;padding:0 2px;display:block">${escHtml(hol.name)}</span>` : ''}
+    html += `<div class="week-day-header${isToday ? ' today' : ''}${isWeekend ? ' weekend' : ''}" data-date="${ds}" style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.08em;text-transform:uppercase;${isToday ? 'color:rgba(57,255,20,0.9);text-shadow:0 0 8px rgba(57,255,20,0.4);border-bottom:2px solid rgba(57,255,20,0.45)' : ''}">
+      ${DAYS[i]} ${d.getDate()}${hol ? `<br><span style="font-size:var(--fs-micro);color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.12);border-radius:var(--r-xs);padding:0 2px;display:block">${escHtml(hol.name)}</span>` : ''}
     </div>`;
   }
   html += `</div>`;
   // All-day row
   const weekCols = `grid-template-columns:48px repeat(7,1fr)`;
-  html += `<div class="week-allday-row" style="${weekCols}"><div class="week-time-label" style="font-size:10px;color:var(--muted)">all-day</div>`;
+  html += `<div class="week-allday-row" style="${weekCols}"><div class="week-time-label" style="font-size:var(--fs-micro);color:var(--muted)">all-day</div>`;
   for (let i = 0; i < 7; i++) {
     const d  = new Date(ws); d.setDate(d.getDate() + i);
     const ds = localDateStr(d);
@@ -7900,13 +7900,13 @@ function buildMonthCell(dateStr, isCurrentMonth) {
 
   const holBadge = hol ? `<span class="month-holiday-name">${escHtml(hol.name)}</span>` : '';
   const adBadges = allDayEvs.slice(0,1).map(ev =>
-    `<span style="font-family:var(--font-mono);font-size:10px;color:#fff;background:var(--neon);border-radius:2px;padding:0 3px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px">${escHtml(ev.title)}</span>`
+    `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:#fff;background:var(--neon);border-radius:var(--r-xs);padding:0 3px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px">${escHtml(ev.title)}</span>`
   ).join('');
   const pills = timedEvs.slice(0,2).map(ev => {
     const color = getCatColor(TASKS.find(t => t.id === ev.taskId)?.category);
     return `<span class="month-event-pill" data-event-id="${escAttr(ev.id)}" style="background:${color}22;color:${color};cursor:pointer">${escHtml(ev.title)}</span>`;
   }).join('');
-  const more = timedEvs.length > 2 ? `<span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">+${timedEvs.length-2} more</span>` : '';
+  const more = timedEvs.length > 2 ? `<span style="font-size:var(--fs-micro);color:var(--muted);font-family:var(--font-mono)">+${timedEvs.length-2} more</span>` : '';
 
   const msBanner = _calMilestones(dateStr);
   return `<div class="${classes}" data-date="${dateStr}">
@@ -8451,7 +8451,7 @@ function initAddTaskForm() {
       const p = PEOPLE.find(p => p.id === id);
       if (!p) return '';
       return `<span class="task-people-pill" style="background:${p.color}18;border-color:${p.color}44;color:${p.color}">
-        <span class="mention-avatar" style="background:${p.color};width:14px;height:14px;font-size:10px">${escHtml(p.initials)}</span>
+        <span class="mention-avatar" style="background:${p.color};width:14px;height:14px;font-size:var(--fs-micro)">${escHtml(p.initials)}</span>
         @${escHtml(p.name)}
         <button class="pill-remove" data-remove-person="${escAttr(p.id)}" tabindex="-1">✕</button>
       </span>`;
@@ -8670,8 +8670,8 @@ function renderSettingsCatList() {
   list.innerHTML = Object.entries(CATEGORIES).map(([key, cat]) => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
       <div style="width:14px;height:14px;border-radius:50%;background:${cat.color};flex-shrink:0"></div>
-      <span style="flex:1;font-family:var(--font-body);font-size:13px;color:var(--cream)">${escHtml(cat.label)}</span>
-      <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);background:var(--elevated);border:1px solid var(--border);border-radius:4px;padding:1px 5px">${escHtml(key)}</span>
+      <span style="flex:1;font-family:var(--font-body);font-size:var(--fs-small);color:var(--cream)">${escHtml(cat.label)}</span>
+      <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);background:var(--elevated);border:1px solid var(--border);border-radius:var(--r-xs);padding:1px 5px">${escHtml(key)}</span>
       <button class="task-action-btn danger" data-del-cat="${escAttr(key)}" title="Delete">✕</button>
     </div>`).join('');
   list.querySelectorAll('[data-del-cat]').forEach(btn => {
@@ -8738,14 +8738,14 @@ function renderSettingsHolidays() {
       return a.date.localeCompare(b.date);
     });
   if (!entries.length) {
-    list.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px 0">Loading holidays…</div>`;
+    list.innerHTML = `<div style="color:var(--muted);font-size:var(--fs-small);padding:8px 0">Loading holidays…</div>`;
     return;
   }
   list.innerHTML = entries.map(h => `
     <div class="settings-holiday-row">
       <span style="flex:1">${escHtml(h.name)}</span>
       <span class="hol-type${h.type === 'public' ? ' public' : ''}">${h.type || 'personal'}</span>
-      <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);white-space:nowrap">${fmtDate(h.date)}</span>
+      <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);white-space:nowrap">${fmtDate(h.date)}</span>
       ${h.type !== 'public' ? `<button class="task-action-btn danger" data-delhol="${escAttr(h.docId)}" title="Delete">✕</button>` : '<span style="width:22px"></span>'}
     </div>`).join('');
   list.querySelectorAll('[data-delhol]').forEach(btn => {
@@ -8758,13 +8758,13 @@ function renderSettingsPeople() {
   const list = document.getElementById('settings-people-list');
   if (!list) return;
   if (!PEOPLE.length) {
-    list.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:8px 0">No people added yet.</div>`;
+    list.innerHTML = `<div style="font-size:var(--fs-small);color:var(--muted);padding:8px 0">No people added yet.</div>`;
     return;
   }
   list.innerHTML = PEOPLE.map(p => `
     <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-      <div style="width:26px;height:26px;border-radius:50%;background:${p.color};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#0d0c0a;flex-shrink:0">${escHtml(p.initials)}</div>
-      <span style="flex:1;font-family:var(--font-body);font-size:13px;color:var(--cream)">${escHtml(p.name)}</span>
+      <div style="width:26px;height:26px;border-radius:50%;background:${p.color};display:flex;align-items:center;justify-content:center;font-size:var(--fs-micro);font-weight:600;color:#0d0c0a;flex-shrink:0">${escHtml(p.initials)}</div>
+      <span style="flex:1;font-family:var(--font-body);font-size:var(--fs-small);color:var(--cream)">${escHtml(p.name)}</span>
       <button class="task-action-btn danger" data-del-person="${escAttr(p.id)}" title="Remove">✕</button>
     </div>`).join('');
   list.querySelectorAll('[data-del-person]').forEach(btn => {
@@ -9656,19 +9656,19 @@ function showInitiativeTasks(proj) {
   const listEl  = document.getElementById('person-tasks-list');
   if (titleEl) {
     titleEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px">
-      <span style="width:20px;height:20px;border-radius:6px;background:${proj.color};display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#0d0c0a">◉</span>
+      <span style="width:20px;height:20px;border-radius:var(--r-sm);background:${proj.color};display:inline-flex;align-items:center;justify-content:center;font-size:var(--fs-micro);color:#0d0c0a">◉</span>
       Tasks in ${escHtml(proj.title)}
     </span>`;
   }
   if (listEl) {
     const renderTask = t => {
       const cat = t.category ? CATEGORIES[t.category] : null;
-      const catBadge = cat ? `<span style="font-family:var(--font-mono);font-size:10px;padding:1px 5px;border-radius:100px;background:${cat.color}22;color:${cat.color};border:1px solid ${cat.color}44">${escHtml(cat.label)}</span>` : '';
+      const catBadge = cat ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);padding:1px 5px;border-radius:var(--r-pill);background:${cat.color}22;color:${cat.color};border:1px solid ${cat.color}44">${escHtml(cat.label)}</span>` : '';
       return `<div style="display:flex;align-items:center;gap:10px;padding:9px 16px 9px 28px;border-bottom:1px solid var(--border)">
-        <div style="width:14px;height:14px;border-radius:4px;border:1.5px solid ${t.done?'var(--neon)':'var(--border)'};background:${t.done?'var(--neon)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;color:var(--ink)">${t.done?'✓':''}</div>
-        <span style="flex:1;font-size:13px;color:${t.done?'var(--muted)':'var(--cream)'};${t.done?'text-decoration:line-through':''}">${escHtml(t.title)}</span>
+        <div style="width:14px;height:14px;border-radius:var(--r-xs);border:1.5px solid ${t.done?'var(--neon)':'var(--border)'};background:${t.done?'var(--neon)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:var(--fs-micro);color:var(--ink)">${t.done?'✓':''}</div>
+        <span style="flex:1;font-size:var(--fs-small);color:${t.done?'var(--muted)':'var(--cream)'};${t.done?'text-decoration:line-through':''}">${escHtml(t.title)}</span>
         ${catBadge}
-        ${t.dueDate ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">${fmtDate(t.dueDate)}</span>` : ''}
+        ${t.dueDate ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">${fmtDate(t.dueDate)}</span>` : ''}
       </div>`;
     };
 
@@ -9682,14 +9682,14 @@ function showInitiativeTasks(proj) {
       const dateLabel = ev.date ? fmtDate(ev.date) : '';
       html += `<div style="display:flex;align-items:center;gap:8px;padding:10px 16px 7px;border-bottom:1px solid var(--border);background:var(--elevated);position:sticky;top:0;z-index:1">
         <span style="width:7px;height:7px;border-radius:50%;background:${proj.color};flex-shrink:0"></span>
-        <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.06em;color:var(--cream);font-weight:500;flex:1">${escHtml(ev.title || 'Milestone')}</span>
-        ${dateLabel ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">${dateLabel}</span>` : ''}
+        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.06em;color:var(--cream);font-weight:500;flex:1">${escHtml(ev.title || 'Milestone')}</span>
+        ${dateLabel ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">${dateLabel}</span>` : ''}
       </div>`;
       evTasks.forEach(t => { html += renderTask(t); });
     });
 
     if (!totalTasks) {
-      html = `<div style="padding:20px 16px;font-size:13px;color:var(--muted)">No tasks linked to <strong>${escHtml(proj.title)}</strong> yet. Link tasks via milestone activities in Life OS.</div>`;
+      html = `<div style="padding:20px 16px;font-size:var(--fs-small);color:var(--muted)">No tasks linked to <strong>${escHtml(proj.title)}</strong> yet. Link tasks via milestone activities in Life OS.</div>`;
     }
     listEl.innerHTML = html;
   }
@@ -9702,23 +9702,23 @@ function showPersonTasks(person) {
   const listEl  = document.getElementById('person-tasks-list');
   if (titleEl) {
     titleEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px">
-      <span style="width:20px;height:20px;border-radius:50%;background:${person.color};display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#0d0c0a">${escHtml(person.initials)}</span>
+      <span style="width:20px;height:20px;border-radius:50%;background:${person.color};display:inline-flex;align-items:center;justify-content:center;font-size:var(--fs-micro);font-weight:600;color:#0d0c0a">${escHtml(person.initials)}</span>
       Tasks linked to @${escHtml(person.name)}
     </span>`;
   }
   if (listEl) {
     if (!tasks.length) {
-      listEl.innerHTML = `<div style="padding:20px 16px;font-size:13px;color:var(--muted)">No tasks linked to @${escHtml(person.name)} yet.</div>`;
+      listEl.innerHTML = `<div style="padding:20px 16px;font-size:var(--fs-small);color:var(--muted)">No tasks linked to @${escHtml(person.name)} yet.</div>`;
     } else {
       const open = tasks.filter(t => !t.done);
       const done = tasks.filter(t => t.done);
       const renderGroup = (arr, label) => arr.length ? `
-        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);padding:10px 16px 4px">${label}</div>
+        <div style="font-family:var(--font-mono);font-size:var(--fs-micro);letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);padding:10px 16px 4px">${label}</div>
         ${arr.map(t => `
           <div style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border)">
-            <div style="width:14px;height:14px;border-radius:4px;border:1.5px solid ${t.done?'var(--neon)':'var(--border)'};background:${t.done?'var(--neon)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;color:var(--ink)">${t.done?'✓':''}</div>
-            <span style="flex:1;font-size:13px;color:${t.done?'var(--muted)':'var(--cream)'};${t.done?'text-decoration:line-through':''}">${escHtml(t.title)}</span>
-            ${t.dueDate ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">${fmtDate(t.dueDate)}</span>` : ''}
+            <div style="width:14px;height:14px;border-radius:var(--r-xs);border:1.5px solid ${t.done?'var(--neon)':'var(--border)'};background:${t.done?'var(--neon)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:var(--fs-micro);color:var(--ink)">${t.done?'✓':''}</div>
+            <span style="flex:1;font-size:var(--fs-small);color:${t.done?'var(--muted)':'var(--cream)'};${t.done?'text-decoration:line-through':''}">${escHtml(t.title)}</span>
+            ${t.dueDate ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">${fmtDate(t.dueDate)}</span>` : ''}
           </div>`).join('')}` : '';
       listEl.innerHTML = renderGroup(open, 'Open') + renderGroup(done, 'Done');
     }
@@ -9751,9 +9751,9 @@ function renderCmdResults(query) {
   container.innerHTML = filtered.map((c, i) => `
     <div class="cmd-result-item ${i===0?'selected':''}" data-cmd="${i}">
       ${c._personColor
-        ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:${c._personColor};font-size:10px;font-weight:600;color:#0d0c0a;flex-shrink:0">${escHtml(c._personInitials)}</span>`
+        ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:${c._personColor};font-size:var(--fs-micro);font-weight:600;color:#0d0c0a;flex-shrink:0">${escHtml(c._personInitials)}</span>`
         : c._projColor
-          ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:${c._projColor};font-size:10px;color:#0d0c0a;flex-shrink:0">◉</span>`
+          ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:var(--r-xs);background:${c._projColor};font-size:var(--fs-micro);color:#0d0c0a;flex-shrink:0">◉</span>`
           : `<span class="cmd-result-icon">${c.icon}</span>`}
       ${escHtml(c.label)}
       ${c.keys ? `<span class="cmd-result-keys">${c.keys}</span>` : ''}
@@ -10539,20 +10539,20 @@ function renderDoneWall() {
   const grid = document.getElementById('done-grid');
   if (!grid) return;
   if (!tasks.length) {
-    grid.innerHTML = `<div style="font-family:var(--font-mono);font-size:12px;color:var(--muted);text-align:center;padding:40px 0">Nothing here yet — go complete something!</div>`;
+    grid.innerHTML = `<div style="font-family:var(--font-mono);font-size:var(--fs-small);color:var(--muted);text-align:center;padding:40px 0">Nothing here yet — go complete something!</div>`;
     return;
   }
   grid.innerHTML = tasks.map(task => {
     const cat = task.category ? CATEGORIES[task.category] : null;
     const catBadge = cat
-      ? `<span style="font-family:var(--font-mono);font-size:10px;padding:1px 6px;border-radius:100px;background:${cat.color}22;color:${cat.color};border:1px solid ${cat.color}44;white-space:nowrap">${escHtml(cat.label)}</span>`
+      ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);padding:1px 6px;border-radius:var(--r-pill);background:${cat.color}22;color:${cat.color};border:1px solid ${cat.color}44;white-space:nowrap">${escHtml(cat.label)}</span>`
       : '';
     const dateLabel = task.doneDate ? fmtDate(task.doneDate) : '';
     const timeBadge = task.timeSpentMinutes
-      ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--neon);white-space:nowrap">⏱ ${task.timeSpentMinutes < 60 ? task.timeSpentMinutes + 'm' : (task.timeSpentMinutes / 60).toFixed(1) + 'h'}</span>`
+      ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--neon);white-space:nowrap">⏱ ${task.timeSpentMinutes < 60 ? task.timeSpentMinutes + 'm' : (task.timeSpentMinutes / 60).toFixed(1) + 'h'}</span>`
       : '';
     return `<div class="done-card">
-      <span style="font-family:var(--font-mono);font-size:10px;color:var(--neon);flex-shrink:0">✓</span>
+      <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--neon);flex-shrink:0">✓</span>
       <span class="done-card-title">${escHtml(task.title)}</span>
       <div class="done-card-meta">${catBadge}${timeBadge}</div>
       ${dateLabel ? `<span class="done-card-date">${dateLabel}</span>` : ''}
@@ -12060,7 +12060,7 @@ function _dashRenderRituals() {
 
   if (!habits.length && !morning.length && !evening.length) {
     el.innerHTML = `<div class="dash-eyebrow">TODAY</div>
-      <div class="dash-nn-title muted" style="font-size:14px">No habits or routines yet.</div>
+      <div class="dash-nn-title muted" style="font-size:var(--fs-body)">No habits or routines yet.</div>
       <div class="dash-nn-meta">Add them on the Habits page.</div>`;
     return;
   }
@@ -12140,7 +12140,7 @@ function _dashRenderTasksPaint() {
       .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
     if (!done.length) {
       el.innerHTML = `<div class="dash-eyebrow">COMPLETED</div>
-        <div class="dash-nn-title muted" style="font-size:14px">Nothing logged as done.</div>
+        <div class="dash-nn-title muted" style="font-size:var(--fs-body)">Nothing logged as done.</div>
         <div class="dash-nn-meta">A quiet day — or the work went untracked.</div>`;
       return;
     }
@@ -12173,7 +12173,7 @@ function _dashRenderTasksPaint() {
 
   if (!due.length) {
     el.innerHTML = `<div class="dash-eyebrow">${label} · TIMEBOX</div>
-      <div class="dash-nn-title muted" style="font-size:14px">Nothing due.</div>
+      <div class="dash-nn-title muted" style="font-size:var(--fs-body)">Nothing due.</div>
       <div class="dash-nn-meta">Enjoy the open runway — or pull work forward.</div>`;
     return;
   }
@@ -12487,7 +12487,7 @@ window.initMindMap = (function(){
       const sp = worldToScreen(node.x - NODE_W/2, node.y - NODE_H/2);
       if (!editEl) {
         editEl = document.createElement('input');
-        editEl.style.cssText = `position:absolute;background:rgba(0,0,0,0.82);border:1px solid rgba(255,255,255,0.35);color:#fff;border-radius:6px;padding:4px 10px;font-family:'Instrument Sans',sans-serif;font-size:12px;outline:none;z-index:10;box-sizing:border-box;`;
+        editEl.style.cssText = `position:absolute;background:rgba(0,0,0,0.82);border:1px solid rgba(255,255,255,0.35);color:#fff;border-radius:var(--r-sm);padding:4px 10px;font-family:'Instrument Sans',sans-serif;font-size:var(--fs-small);outline:none;z-index:10;box-sizing:border-box;`;
         canvas.parentElement.appendChild(editEl);
         editEl.addEventListener('keydown', e => {
           if (e.key === 'Enter') { e.preventDefault(); finishEdit(); }
@@ -13747,7 +13747,7 @@ function _hxToday() {
       </div>
       ${_hxDot(color)}
       ${mveBtn}${fricBtn}
-      <span class="hx-tel" style="font-size:11px;color:rgba(255,255,255,.65)">${_hxStreak(h.id)}d</span>
+      <span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.65)">${_hxStreak(h.id)}d</span>
       <button class="hx-row-manage" data-hx-edit="${escAttr(h.id)}" title="Edit / delete / graduate" aria-label="Manage habit">⋯</button>
     </div>`;
   }).join('')
@@ -13776,7 +13776,7 @@ function _hxToday() {
         <div class="hx-card deep" style="padding:22px">
           <div class="hx-eyebrow">THE 30-SECOND VERSION</div>
           <span class="hx-quote">"The habit must be doable in 30 seconds on your worst day."</span>
-          <div class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.45);margin-top:10px">— BJ FOGG</div>
+          <div class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.45);margin-top:10px">— BJ FOGG</div>
         </div>
         <div class="hx-card" style="padding:22px">
           <div class="hx-eyebrow">35-DAY HEATMAP</div>
@@ -13811,7 +13811,7 @@ function _hxBuilderPane() {
   let body = '';
   if (step === 1) body = `
     <div class="hx-eyebrow">STEP 01 · IDENTITY</div>
-    <span class="hx-sechead-title" style="font-size:24px">I am…</span>
+    <span class="hx-sechead-title" style="font-size:var(--fs-title)">I am…</span>
     <span class="hx-sechead-italic">Start with who. The action is downstream of the self-image.</span>
     <input class="hx-input italic" id="hx-f-identity" value="${escAttr(f.identity)}" placeholder="someone who writes daily" style="margin-top:16px">
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
@@ -13820,7 +13820,7 @@ function _hxBuilderPane() {
     </div>`;
   else if (step === 2) body = `
     <div class="hx-eyebrow">STEP 02 · ACTION</div>
-    <span class="hx-sechead-title" style="font-size:24px">The 30-second version.</span>
+    <span class="hx-sechead-title" style="font-size:var(--fs-title)">The 30-second version.</span>
     <span class="hx-sechead-italic">If you can't do it on your worst day, it's not tiny enough.</span>
     <input class="hx-input" id="hx-f-name" value="${escAttr(f.name)}" placeholder="Write one sentence" style="margin-top:16px">
     <div style="margin-top:14px"><div class="hx-eyebrow" style="margin-bottom:8px">MINIMUM VIABLE VERSION</div>
@@ -13836,7 +13836,7 @@ function _hxBuilderPane() {
       ${f.cadence === 'custom' ? _hxDowPicker(f.dow, 'data-hx-dow') : ''}</div>`;
   else if (step === 3) body = `
     <div class="hx-eyebrow">STEP 03 · ANCHOR</div>
-    <span class="hx-sechead-title" style="font-size:24px">After I … I will …</span>
+    <span class="hx-sechead-title" style="font-size:var(--fs-title)">After I … I will …</span>
     <span class="hx-sechead-italic">Chain to an existing routine. The anchor is the cue.</span>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px">
       <div><div class="hx-eyebrow" style="margin-bottom:6px">AFTER (ANCHOR)</div>
@@ -13848,12 +13848,12 @@ function _hxBuilderPane() {
       <div class="hx-recipe-body">After I <u>${escHtml(f.anchor || '___')}</u>, I will <u>${escHtml(f.name || '___')}</u>.</div></div>`;
   else body = `
     <div class="hx-eyebrow">STEP 04 · CELEBRATE</div>
-    <span class="hx-sechead-title" style="font-size:24px">The reward wires the loop.</span>
+    <span class="hx-sechead-title" style="font-size:var(--fs-title)">The reward wires the loop.</span>
     <span class="hx-sechead-italic">A small, immediate feeling of pride beats any external prize.</span>
     <div style="margin-top:16px"><div class="hx-eyebrow" style="margin-bottom:6px">CELEBRATION</div>
       <input class="hx-input body" id="hx-f-reward" value="${escAttr(f.reward)}" placeholder='Say "good" out loud. Fist pump. Smile.'></div>
     <div class="hx-loop"><div class="hx-eyebrow" style="color:#4a7c5e">COMPLETE LOOP</div>
-      <div class="hx-recipe-body" style="font-size:17px">I am <u>${escHtml(f.identity || '___')}</u>. After I <u>${escHtml(f.anchor || '___')}</u>, I will <u>${escHtml(f.name || '___')}</u>. Then I <u>${escHtml(f.reward || '___')}</u>.</div></div>`;
+      <div class="hx-recipe-body" style="font-size:var(--fs-lead)">I am <u>${escHtml(f.identity || '___')}</u>. After I <u>${escHtml(f.anchor || '___')}</u>, I will <u>${escHtml(f.name || '___')}</u>. Then I <u>${escHtml(f.reward || '___')}</u>.</div></div>`;
 
   const nav = `<div class="hx-nav">
     <button class="hx-back" data-hx-back ${step === 1 ? 'disabled' : ''}>‹ Back</button>
@@ -13865,7 +13865,7 @@ function _hxBuilderPane() {
     ['Has a specific anchor?', !!f.anchor],
     ['Sensory cue identified?', !!f.cue],
     ['Celebration defined?', !!f.reward],
-  ].map(([l, ok]) => `<div class="hx-ck"><span class="hx-ck-box${ok ? ' ok' : ''}"></span><span class="hx-tel" style="font-size:11px;color:${ok ? '#fff' : 'rgba(255,255,255,.55)'}">${escHtml(l)}</span></div>`).join('');
+  ].map(([l, ok]) => `<div class="hx-ck"><span class="hx-ck-box${ok ? ' ok' : ''}"></span><span class="hx-tel" style="font-size:var(--fs-micro);color:${ok ? '#fff' : 'rgba(255,255,255,.55)'}">${escHtml(l)}</span></div>`).join('');
 
   return `${_hxSecHead('BUILDER · TINY HABITS METHOD', "Design a habit that can't fail.",
       'Identity → tiny action → anchor → celebration. Four moves, one ritual.')}
@@ -13874,7 +13874,7 @@ function _hxBuilderPane() {
       <div class="hx-card" style="padding:26px">${body}${nav}</div>
       <div class="hx-col">
         <div class="hx-card deep" style="padding:20px"><div class="hx-eyebrow">WHY IT WORKS</div>
-          <div style="font-family:var(--font-body);font-size:13px;color:rgba(255,255,255,.75);margin-top:10px;line-height:1.6">Identity-based habits stick because they change the story you tell yourself. Every rep becomes a vote for the person you want to be.</div></div>
+          <div style="font-family:var(--font-body);font-size:var(--fs-small);color:rgba(255,255,255,.75);margin-top:10px;line-height:1.6">Identity-based habits stick because they change the story you tell yourself. Every rep becomes a vote for the person you want to be.</div></div>
         <div class="hx-card deep" style="padding:20px"><div class="hx-eyebrow">CHECKLIST</div>
           <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">${checklist}</div></div>
         <div class="hx-card deep" style="padding:20px"><div class="hx-eyebrow">TEMPLATE LIBRARY</div>
@@ -13905,11 +13905,11 @@ function _hxProgress() {
   const prows = perHabit.length ? perHabit.map(({ h, hist, color }) => {
     const kept = hist.filter(Boolean).length;
     return `<div class="hx-prow">
-      <div><div style="display:flex;align-items:center;gap:8px">${_hxDot(color, 7)}<div class="hx-hname" style="font-size:14px">${escHtml(_hxName(h))}</div></div>
+      <div><div style="display:flex;align-items:center;gap:8px">${_hxDot(color, 7)}<div class="hx-hname" style="font-size:var(--fs-body)">${escHtml(_hxName(h))}</div></div>
         <div class="hx-rail-tel" style="margin-top:3px">${escHtml((h.category || 'Uncategorised').toUpperCase())} · ${_hxStreak(h.id)}D STREAK</div></div>
       <div class="hx-p28">${hist.map(v => `<span style="background:${v ? color + 'cc' : 'rgba(255,255,255,.04)'};border:1px solid ${v ? color : 'rgba(255,255,255,.06)'}${v ? ';box-shadow:0 0 6px ' + color + '66' : ''}"></span>`).join('')}</div>
-      <span class="hx-tel" style="font-size:11px;color:rgba(255,255,255,.75)">${kept}/28</span>
-      <span class="hx-tel" style="font-size:11px;color:#fff;text-shadow:0 0 8px rgba(255,255,255,.3)">${Math.round(kept / 28 * 100)}%</span>
+      <span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.75)">${kept}/28</span>
+      <span class="hx-tel" style="font-size:var(--fs-micro);color:#fff;text-shadow:0 0 8px rgba(255,255,255,.3)">${Math.round(kept / 28 * 100)}%</span>
     </div>`;
   }).join('') : `<div class="hx-empty">No habits to chart yet.</div>`;
 
@@ -13918,7 +13918,7 @@ function _hxProgress() {
   perHabit.forEach(({ h, hist }) => { const k = h.category || 'Uncategorised'; const n = hist.filter(Boolean).length; catTotals[k] = (catTotals[k] || 0) + n; catSum += n; });
   const mix = Object.keys(catTotals).length ? Object.entries(catTotals).sort((a, b) => b[1] - a[1]).map(([name, n]) => {
     const pct = catSum ? Math.round(n / catSum * 100) : 0; const c = (HX_CATS.find(x => x.name === name) || {}).color || 'rgba(255,255,255,.5)';
-    return `<div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.6)">${escHtml(name.toUpperCase())}</span><span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.5)">${pct}%</span></div>
+    return `<div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.6)">${escHtml(name.toUpperCase())}</span><span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.5)">${pct}%</span></div>
       <div class="hx-bar"><i style="width:${pct}%;background:linear-gradient(90deg,${c}aa,${c});box-shadow:0 0 8px ${c}88"></i></div></div>`;
   }).join('') : `<div class="hx-empty">No reps logged yet.</div>`;
 
@@ -13933,13 +13933,13 @@ function _hxProgress() {
     <div class="hx-stats">${stats}</div>
     <div class="hx-card" style="padding:22px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px"><span class="hx-ritual-title">By habit</span>
-        <span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.4)">28 DAYS</span></div>${prows}</div>
+        <span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.4)">28 DAYS</span></div>${prows}</div>
     <div class="hx-grid-2" style="margin-top:22px">
       <div class="hx-card" style="padding:22px"><div class="hx-eyebrow">CATEGORY MIX · 28D</div>
-        <span class="hx-sechead-title" style="font-size:18px">Where your reps went</span>
+        <span class="hx-sechead-title" style="font-size:var(--fs-lead)">Where your reps went</span>
         <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">${mix}</div></div>
       <div class="hx-card" style="padding:22px"><div class="hx-eyebrow">CONSISTENCY CURVE</div>
-        <span class="hx-sechead-title" style="font-size:18px">Weekly kept-rate</span>
+        <span class="hx-sechead-title" style="font-size:var(--fs-lead)">Weekly kept-rate</span>
         <svg viewBox="0 0 400 160" style="width:100%;margin-top:16px;display:block">
           <defs><linearGradient id="hx-curve" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff" stop-opacity="0.3"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
           ${[0, 40, 80, 120, 160].map(y => `<line x1="0" x2="400" y1="${y}" y2="${y}" stroke="rgba(255,255,255,0.04)"/>`).join('')}
@@ -13947,7 +13947,7 @@ function _hxProgress() {
           <path d="${path} L 400 160 L 0 160 Z" fill="url(#hx-curve)"/>
           ${pts.map(p => `<circle cx="${p[0].toFixed(0)}" cy="${p[1].toFixed(0)}" r="3" fill="#fff" style="filter:drop-shadow(0 0 4px rgba(255,255,255,.6))"/>`).join('')}
         </svg>
-        <div style="display:flex;justify-content:space-between;margin-top:6px">${['W1', 'W2', 'W3', 'W4', 'NOW'].map(w => `<span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.4)">${w}</span>`).join('')}</div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px">${['W1', 'W2', 'W3', 'W4', 'NOW'].map(w => `<span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.4)">${w}</span>`).join('')}</div></div>
     </div>`;
 }
 
@@ -13981,7 +13981,7 @@ function _hxReflect() {
   const list = entries.length ? entries.map((e, i) => `
     <div class="hx-card" style="padding:22px">
       <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:10px">
-        <span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.5)">${escHtml(e.date || '')}</span>
+        <span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.5)">${escHtml(e.date || '')}</span>
         ${e.habit ? `<span class="hx-pill">${escHtml(e.habit.toUpperCase())}</span>` : ''}
         <div style="flex:1"></div>
         <button class="hx-back" style="padding:4px 10px" data-hx-r-del="${i}">✕</button>
@@ -13997,14 +13997,14 @@ function _hxReflect() {
       <div class="hx-col">
         <div class="hx-card" style="padding:22px"><div class="hx-eyebrow">THIS WEEK'S PROMPTS</div>
           <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
-            ${prompts.map((p, i) => `<div class="hx-prompt" data-hx-prompt="${escAttr(p)}"><div style="display:flex;gap:10px;align-items:flex-start"><span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.4)">0${i + 1}</span><span class="hx-prompt-txt">${escHtml(p)}</span></div></div>`).join('')}
+            ${prompts.map((p, i) => `<div class="hx-prompt" data-hx-prompt="${escAttr(p)}"><div style="display:flex;gap:10px;align-items:flex-start"><span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.4)">0${i + 1}</span><span class="hx-prompt-txt">${escHtml(p)}</span></div></div>`).join('')}
           </div></div>
         <div class="hx-card deep" style="padding:22px"><div class="hx-eyebrow">WEEKLY TELEMETRY</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px">
-            <div><div class="hx-eyebrow">ENTRIES</div><div class="hx-stat-v" style="font-size:26px">${String(entries.length).padStart(2, '0')}</div></div>
-            <div><div class="hx-eyebrow">WORDS</div><div class="hx-stat-v" style="font-size:26px">${words}</div></div>
-            <div><div class="hx-eyebrow">KEPT TODAY</div><div class="hx-stat-v" style="font-size:26px">${keptToday}/${active.length}</div></div>
-            <div><div class="hx-eyebrow">IDENTITY</div><span class="hx-identity" style="font-size:13px">${_hxIdentity() ? escHtml(_hxIdentity()) : 'showing up.'}</span></div>
+            <div><div class="hx-eyebrow">ENTRIES</div><div class="hx-stat-v" style="font-size:var(--fs-title)">${String(entries.length).padStart(2, '0')}</div></div>
+            <div><div class="hx-eyebrow">WORDS</div><div class="hx-stat-v" style="font-size:var(--fs-title)">${words}</div></div>
+            <div><div class="hx-eyebrow">KEPT TODAY</div><div class="hx-stat-v" style="font-size:var(--fs-title)">${keptToday}/${active.length}</div></div>
+            <div><div class="hx-eyebrow">IDENTITY</div><span class="hx-identity" style="font-size:var(--fs-small)">${_hxIdentity() ? escHtml(_hxIdentity()) : 'showing up.'}</span></div>
           </div></div>
       </div>
     </div>`;
@@ -14048,8 +14048,8 @@ function _hxBehaviours() {
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <div class="hx-insight-icon" style="background:${ins.color}20;border:1px solid ${ins.color}50;color:${ins.color};text-shadow:0 0 10px ${ins.color}">${ins.icon}</div>
         <div class="hx-eyebrow" style="color:rgba(255,255,255,.6)">INSIGHT 0${i + 1}</div></div>
-      <span class="hx-sechead-title" style="font-size:20px;margin:0 0 8px">${escHtml(ins.title)}</span>
-      <div style="font-family:var(--font-body);font-size:14px;color:rgba(255,255,255,.78);line-height:1.6">${ins.body}</div>
+      <span class="hx-sechead-title" style="font-size:var(--fs-title);margin:0 0 8px">${escHtml(ins.title)}</span>
+      <div style="font-family:var(--font-body);font-size:var(--fs-body);color:rgba(255,255,255,.78);line-height:1.6">${ins.body}</div>
     </div>`).join('');
 
   // completions by weekday (real; we have dates, not clock times)
@@ -14058,7 +14058,7 @@ function _hxBehaviours() {
     if (log && log.completions) { const n = Object.keys(log.completions).length; dow[d.getDay()] += n; dowMax.v = Math.max(dowMax.v, dow[d.getDay()]); } }
   const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   const todHtml = DOW.map((lbl, i) => { const inten = dow[i] / dowMax.v;
-    return `<div class="hx-tod-col"><div class="hx-tod-bar" style="background:rgba(255,255,255,${(0.05 + inten * 0.4).toFixed(3)})${inten > 0.75 ? ';box-shadow:0 0 10px rgba(255,255,255,.2)' : ''}"></div><span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.35)">${lbl}</span></div>`; }).join('');
+    return `<div class="hx-tod-col"><div class="hx-tod-bar" style="background:rgba(255,255,255,${(0.05 + inten * 0.4).toFixed(3)})${inten > 0.75 ? ';box-shadow:0 0 10px rgba(255,255,255,.2)' : ''}"></div><span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.35)">${lbl}</span></div>`; }).join('');
 
   // strongest pairs — Jaccard co-occurrence over 60 days
   const pairs = [];
@@ -14071,9 +14071,9 @@ function _hxBehaviours() {
   const pairHtml = pairs.length ? pairs.slice(0, 3).map(p => {
     const c = _hxColor(p.a);
     return `<div class="hx-tmpl" style="cursor:default"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <span class="hx-hname" style="font-size:14px">${escHtml(_hxName(p.a))}</span><span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.4)">↔</span>
-      <span class="hx-hname" style="font-size:14px">${escHtml(_hxName(p.b))}</span><div style="flex:1"></div>
-      <span class="hx-tel" style="font-size:11px;color:${c};text-shadow:0 0 8px ${c}">r=${p.n.toFixed(2)}</span></div>
+      <span class="hx-hname" style="font-size:var(--fs-body)">${escHtml(_hxName(p.a))}</span><span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.4)">↔</span>
+      <span class="hx-hname" style="font-size:var(--fs-body)">${escHtml(_hxName(p.b))}</span><div style="flex:1"></div>
+      <span class="hx-tel" style="font-size:var(--fs-micro);color:${c};text-shadow:0 0 8px ${c}">r=${p.n.toFixed(2)}</span></div>
       <div class="hx-bar" style="height:4px"><i style="width:${Math.round(p.n * 100)}%;background:${c};box-shadow:0 0 6px ${c}88"></i></div></div>`;
   }).join('') : `<div class="hx-empty">Log a few weeks to surface habit pairs.</div>`;
 
@@ -14081,9 +14081,9 @@ function _hxBehaviours() {
   const chain = active.filter(h => (typeof _todayAnchorGroup === 'function' ? _todayAnchorGroup(h) : '') === 'morning').slice(0, 5);
   const chainHtml = chain.length ? chain.map((h, i, a) => { const c = _hxColor(h);
     return `<div style="display:flex;gap:14px;align-items:flex-start">
-      <div style="width:46px"><span class="hx-tel" style="font-size:10px;color:rgba(255,255,255,.5)">${escHtml(h.anchor && h.anchor.value ? '' : '')}${String(6 + i).padStart(2, '0')}:00</span></div>
+      <div style="width:46px"><span class="hx-tel" style="font-size:var(--fs-micro);color:rgba(255,255,255,.5)">${escHtml(h.anchor && h.anchor.value ? '' : '')}${String(6 + i).padStart(2, '0')}:00</span></div>
       <div style="display:flex;flex-direction:column;align-items:center"><div style="width:12px;height:12px;border-radius:50%;background:${c};box-shadow:0 0 10px ${c};margin-top:4px"></div>${i < a.length - 1 ? `<div style="width:1px;flex:1;min-height:28px;background:linear-gradient(180deg,${c},${_hxColor(a[i + 1])})"></div>` : ''}</div>
-      <div style="flex:1;padding-bottom:18px"><span class="hx-hname" style="font-size:15px">${escHtml(_hxName(h))}</span></div></div>`; }).join('')
+      <div style="flex:1;padding-bottom:18px"><span class="hx-hname" style="font-size:var(--fs-body)">${escHtml(_hxName(h))}</span></div></div>`; }).join('')
     : `<div class="hx-empty">No morning-anchored habits yet.</div>`;
 
   return `${_hxSecHead('BEHAVIOURS · PATTERNS NOTICED', 'Your data, talking back.',
@@ -14095,10 +14095,10 @@ function _hxBehaviours() {
       <div class="hx-tod">${todHtml}</div></div>
     <div class="hx-grid-2">
       <div class="hx-card" style="padding:22px"><div class="hx-eyebrow">STRONGEST PAIRS</div>
-        <span class="hx-sechead-title" style="font-size:18px">These reinforce each other</span>
+        <span class="hx-sechead-title" style="font-size:var(--fs-lead)">These reinforce each other</span>
         <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">${pairHtml}</div></div>
       <div class="hx-card" style="padding:22px"><div class="hx-eyebrow">HABIT CHAIN · MORNING</div>
-        <span class="hx-sechead-title" style="font-size:18px">Your keystone sequence</span>
+        <span class="hx-sechead-title" style="font-size:var(--fs-lead)">Your keystone sequence</span>
         <div style="margin-top:18px;display:flex;flex-direction:column">${chainHtml}</div></div>
     </div>`;
 }
@@ -16948,7 +16948,7 @@ function _dashRenderCommitments() {
     el.innerHTML =
       `<div class="dash-eyebrow">COMMITMENTS</div>
        ${goalsLine}
-       <div class="dash-nn-title muted" style="font-size:14px">Nothing committed yet.</div>
+       <div class="dash-nn-title muted" style="font-size:var(--fs-body)">Nothing committed yet.</div>
        <div class="dash-nn-meta">Planning is where commitments are made — they show up here once they exist.</div>`;
     wireGoalsLine();
     return;

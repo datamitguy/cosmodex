@@ -5148,28 +5148,42 @@ function _tdRingExact(ring, cur, now){
 }
 const _tdLerp2 = (a,b,t) => a+(b-a)*t;
 
+/* Ring geometry, measured off timedrift.live at 1409x782 rather than matched by
+   eye. Its solid ring baselines sit at radii 72, 108, 162, 216, 288, 360 — so
+   the spacing widens outwards (36, 54, 54, 72, 72) instead of being uniform,
+   which is what makes the middle read as dense and the outside as open. Those
+   radii as fractions of the outermost are 0.20, 0.30, 0.45, 0.60, 0.80, 1.00,
+   and that is what is used here against an outer ring of 320 units.
+
+   Order runs coarse to fine outwards, as theirs does. Day-of-month used to be
+   the innermost ring, which gave the 31 numbers less room than any other ring
+   on the dial; it sits third now, where it has the circumference for them.
+
+   Labels are one size on every ring — 12px against their 360px outer radius,
+   so 0.033 of it. Ticks are 0.044 of the outer radius long and 2-3px thick:
+   short chunky marks, not the hairlines this had. */
 const TD_RINGS = [
-  { id:'dom', r:120, bw:28, items:Array.from({length:31},(_,i)=>String(i+1)),
-    cur:d=>d.getDate()-1,
-    sub:d=>0,
-    maj:1,th:7.0,tm:7.0,fs:11,lr:109,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
-  { id:'mon', r:160, bw:28, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+  { id:'mon', r:64,  bw:20, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     cur:d=>d.getMonth(),
     sub:d=>0,
-    maj:1,th:7.0,tm:7.0,fs:11,lr:149,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
-  { id:'dow', r:200, bw:28, items:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+    maj:1,th:14,tm:14,tw:1.9,fs:10.6,lr:54,bandStroke:_TD_HAIR,dimA:0.52 },
+  { id:'dow', r:96,  bw:24, items:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
     cur:d=>d.getDay(),
     sub:d=>0,
-    maj:1,th:7.4,tm:7.4,fs:11,lr:189,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.50 },
-  { id:'hr',  r:240, bw:28, items:Array.from({length:24},(_,i)=>String(i)),
+    maj:1,th:14,tm:14,tw:1.9,fs:10.6,lr:86,bandStroke:_TD_HAIR,dimA:0.50 },
+  { id:'dom', r:144, bw:34, items:Array.from({length:31},(_,i)=>String(i+1)),
+    cur:d=>d.getDate()-1,
+    sub:d=>0,
+    maj:1,th:14,tm:14,tw:1.9,fs:10.6,lr:133,bandStroke:_TD_HAIR,dimA:0.48 },
+  { id:'hr',  r:192, bw:34, items:Array.from({length:24},(_,i)=>String(i)),
     cur:d=>d.getHours(),
     sub:d=>0,
-    maj:1,th:6.6,tm:3.2,fs:10,lr:229,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.44 },
-  { id:'min', r:280, bw:28, items:Array.from({length:60},(_,i)=>String((60-i)%60).padStart(2,'0')),
+    maj:1,th:14,tm:14,tw:1.8,fs:10.6,lr:181,bandStroke:_TD_HAIR,dimA:0.44 },
+  { id:'min', r:256, bw:44, items:Array.from({length:60},(_,i)=>String((60-i)%60).padStart(2,'0')),
     cur:d=>(60-d.getMinutes())%60,
     sub:d=>0,
-    maj:1,th:6.0,tm:2.4,fs:9.5,lr:269,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.38 },
-  { id:'sec', r:320, bw:28, items:Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),
+    maj:1,th:14,tm:14,tw:1.5,fs:10.6,lr:245,bandStroke:_TD_HAIR,dimA:0.38 },
+  { id:'sec', r:320, bw:44, items:Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),
     cur:d=>d.getSeconds(),
     /* The one deliberate departure from timedrift.live. Sampled over 176
        elements, nothing on that dial moves between unit changes — it is still
@@ -5178,8 +5192,7 @@ const TD_RINGS = [
        alive; every ring inside it steps and eases exactly as the reference
        does. */
     sub:d=>d.getMilliseconds()/1000,
-
-    maj:1,th:6.0,tm:2.4,fs:9,lr:309,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.32 },
+    maj:1,th:14,tm:14,tw:1.5,fs:10.6,lr:309,bandStroke:_TD_HAIR,dimA:0.32 },
 ];
 
 let _tdSvg=null, _tdElYear=null, _tdElTime=null, _tdElDate=null;
@@ -5620,7 +5633,7 @@ function _tdInit(){
       const ox2=_TD_CX+(ring.r+tH)*cosA, oy2=_TD_CY+(ring.r+tH)*sinA;
       const tk=_tdMk('line');
       tk.setAttribute('x1',ox); tk.setAttribute('y1',oy); tk.setAttribute('x2',ox2); tk.setAttribute('y2',oy2);
-      tk.setAttribute('stroke',_TD_DIM); tk.setAttribute('stroke-width',isMaj?'0.7':'0.4');
+      tk.setAttribute('stroke',_TD_DIM); tk.setAttribute('stroke-width',String(ring.tw));
       tk.setAttribute('class','td-tk'); ig.appendChild(tk);
       const showLabel=true;
       if(showLabel){
@@ -5734,7 +5747,11 @@ function _tdLayout(){
   // width and swallowed a wide office monitor.
   const R=narrow
     ? Math.min(vw*0.55, vh*0.98)
-    : Math.min(vh*_TD_R_OF_BAND, vw*0.50, _TD_R_MAX);
+    /* Their outer ring is 51% of the WINDOW's width, and they have no sidebar.
+       Measuring against our content pane instead made the dial 13% short, so
+       this is taken off the window and the dial simply sits wider within its
+       pane — which is what matches the reference's look. */
+    : Math.min(vh*_TD_R_OF_BAND, window.innerWidth*0.261, _TD_R_MAX);
   // px per viewBox unit, pinned to the calendar rings so the session gauge can
   // be given room outside them without the rings themselves changing size.
   const U=R/_TD_RING_R;
@@ -5802,11 +5819,11 @@ function _tdUpdateRing(info,now,animEase){
     const norm=abs/vis, opac=_tdClamp(Math.pow(Math.max(0,1-norm),1.5),0,1);
     const tk=item.querySelector('.td-tk'), rl=item.querySelector('.td-rl');
     if(abs<0.45){
-      if(tk){tk.setAttribute('stroke',activeStroke);tk.setAttribute('stroke-width','1.1');tk.removeAttribute('filter');}
+      if(tk){tk.setAttribute('stroke',activeStroke);tk.setAttribute('stroke-width',String(ring.tw*1.35));tk.removeAttribute('filter');}
       if(rl){rl.setAttribute('fill',activeFill);rl.setAttribute('font-weight','500');rl.setAttribute('font-size',String(ring.fs*1.22));rl.removeAttribute('filter');}
       item.style.opacity='1';
     } else {
-      if(tk){tk.setAttribute('stroke',_TD_DIM);tk.setAttribute('stroke-width',maj?'0.5':'0.22');tk.removeAttribute('filter');}
+      if(tk){tk.setAttribute('stroke',_TD_DIM);tk.setAttribute('stroke-width',String(ring.tw));tk.removeAttribute('filter');}
       if(rl){rl.setAttribute('fill',_TD_DIM);rl.setAttribute('font-weight','300');rl.setAttribute('font-size',String(ring.fs));rl.removeAttribute('filter');}
       const ringA=opac*(ring.dimA*1.9);
       item.style.opacity=ringA<0.02?'0':String(Math.min(1,ringA));

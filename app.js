@@ -3024,7 +3024,7 @@ function renderMsActivityList() {
     const cat  = task?.category ? CATEGORIES[task.category] : null;
     const modCatClr = getCatColor(task?.category);
     const catBadge = cat ? `<span style="font-size:var(--fs-micro);padding:1px 5px;border-radius:var(--r-pill);background:${modCatClr}22;color:${modCatClr};border:1px solid ${modCatClr}44;font-family:var(--font-mono)">${escHtml(cat.label)}</span>` : '';
-    const linkedBadge = a.taskId ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--neon);padding:1px 5px;border-radius:var(--r-xs);background:rgba(74,124,94,0.1)">linked</span>` : '';
+    const linkedBadge = a.taskId ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:rgba(255,255,255,.7);padding:1px 5px;border-radius:var(--r-xs);background:rgba(255,255,255,0.08)">linked</span>` : '';
     return `
       <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
         <span style="flex:1;font-family:var(--font-body);font-size:var(--fs-small);color:var(--cream)">${escHtml(a.text||a.title||'')}</span>
@@ -5534,9 +5534,20 @@ function _tdDrawTimeline(now){
                 || (a.dueDate < b.dueDate ? -1 : 1));
   if (pending.length){
     const startX = Math.max(padX, Math.min(xAt(clampMs(nowT)), W - 150));
+    /* Say what this row is. Sitting unlabelled beside the marker, a queue of
+       due-but-unscheduled work reads as the day's plan — which is the one
+       thing it is not. The label is at the left edge of the strip so it does
+       not crowd the chips, which start at now. */
+    ctx.font = "300 8.5px 'DM Mono',monospace";
+    if('letterSpacing' in ctx) ctx.letterSpacing='0.22em';
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillStyle='rgba(255,255,255,0.26)';
+    ctx.fillText('UNPLACED', padX, queueTop + 7.5);
+    if('letterSpacing' in ctx) ctx.letterSpacing='0em';
     ctx.font = "400 9.5px 'DM Mono',monospace";
     let qx = startX + 10;
     let shown = 0;
+    const QUEUE_MAX = 3;   // a tray, not a second task list
     // Dashed rule under the lane: these are ahead of you, but unplaced.
     ctx.save();
     ctx.setLineDash([2,4]);
@@ -6813,7 +6824,7 @@ function buildTaskRow(task, idx) {
 
   // Time-spent badge
   const timeBadge = (task.done && task.timeSpentMinutes)
-    ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--neon);background:rgba(74,124,94,0.1);border:1px solid rgba(74,124,94,0.3);border-radius:var(--r-pill);padding:1px 6px">⏱ ${task.timeSpentMinutes < 60 ? task.timeSpentMinutes + 'm' : Math.floor(task.timeSpentMinutes/60) + 'h' + (task.timeSpentMinutes%60 ? ' ' + task.timeSpentMinutes%60 + 'm' : '')}</span>`
+    ? `<span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:rgba(255,255,255,.75);background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.22);border-radius:var(--r-pill);padding:1px 6px">⏱ ${task.timeSpentMinutes < 60 ? task.timeSpentMinutes + 'm' : Math.floor(task.timeSpentMinutes/60) + 'h' + (task.timeSpentMinutes%60 ? ' ' + task.timeSpentMinutes%60 + 'm' : '')}</span>`
     : '';
 
   // Friction indicator — a task placed on the calendar 3+ times and still open.
@@ -13865,7 +13876,7 @@ function _hxDowPicker(sel, attr) {
 
 const HX_CATS = [
   { name: 'Mind',   color: 'rgba(255,255,255,.6)' },
-  { name: 'Body',   color: '#4a7c5e' },
+  { name: 'Body',   color: 'rgba(255,255,255,.55)' },
   { name: 'Craft',  color: 'rgba(255,255,255,.45)' },
   { name: 'Ritual', color: 'rgba(255,255,255,.7)' },
   { name: 'People', color: 'rgba(255,255,255,.5)' },
@@ -14084,7 +14095,7 @@ function _hxBuilderPane() {
     <span class="hx-sechead-italic">A small, immediate feeling of pride beats any external prize.</span>
     <div style="margin-top:16px"><div class="hx-eyebrow" style="margin-bottom:6px">CELEBRATION</div>
       <input class="hx-input body" id="hx-f-reward" value="${escAttr(f.reward)}" placeholder='Say "good" out loud. Fist pump. Smile.'></div>
-    <div class="hx-loop"><div class="hx-eyebrow" style="color:#4a7c5e">COMPLETE LOOP</div>
+    <div class="hx-loop"><div class="hx-eyebrow" style="color:rgba(255,255,255,.7)">COMPLETE LOOP</div>
       <div class="hx-recipe-body" style="font-size:var(--fs-lead)">I am <u>${escHtml(f.identity || '___')}</u>. After I <u>${escHtml(f.anchor || '___')}</u>, I will <u>${escHtml(f.name || '___')}</u>. Then I <u>${escHtml(f.reward || '___')}</u>.</div></div>`;
 
   const nav = `<div class="hx-nav">
@@ -14260,7 +14271,7 @@ function _hxBehaviours() {
   let readDays = 0; if (read) for (let i = 0; i < 30; i++) if (_hxDone(read, ds(i))) readDays++;
 
   const insights = [
-    { icon: '◉', color: '#4a7c5e', title: 'Anchor strength',
+    { icon: '◉', color: 'rgba(255,255,255,.7)', title: 'Anchor strength',
       body: active.filter(h => h.anchor && h.anchor.value).length
         ? `${active.filter(h => h.anchor && h.anchor.value).length} of ${active.length} habits are chained to a specific anchor. Anchored habits keep far better than free-floating ones — give every habit an "after I…" cue.`
         : 'None of your habits have a specific anchor yet. Add an "after I…" cue in the Builder — sensory anchors beat willpower.' },
@@ -14268,7 +14279,7 @@ function _hxBehaviours() {
       body: (morn != null || eve != null)
         ? `You keep ${morn != null ? morn + '% of morning' : 'no tracked morning'} habits${eve != null ? ' and ' + eve + '% of evening ones' : ''}. ${morn != null && eve != null && morn > eve ? 'Evenings are your weak point — move faltering habits earlier.' : 'Protect the window that works.'}`
         : 'Add anchors so Cosmodex can compare your morning vs. evening kept-rates.' },
-    { icon: '▲', color: '#c45c2a', title: 'Consistency',
+    { icon: '▲', color: 'rgba(255,255,255,.55)', title: 'Consistency',
       body: `Over the last 28 days you kept ${active.length ? Math.round(active.reduce((a, h) => { let k = 0; for (let i = 0; i < 28; i++) if (_hxDone(h, ds(i))) k++; return a + k; }, 0) / (active.length * 28) * 100) : 0}% of your reps. Small and steady compounds faster than big and sporadic.` },
     { icon: '✶', color: 'rgba(255,255,255,.45)', title: 'Compound gain',
       body: read ? `"${escHtml(_hxName(read))}" ${readDays}× in 30 days. Keep that cadence and it becomes ~${readDays * 12} reps a year — the compound is in the streak, not the session.`

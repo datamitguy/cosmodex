@@ -5149,27 +5149,27 @@ function _tdRingExact(ring, cur, now){
 const _tdLerp2 = (a,b,t) => a+(b-a)*t;
 
 const TD_RINGS = [
-  { id:'dom', r:74,  bw:32, items:Array.from({length:31},(_,i)=>String(i+1)),
+  { id:'dom', r:55,  bw:41, items:Array.from({length:31},(_,i)=>String(i+1)),
     cur:d=>d.getDate()-1,
     sub:d=>0,
-    maj:1,th:5.2,tm:5.2,fs:7.2,lr:67,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
-  { id:'mon', r:106, bw:32, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    maj:1,th:5.2,tm:5.2,fs:7.2,lr:48,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
+  { id:'mon', r:96, bw:41, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     cur:d=>d.getMonth(),
     sub:d=>0,
-    maj:1,th:5.2,tm:5.2,fs:7.2,lr:99,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
-  { id:'dow', r:138, bw:32, items:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+    maj:1,th:5.2,tm:5.2,fs:7.2,lr:89,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
+  { id:'dow', r:137, bw:41, items:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
     cur:d=>d.getDay(),
     sub:d=>0,
-    maj:1,th:5.6,tm:5.6,fs:7.5,lr:131,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.50 },
-  { id:'hr',  r:170, bw:32, items:Array.from({length:24},(_,i)=>String(i)),
+    maj:1,th:5.6,tm:5.6,fs:7.5,lr:130,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.50 },
+  { id:'hr',  r:178, bw:41, items:Array.from({length:24},(_,i)=>String(i)),
     cur:d=>d.getHours(),
     sub:d=>0,
-    maj:1,th:4.8,tm:2.0,fs:6.8,lr:163,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.44 },
-  { id:'min', r:202, bw:32, items:Array.from({length:60},(_,i)=>String((60-i)%60).padStart(2,'0')),
+    maj:1,th:4.8,tm:2.0,fs:6.8,lr:171,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.44 },
+  { id:'min', r:219, bw:41, items:Array.from({length:60},(_,i)=>String((60-i)%60).padStart(2,'0')),
     cur:d=>(60-d.getMinutes())%60,
     sub:d=>0,
-    maj:1,th:4.4,tm:1.6,fs:6.2,lr:195,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.38 },
-  { id:'sec', r:234, bw:32, items:Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),
+    maj:1,th:4.4,tm:1.6,fs:6.2,lr:212,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.38 },
+  { id:'sec', r:260, bw:41, items:Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),
     cur:d=>d.getSeconds(),
     /* The one deliberate departure from timedrift.live. Sampled over 176
        elements, nothing on that dial moves between unit changes — it is still
@@ -5179,7 +5179,7 @@ const TD_RINGS = [
        does. */
     sub:d=>d.getMilliseconds()/1000,
 
-    maj:1,th:4.4,tm:1.6,fs:6.0,lr:227,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.32 },
+    maj:1,th:4.4,tm:1.6,fs:6.0,lr:253,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.32 },
 ];
 
 let _tdSvg=null, _tdElYear=null, _tdElTime=null, _tdElDate=null;
@@ -5560,27 +5560,22 @@ function _tdInit(){
     const ro=ring.r, ri=ring.r-ring.bw;
     const p=_tdMk('path');
     p.setAttribute('d',`M${_TD_CX},${_TD_CY-ro} A${ro},${ro} 0 1,1 ${_TD_CX-0.01},${_TD_CY-ro}Z M${_TD_CX},${_TD_CY-ri} A${ri},${ri} 0 1,0 ${_TD_CX-0.01},${_TD_CY-ri}Z`);
-    p.setAttribute('fill','url(#td-band-grad)'); p.setAttribute('fill-rule','evenodd'); gBg.appendChild(p);
+    /* No band fill. Six translucent white bands stacked on each other were
+       most of the fog; the reference fills nothing and lets black be black. */
+    p.setAttribute('fill','none'); p.setAttribute('fill-rule','evenodd');
     const c=_tdMk('circle');
     c.setAttribute('cx',_TD_CX); c.setAttribute('cy',_TD_CY); c.setAttribute('r',String(ro));
-    c.setAttribute('fill','none'); c.setAttribute('stroke',ring.bandStroke); c.setAttribute('stroke-width','0.4'); c.setAttribute('stroke-dasharray','3,4'); gBg.appendChild(c);
+    /* The arc the numbers sit on is solid; the divider between rings is
+       dashed. The reference alternates the two, which is what gives the dial
+       its depth without any fill at all. */
+    c.setAttribute('fill','none'); c.setAttribute('stroke',_TD_HAIR); c.setAttribute('stroke-width','0.5'); gBg.appendChild(c);
     const ci=_tdMk('circle');
     ci.setAttribute('cx',_TD_CX); ci.setAttribute('cy',_TD_CY); ci.setAttribute('r',String(ri));
-    ci.setAttribute('fill','none'); ci.setAttribute('stroke',ring.bandStroke); ci.setAttribute('stroke-width','0.3'); ci.setAttribute('stroke-dasharray','2,5'); gBg.appendChild(ci);
+    ci.setAttribute('fill','none'); ci.setAttribute('stroke',_TD_HAIR); ci.setAttribute('stroke-width','0.4'); ci.setAttribute('stroke-dasharray','1.5,4'); gBg.appendChild(ci);
 
-    // Specular rim — light catching the band edge nearest the viewer
-    // (the visible portion of each ring is its bottom arc, +90° ± 30°)
-    const a0=(60)*Math.PI/180, a1=(120)*Math.PI/180;
-    const sx=_TD_CX+ro*Math.cos(a0), sy=_TD_CY+ro*Math.sin(a0);
-    const ex=_TD_CX+ro*Math.cos(a1), ey=_TD_CY+ro*Math.sin(a1);
-    const rim=_tdMk('path');
-    rim.setAttribute('d',`M${sx.toFixed(1)},${sy.toFixed(1)} A${ro},${ro} 0 0,1 ${ex.toFixed(1)},${ey.toFixed(1)}`);
-    rim.setAttribute('fill','none');
-    rim.setAttribute('stroke','rgba(255,255,255,0.20)'); // --glass-highlight
-    rim.setAttribute('stroke-width','0.8');
-    rim.setAttribute('stroke-linecap','round');
-    rim.setAttribute('filter','url(#td-sglow)');
-    gBg.appendChild(rim);
+    /* The blurred specular arc that used to run across each ring's bottom
+       edge is gone. Six of them, each a white line under a Gaussian blur, were
+       the rest of the haze. */
   });
 
 
@@ -5591,8 +5586,8 @@ function _tdInit(){
      with a crisper stroke + subtle inner shadow-like double-ring for the frosted
      bezel effect. Revert by setting _TD_DLV2_ENABLED = false. */
   if (_TD_DLV2_ENABLED) {
-    hubCirc.setAttribute('fill','rgba(0,0,0,0.12)');
-    hubCirc.setAttribute('stroke','rgba(255,255,255,0.28)');
+    hubCirc.setAttribute('fill','#000');
+    hubCirc.setAttribute('stroke',_TD_HAIR);
     hubCirc.setAttribute('stroke-width','0.7');
     gBg.appendChild(hubCirc);
     // Inner frosted ring — gives the hub a subtle glass bezel
@@ -5621,11 +5616,12 @@ function _tdInit(){
       const aDeg=i*step-90, aRad=aDeg*Math.PI/180;
       const cosA=Math.cos(aRad), sinA=Math.sin(aRad);
       const ig=_tdMk('g'); ig.setAttribute('class','td-ri'); ig.dataset.i=i; ig.dataset.maj=isMaj?'1':'0';
-      const ox=_TD_CX+ring.r*cosA, oy=_TD_CY+ring.r*sinA;
-      const ox2=_TD_CX+(ring.r+tH)*cosA, oy2=_TD_CY+(ring.r+tH)*sinA;
+      const half=tH/2;
+      const ox=_TD_CX+(ring.r-half)*cosA, oy=_TD_CY+(ring.r-half)*sinA;
+      const ox2=_TD_CX+(ring.r+half)*cosA, oy2=_TD_CY+(ring.r+half)*sinA;
       const tk=_tdMk('line');
       tk.setAttribute('x1',ox); tk.setAttribute('y1',oy); tk.setAttribute('x2',ox2); tk.setAttribute('y2',oy2);
-      tk.setAttribute('stroke',_TD_DIM); tk.setAttribute('stroke-width',isMaj?'0.9':'0.4');
+      tk.setAttribute('stroke',_TD_DIM); tk.setAttribute('stroke-width',isMaj?'0.7':'0.4');
       tk.setAttribute('class','td-tk'); ig.appendChild(tk);
       const showLabel=true;
       if(showLabel){
@@ -5797,8 +5793,8 @@ function _tdUpdateRing(info,now,animEase){
     const norm=abs/vis, opac=_tdClamp(Math.pow(Math.max(0,1-norm),1.5),0,1);
     const tk=item.querySelector('.td-tk'), rl=item.querySelector('.td-rl');
     if(abs<0.45){
-      if(tk){tk.setAttribute('stroke',activeStroke);tk.setAttribute('stroke-width','1.0');tk.setAttribute('filter','url(#td-wglow)');}
-      if(rl){rl.setAttribute('fill',activeFill);rl.setAttribute('font-weight','500');rl.setAttribute('font-size',String(ring.fs*1.22));rl.setAttribute('filter','url(#td-wglow)');}
+      if(tk){tk.setAttribute('stroke',activeStroke);tk.setAttribute('stroke-width','1.1');tk.removeAttribute('filter');}
+      if(rl){rl.setAttribute('fill',activeFill);rl.setAttribute('font-weight','500');rl.setAttribute('font-size',String(ring.fs*1.22));rl.removeAttribute('filter');}
       item.style.opacity='1';
     } else {
       if(tk){tk.setAttribute('stroke',_TD_DIM);tk.setAttribute('stroke-width',maj?'0.5':'0.22');tk.removeAttribute('filter');}

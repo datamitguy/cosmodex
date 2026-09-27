@@ -4906,38 +4906,20 @@ select.sched-input { background: #181818; }
 #td-nebula {
   position: absolute; inset: 0; z-index: 0;
   pointer-events: none;
-  /* Neutral, and stepped rather than smooth — timedrift.live builds its glow
-     from concentric discs that each get a little brighter towards the centre,
-     so the falloff lands on the same radii as the rings instead of washing
-     across them. The band edges below are that site's disc radii, scaled to
-     the ring radius; the alphas are far lower because this sits on black
-     rather than on their photograph. No hue: the only colour on this screen
-     is a running session. */
-  background:
-    radial-gradient(circle calc(var(--td-r, 360px) * 1.39) at 50% 0%,
-      rgba(255,255,255,0.10)  0     13.2%,
-      rgba(255,255,255,0.085) 13.2% 27.9%,
-      rgba(255,255,255,0.062) 27.9% 37.3%,
-      rgba(255,255,255,0.042) 37.3% 57.3%,
-      rgba(255,255,255,0.026) 57.3% 61.9%,
-      rgba(255,255,255,0.012) 61.9% 100%,
-      transparent 100%);
-  /* Fade the glow to transparent before #td-top's clipped bottom edge so the
-     nebula doesn't cut off into a hard horizontal "horizon" line at the seam. */
-  -webkit-mask: linear-gradient(180deg, #000 74%, transparent 100%);
-  mask: linear-gradient(180deg, #000 74%, transparent 100%);
+  /* Was a six-stop stepped glow reaching 1.39x the dial radius at 10% white.
+     Against pure black, with six translucent ring bands stacked on top of it,
+     that read as fog over the instrument rather than as light behind it. The
+     reference has a faint lift at the very top of the dial and nothing else,
+     so this is one stop at a third of the old strength. */
+  background: radial-gradient(circle calc(var(--td-r, 360px) * 0.55) at 50% 0%,
+    rgba(255,255,255,0.035) 0%, transparent 100%);
+  -webkit-mask: linear-gradient(180deg, #000 60%, transparent 100%);
+  mask: linear-gradient(180deg, #000 60%, transparent 100%);
 }
-#td-glass-disc {
-  position: absolute; z-index: 0;
-  border-radius: 50%;
-  pointer-events: none;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur-deep);
-  -webkit-backdrop-filter: var(--glass-blur-deep);
-  /* annulus: hub (r=42 of 234 ≈ 18%) keeps its own lighter glass */
-  -webkit-mask: radial-gradient(circle, transparent 0 17.5%, #000 18.5% 100%);
-  mask: radial-gradient(circle, transparent 0 17.5%, #000 18.5% 100%);
-}
+/* #td-glass-disc kept in the markup but no longer frosted: a backdrop-blurred
+   annulus the size of the dial is fog by construction. */
+#td-glass-disc { display: none; }
+
 #td-svg { position: relative; z-index: 1; }
 
 /* ══ TIMEDRIFT CENTRE READOUT ══

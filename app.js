@@ -5163,26 +5163,26 @@ const _tdLerp2 = (a,b,t) => a+(b-a)*t;
    so 0.033 of it. Ticks are 0.044 of the outer radius long and 2-3px thick:
    short chunky marks, not the hairlines this had. */
 const TD_RINGS = [
-  { id:'mon', r:64,  bw:20, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+  { id:'yr',  r:64,  bw:20, items:Array.from({length:12},(_,i)=>String(new Date().getFullYear()-5+i)),
+    cur:d=>5,
+    sub:d=>0,
+    maj:1,th:10,tm:10,tw:1.0,fs:10.6,lr:54,bandStroke:_TD_HAIR,dimA:0.54 },
+  { id:'mon', r:96,  bw:24, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     cur:d=>d.getMonth(),
     sub:d=>0,
-    maj:1,th:14,tm:14,tw:1.9,fs:10.6,lr:54,bandStroke:_TD_HAIR,dimA:0.52 },
-  { id:'dow', r:96,  bw:24, items:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+    maj:1,th:10,tm:10,tw:1.0,fs:10.6,lr:86,bandStroke:_TD_HAIR,dimA:0.52 },
+  { id:'dow', r:144, bw:34, items:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
     cur:d=>d.getDay(),
     sub:d=>0,
-    maj:1,th:14,tm:14,tw:1.9,fs:10.6,lr:86,bandStroke:_TD_HAIR,dimA:0.50 },
-  { id:'dom', r:144, bw:34, items:Array.from({length:31},(_,i)=>String(i+1)),
-    cur:d=>d.getDate()-1,
-    sub:d=>0,
-    maj:1,th:14,tm:14,tw:1.9,fs:10.6,lr:133,bandStroke:_TD_HAIR,dimA:0.48 },
+    maj:1,th:10,tm:10,tw:1.0,fs:10.6,lr:133,bandStroke:_TD_HAIR,dimA:0.50 },
   { id:'hr',  r:192, bw:34, items:Array.from({length:24},(_,i)=>String(i)),
     cur:d=>d.getHours(),
     sub:d=>0,
-    maj:1,th:14,tm:14,tw:1.8,fs:10.6,lr:181,bandStroke:_TD_HAIR,dimA:0.44 },
+    maj:1,th:10,tm:10,tw:1.0,fs:10.6,lr:181,bandStroke:_TD_HAIR,dimA:0.44 },
   { id:'min', r:256, bw:44, items:Array.from({length:60},(_,i)=>String((60-i)%60).padStart(2,'0')),
     cur:d=>(60-d.getMinutes())%60,
     sub:d=>0,
-    maj:1,th:14,tm:14,tw:1.5,fs:10.6,lr:245,bandStroke:_TD_HAIR,dimA:0.38 },
+    maj:1,th:10,tm:10,tw:0.9,fs:10.6,lr:245,bandStroke:_TD_HAIR,dimA:0.38 },
   { id:'sec', r:320, bw:44, items:Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),
     cur:d=>d.getSeconds(),
     /* The one deliberate departure from timedrift.live. Sampled over 176
@@ -5192,7 +5192,7 @@ const TD_RINGS = [
        alive; every ring inside it steps and eases exactly as the reference
        does. */
     sub:d=>d.getMilliseconds()/1000,
-    maj:1,th:14,tm:14,tw:1.5,fs:10.6,lr:309,bandStroke:_TD_HAIR,dimA:0.32 },
+    maj:1,th:10,tm:10,tw:0.9,fs:10.6,lr:309,bandStroke:_TD_HAIR,dimA:0.32 },
 ];
 
 let _tdSvg=null, _tdElYear=null, _tdElTime=null, _tdElDate=null;
@@ -5559,7 +5559,11 @@ function _tdInit(){
 
 
   // Year text in center hub
+  /* The year lives on its own ring now, innermost, as it does on the
+     reference. This element is kept and hidden so the code that writes to it
+     does not have to learn about that. */
   _tdElYear=_tdMk('text');
+  _tdElYear.setAttribute('display','none');
   _tdElYear.setAttribute('x',_TD_CX); _tdElYear.setAttribute('y',String(_TD_CY+64));
   _tdElYear.setAttribute('text-anchor','middle'); _tdElYear.setAttribute('dominant-baseline','middle');
   _tdElYear.setAttribute('font-family',"'DM Mono',monospace");
@@ -5594,7 +5598,7 @@ function _tdInit(){
 
   // Center hub — explicit black fill so year text sits on pure black
   const hubCirc=_tdMk('circle'); hubCirc.setAttribute('cx',_TD_CX); hubCirc.setAttribute('cy',_TD_CY);
-  hubCirc.setAttribute('r','86');
+  hubCirc.setAttribute('r','40');
   /* Design Language V2: glass hub — semi-transparent fill lets rings ghost through,
      with a crisper stroke + subtle inner shadow-like double-ring for the frosted
      bezel effect. Revert by setting _TD_DLV2_ENABLED = false. */
@@ -5644,6 +5648,7 @@ function _tdInit(){
         txt.setAttribute('font-family',"'DM Mono',monospace");
         txt.setAttribute('font-size',String(ring.fs)); txt.setAttribute('font-weight','300');
         txt.setAttribute('fill',_TD_DIM); txt.setAttribute('class','td-rl');
+        txt.setAttribute('transform',`rotate(${(aDeg-90).toFixed(2)},${lx},${ly})`);
         txt.textContent=label; txt.dataset.lx=lx; txt.dataset.ly=ly;
         ig.appendChild(txt); textEls.push(txt);
       }
@@ -5803,11 +5808,9 @@ function _tdUpdateRing(info,now,animEase){
     animRot = rot + sweep;
   }
   g.setAttribute('transform',`rotate(${animRot},${_TD_CX},${_TD_CY})`);
-  // Counter-rotate text so labels stay upright
-  textEls.forEach(txt=>{
-    const lx=+txt.dataset.lx, ly=+txt.dataset.ly;
-    txt.setAttribute('transform',`rotate(${-rot},${lx},${ly})`);
-  });
+  /* No counter-rotation: the labels are pre-rotated to the tangent at build,
+     so they travel with the ring and only the live one sits upright. This also
+     takes every label off the per-frame write path. */
   const vis=n*0.28;
   const activeStroke = _TD_LIVE;
   const activeFill   = _TD_LIVE;
@@ -5819,8 +5822,8 @@ function _tdUpdateRing(info,now,animEase){
     const norm=abs/vis, opac=_tdClamp(Math.pow(Math.max(0,1-norm),1.5),0,1);
     const tk=item.querySelector('.td-tk'), rl=item.querySelector('.td-rl');
     if(abs<0.45){
-      if(tk){tk.setAttribute('stroke',activeStroke);tk.setAttribute('stroke-width',String(ring.tw*1.35));tk.removeAttribute('filter');}
-      if(rl){rl.setAttribute('fill',activeFill);rl.setAttribute('font-weight','500');rl.setAttribute('font-size',String(ring.fs*1.22));rl.removeAttribute('filter');}
+      if(tk){tk.setAttribute('stroke',activeStroke);tk.setAttribute('stroke-width',String(ring.tw*1.15));tk.removeAttribute('filter');}
+      if(rl){rl.setAttribute('fill',activeFill);rl.setAttribute('font-weight','400');rl.setAttribute('font-size',String(ring.fs*1.08));rl.removeAttribute('filter');}
       item.style.opacity='1';
     } else {
       if(tk){tk.setAttribute('stroke',_TD_DIM);tk.setAttribute('stroke-width',String(ring.tw));tk.removeAttribute('filter');}

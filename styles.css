@@ -4911,8 +4911,11 @@ select.sched-input { background: #181818; }
      that read as fog over the instrument rather than as light behind it. The
      reference has a faint lift at the very top of the dial and nothing else,
      so this is one stop at a third of the old strength. */
-  background: radial-gradient(circle calc(var(--td-r, 360px) * 0.55) at 50% 0%,
-    rgba(255,255,255,0.035) 0%, transparent 100%);
+  background: radial-gradient(circle calc(var(--td-r, 360px) * 0.78) at 50% 0%,
+    rgba(255,255,255,0.055) 0%,
+    rgba(255,255,255,0.030) 45%,
+    rgba(255,255,255,0.012) 72%,
+    transparent 100%);
   -webkit-mask: linear-gradient(180deg, #000 60%, transparent 100%);
   mask: linear-gradient(180deg, #000 60%, transparent 100%);
 }

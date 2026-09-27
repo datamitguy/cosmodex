@@ -5210,6 +5210,17 @@ function _tdInitTimeline(){
   _tdTlCtx=_tdTlCvs.getContext('2d');
 }
 
+/* ══ BOTTOM STRIP ═════════════════════════════════════════════════════════
+   A straight timeline, as on timedrift.live, replacing the horizon arc that
+   used to curve across the bottom of this panel. Every feature the arc carried
+   is still here — hour and half-hour ticks, the calendar events with their
+   waveforms and titles, the session band, the now marker, the clock and the
+   "what's next" readout — laid on a level axis instead of a curve.
+
+   The mapping is the only real change: the arc placed a time at an angle and
+   then converted the angle to a point, so each feature was drawn with arcs and
+   tangential rotations. Here a time maps straight to an x, everything is drawn
+   with lines and rectangles, and labels sit upright. */
 function _tdDrawTimeline(now){
   if(!_tdTlCvs||!_tdTlCtx) return;
   const cvs=_tdTlCvs, ctx=_tdTlCtx;
@@ -5224,32 +5235,24 @@ function _tdDrawTimeline(now){
   }
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,cssW,cssH);
-  const W=cssW, H=cssH;
-  const TWO_PI=Math.PI*2;
+  const W=cssW, H=cssH, TWO_PI=Math.PI*2;
   const cx=W/2;
 
-  // ── Horizon arc parameters ───────────────────────────────
-  // Shows ±3 hours (6 h total) = ±π/4 radians around the arc peak
-  const HALF_SPAN=Math.PI/4;
-  const bandH=Math.max(14, H*0.09);
-  // Radius sized so arc spans ~94% of canvas width at the ±3 h endpoints
-  const R=(W*0.47)/Math.sin(HALF_SPAN);
-  const arcTopY=H*0.65;    // y of the arc peak (current time marker)
-  const cy_arc=arcTopY+R; // circle centre — below canvas bottom
-  const innerR=R-bandH/2, outerR=R+bandH/2, midR=R;
-  const aStart=-Math.PI/2-HALF_SPAN, aEnd=-Math.PI/2+HALF_SPAN;
+  /* ±3 hours, same span the arc showed. HALF_W is how far from the centre the
+     edge of that span sits; everything below is a linear function of it. */
+  const HALF_SPAN=0.125;             // ±3h as a fraction of the day
+  const HALF_W=W*0.47;
+  const axisY=Math.round(H*0.40)+0.5; // the line itself
+  const bandH=Math.max(12, H*0.07);   // the band the ticks and events occupy
 
-  // ── Time helpers ─────────────────────────────────────────
   const todayStr=localDateStr(now);
   const curFrac=(now.getHours()*3600+now.getMinutes()*60+now.getSeconds())/86400;
-  // theta: angular offset of a time fraction from current time (rad)
-  const toTheta=frac=>{
-    let d=frac-curFrac; if(d>0.5)d-=1; if(d<-0.5)d+=1; return d*TWO_PI;
-  };
-  // Canvas point on a circle of given radius at angle-offset theta from top
-  const tPt=(theta,r)=>[cx+r*Math.sin(theta), cy_arc-r*Math.cos(theta)];
+  /* Signed distance from now, in fractions of a day, wrapped so that a time
+     just after midnight reads as "soon" rather than "23 hours ago". */
+  const toOff=frac=>{ let d=frac-curFrac; if(d>0.5)d-=1; if(d<-0.5)d+=1; return d; };
+  const xOf=off=>cx+(off/HALF_SPAN)*HALF_W;
 
-  // ── Pre-compute event angular spans ───────────────────────
+  // ── Calendar events, clipped to the visible span ──────────
   const todayEvts=(CAL_EVENTS||[]).filter(e=>e.date===todayStr&&e.startTime&&!e.allDay);
   const evtSpans=[];
   todayEvts.forEach(ev=>{
@@ -5258,144 +5261,93 @@ function _tdDrawTimeline(now){
     const isPast=sFrac<curFrac;
     let eFrac=sFrac+1/24;
     if(ev.endTime){const [eh,em]=(ev.endTime||'0:0').split(':').map(Number);eFrac=(eh*60+em)/1440;}
-    const sT=toTheta(sFrac), eT=toTheta(eFrac);
-    const cS=Math.max(sT,-HALF_SPAN), cE=Math.min(eT,HALF_SPAN);
+    const cS=Math.max(toOff(sFrac),-HALF_SPAN), cE=Math.min(toOff(eFrac),HALF_SPAN);
     if(cS>=cE) return;
-    evtSpans.push({aS:-Math.PI/2+cS, aE2:-Math.PI/2+cE, cS, cE, isPast, ev});
+    evtSpans.push({cS,cE,isPast,ev});
   });
-  evtSpans.sort((a,b)=>a.aS-b.aS);
+  evtSpans.sort((a,b)=>a.cS-b.cS);
 
-  // ── White arc drawn in gaps between events ─────────────────
-  ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=1.2;
-  ctx.shadowColor='rgba(255,255,255,0.35)'; ctx.shadowBlur=6;
-  let arcPos=aStart;
-  evtSpans.forEach(({aS,aE2})=>{
-    if(arcPos<aS){ctx.beginPath();ctx.arc(cx,cy_arc,midR,arcPos,aS);ctx.stroke();}
-    arcPos=Math.max(arcPos,aE2);
-  });
-  if(arcPos<aEnd){ctx.beginPath();ctx.arc(cx,cy_arc,midR,arcPos,aEnd);ctx.stroke();}
-  ctx.shadowBlur=0;
+  // ── The axis, drawn in the gaps between events ────────────
+  ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=1;
+  let pos=-HALF_SPAN;
+  const seg=(a,b)=>{ if(b<=a) return; ctx.beginPath(); ctx.moveTo(xOf(a),axisY); ctx.lineTo(xOf(b),axisY); ctx.stroke(); };
+  evtSpans.forEach(({cS,cE})=>{ seg(pos,cS); pos=Math.max(pos,cE); });
+  seg(pos,HALF_SPAN);
 
-  // ── Hour ticks & labels ──────────────────────────────────
+  // ── Hour ticks, half-hour ticks, hour labels ──────────────
   for(let h=0;h<24;h++){
-    const theta=toTheta(h/24);
-    if(Math.abs(theta)>HALF_SPAN*1.05) continue;
-    // Tick — radial line across most of the band
-    const [t0x,t0y]=tPt(theta, innerR+(outerR-innerR)*0.18);
-    const [t1x,t1y]=tPt(theta, outerR-(outerR-innerR)*0.08);
-    ctx.beginPath(); ctx.moveTo(t0x,t0y); ctx.lineTo(t1x,t1y);
-    ctx.strokeStyle='rgba(255,255,255,0.22)'; ctx.lineWidth=0.7; ctx.stroke();
-    // Label outside the outer edge
-    if(Math.abs(theta)<=HALF_SPAN*0.97){
-      const [lx,ly]=tPt(theta, outerR+15);
-      const fade=1-Math.abs(theta)/HALF_SPAN*0.65;
-      ctx.save();
-      ctx.translate(lx,ly);
-      ctx.rotate(theta); // tangential rotation follows arc curvature
+    const off=toOff(h/24);
+    if(Math.abs(off)<=HALF_SPAN){
+      const x=Math.round(xOf(off))+0.5;
+      ctx.beginPath(); ctx.moveTo(x,axisY-bandH*0.45); ctx.lineTo(x,axisY+bandH*0.45);
+      ctx.strokeStyle='rgba(255,255,255,0.38)'; ctx.lineWidth=1; ctx.stroke();
+      const fade=1-Math.abs(off)/HALF_SPAN*0.55;
       ctx.font="300 9px 'DM Mono',monospace";
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillStyle=`rgba(255,255,255,${(fade*0.50).toFixed(2)})`;
-      ctx.fillText(String(h).padStart(2,'0'),0,0);
-      ctx.restore();
+      ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillStyle=`rgba(255,255,255,${(fade*0.62).toFixed(2)})`;
+      ctx.fillText(String(h).padStart(2,'0'), xOf(off), axisY+bandH*0.45+6);
     }
-    // Half-hour tick — white, shorter than hour tick
-    const ht=toTheta((h+0.5)/24);
-    if(Math.abs(ht)<=HALF_SPAN){
-      const [h0x,h0y]=tPt(ht, innerR+(outerR-innerR)*0.28);
-      const [h1x,h1y]=tPt(ht, innerR+(outerR-innerR)*0.72);
-      ctx.beginPath(); ctx.moveTo(h0x,h0y); ctx.lineTo(h1x,h1y);
-      ctx.strokeStyle='rgba(255,255,255,0.38)'; ctx.lineWidth=0.6; ctx.stroke();
+    const ho=toOff((h+0.5)/24);
+    if(Math.abs(ho)<=HALF_SPAN){
+      const x=Math.round(xOf(ho))+0.5;
+      ctx.beginPath(); ctx.moveTo(x,axisY-bandH*0.22); ctx.lineTo(x,axisY+bandH*0.22);
+      ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=1; ctx.stroke();
     }
   }
 
-  // ── Calendar event arcs ──────────────────────────────────
+  // ── Events: band, waveform, start dot, title on a leader ──
   const phase=performance.now()*0.001;
-  evtSpans.forEach(({aS,aE2,cS,cE,isPast,ev})=>{
-    // Events are white here. Green now means one thing on this screen: a focus
-    // session that is running.
-    const evG='rgba(255,255,255,';
-    // Thin fill around single arc
-    ctx.beginPath();
-    ctx.arc(cx,cy_arc,midR+4,aS,aE2);
-    ctx.arc(cx,cy_arc,midR-4,aE2,aS,true);
-    ctx.closePath();
-    ctx.fillStyle=isPast?evG+'0.04)':evG+'0.10)'; ctx.fill();
-    // Animated waveform originating from arc line
-    // The waveform is per-event decoration: charming for one, noise for five.
-    // Only what is still ahead of you animates; the past lies flat.
-    const wSpan=cE-cS;
-    if(wSpan>0.01 && !isPast){
-      const steps=Math.max(20,Math.round(wSpan*midR));
+  evtSpans.forEach(({cS,cE,isPast,ev})=>{
+    const x0=xOf(cS), x1=xOf(cE);
+    ctx.fillStyle=isPast?'rgba(255,255,255,0.04)':'rgba(255,255,255,0.10)';
+    ctx.fillRect(x0, axisY-4, Math.max(1,x1-x0), 8);
+    /* Only what is still ahead of you animates; the past lies flat. */
+    if((x1-x0)>6 && !isPast){
+      const steps=Math.max(20,Math.round(x1-x0));
       ctx.beginPath();
       for(let i=0;i<=steps;i++){
-        const t=i/steps, wa=-Math.PI/2+cS+t*wSpan;
+        const t=i/steps, x=x0+(x1-x0)*t;
         const ef=Math.min(t*6,(1-t)*6,1);
-        const wr=midR+Math.sin(t*wSpan*midR*0.3+phase*2.8)*(bandH*0.15)*ef;
-        i===0?ctx.moveTo(cx+wr*Math.cos(wa),cy_arc+wr*Math.sin(wa))
-             :ctx.lineTo(cx+wr*Math.cos(wa),cy_arc+wr*Math.sin(wa));
+        const y=axisY+Math.sin(t*(x1-x0)*0.30+phase*2.8)*(bandH*0.30)*ef;
+        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
       }
-      ctx.strokeStyle=evG+'0.40)'; ctx.lineWidth=1.1; ctx.stroke();
+      ctx.strokeStyle='rgba(255,255,255,0.40)'; ctx.lineWidth=1.1; ctx.stroke();
     }
-    // Start dot
-    const [dx,dy]=tPt(cS,midR);
-    ctx.beginPath(); ctx.arc(dx,dy,2.5,0,TWO_PI);
-    ctx.fillStyle=isPast?evG+'0.20)':evG+'0.50)';
-    ctx.fill(); ctx.shadowBlur=0;
-    // Pill label above arc
-    if(ev.title&&Math.abs(cS)<HALF_SPAN*0.85){
-      const midAngle=(cS+cE)/2;
-      const [lx0,ly0]=tPt(midAngle, midR+6);
-      const [lx1,ly1]=tPt(midAngle, midR+44);
-      const glowAlpha=isPast?0.35:0.9;
-      // Soft outer glow pass
-      ctx.save();
-      ctx.beginPath(); ctx.moveTo(lx0,ly0); ctx.lineTo(lx1,ly1);
-      ctx.strokeStyle=`rgba(255,255,255,${(glowAlpha*0.16).toFixed(2)})`;
-      ctx.lineWidth=4; ctx.shadowBlur=0; ctx.stroke();
-      // Core hairline
-      ctx.beginPath(); ctx.moveTo(lx0,ly0); ctx.lineTo(lx1,ly1);
-      ctx.strokeStyle=`rgba(255,255,255,${(glowAlpha*0.55).toFixed(2)})`;
-      ctx.lineWidth=0.8; ctx.shadowBlur=0; ctx.stroke();
-      ctx.restore();
-      // Event title text at end of connector — etched on the bezel, not glued to the line
-      const titleTxt = ev.title.length > 18 ? ev.title.slice(0,17)+'…' : ev.title;
-      ctx.save();
-      // Translate to the connector tip so we can rotate around it
-      ctx.translate(lx1, ly1);
-      // Rotate to follow the arc tangent (perpendicular to the radial connector),
-      // so the label reads as if etched along the instrument bezel
-      ctx.rotate(midAngle);
+    ctx.beginPath(); ctx.arc(x0,axisY,2.5,0,TWO_PI);
+    ctx.fillStyle=isPast?'rgba(255,255,255,0.20)':'rgba(255,255,255,0.50)'; ctx.fill();
+    if(ev.title && Math.abs(cS)<HALF_SPAN*0.9){
+      const mx=(x0+x1)/2, ly0=axisY-6, ly1=axisY-34;
+      const a=isPast?0.35:0.9;
+      ctx.beginPath(); ctx.moveTo(mx,ly0); ctx.lineTo(mx,ly1);
+      ctx.strokeStyle=`rgba(255,255,255,${(a*0.16).toFixed(2)})`; ctx.lineWidth=4; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx,ly0); ctx.lineTo(mx,ly1);
+      ctx.strokeStyle=`rgba(255,255,255,${(a*0.55).toFixed(2)})`; ctx.lineWidth=0.8; ctx.stroke();
+      const t=ev.title.length>18?ev.title.slice(0,17)+'…':ev.title;
       ctx.font="500 10px 'DM Mono',monospace";
-      if ('letterSpacing' in ctx) ctx.letterSpacing = '0.04em';
+      if('letterSpacing' in ctx) ctx.letterSpacing='0.04em';
       ctx.textAlign='center'; ctx.textBaseline='bottom';
-      // Subtle white glow (no green) — keeps text crisp against the waveforms
-      ctx.shadowColor='rgba(255,255,255,0.22)'; ctx.shadowBlur=isPast?0:3;
       ctx.fillStyle=`rgba(255,255,255,${isPast?0.35:0.95})`;
-      ctx.fillText(titleTxt, 0, -8);
-      ctx.shadowBlur=0;
-      ctx.restore();
+      ctx.fillText(t, mx, ly1-4);
+      if('letterSpacing' in ctx) ctx.letterSpacing='0em';
     }
   });
 
   /* ── Session band ────────────────────────────────────────
-     The gauge says how much is left; this says what it is left before. The
-     session is one more span on the arc, drawn over the events so a block is
-     read against the meetings on either side. */
+     The gauge says how much is left; this says what it is left before. Drawn
+     under the axis so the block brackets the events it spans. */
   if(_tdSessionOpen){
     const sess=_tdSessionState();
     const S=window.CDX_SESSION;
     if(sess && S && (sess.running||sess.paused)){
       const endFrac=((S.endAt-_tdDayStart(now))/86400000)%1;
       const startFrac=endFrac-(S.totalSecs/86400);
-      const sT=toTheta(startFrac<0?startFrac+1:startFrac), eT=toTheta(endFrac);
-      const cS=Math.max(sT,-HALF_SPAN), cE=Math.min(eT,HALF_SPAN);
+      const cS=Math.max(toOff(startFrac<0?startFrac+1:startFrac),-HALF_SPAN);
+      const cE=Math.min(toOff(endFrac),HALF_SPAN);
       if(cS<cE){
         const col=sess.paused?'rgba(180,168,144,':'rgba(57,255,20,';
         ctx.save();
-        // Under the arc, not on it: the block brackets the events it spans
-        // rather than painting over them.
         ctx.beginPath();
-        ctx.arc(cx,cy_arc,innerR+2,-Math.PI/2+cS,-Math.PI/2+cE);
+        ctx.moveTo(xOf(cS),axisY+bandH*0.62); ctx.lineTo(xOf(cE),axisY+bandH*0.62);
         ctx.strokeStyle=col+(sess.paused?'0.55)':'0.78)');
         ctx.lineWidth=1.5; ctx.lineCap='round';
         if(!sess.paused){ ctx.shadowColor=col+'0.45)'; ctx.shadowBlur=5; }
@@ -5405,29 +5357,20 @@ function _tdDrawTimeline(now){
     }
   }
 
-  // ── Current-time arrow below arc ─────────────────────────
-  const arrowY=arcTopY+bandH/2+4;
-  // Tiny upward arrow (▲)
+  // ── Now marker: a full-height line through the axis, then the arrow ──
   ctx.beginPath();
-  ctx.moveTo(cx, arrowY);        // tip
-  ctx.lineTo(cx-4, arrowY+7);    // bottom-left
-  ctx.lineTo(cx+4, arrowY+7);    // bottom-right
+  ctx.moveTo(Math.round(cx)+0.5, axisY-bandH*0.9);
+  ctx.lineTo(Math.round(cx)+0.5, axisY+bandH*0.9);
+  ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth=1; ctx.stroke();
+  const arrowY=axisY+bandH*0.9+3;
+  ctx.beginPath();
+  ctx.moveTo(cx, arrowY); ctx.lineTo(cx-4, arrowY+7); ctx.lineTo(cx+4, arrowY+7);
   ctx.closePath();
-  ctx.fillStyle='rgba(255,255,255,0.85)';
-  ctx.shadowColor='rgba(255,255,255,0.5)'; ctx.shadowBlur=6;
-  ctx.fill(); ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fill();
 
-  // ── Time display below arrow ──────────────────────────────
-  const tY=arcTopY+bandH/2+16;
-  const hh=String(now.getHours()).padStart(2,'0');
-  const mm=String(now.getMinutes()).padStart(2,'0');
-  ctx.font="300 20px 'DM Mono',monospace";
+  // ── What you are in, and what is next ─────────────────────
   ctx.textAlign='center'; ctx.textBaseline='top';
-  ctx.fillStyle='rgba(255,255,255,0.9)';
-  ctx.shadowBlur=0;
-  ctx.fillText(hh+':'+mm,cx,tY);
 
-  // ── Upcoming events (next 30 mins) ───────────────────────
   const nowMins=now.getHours()*60+now.getMinutes();
   const allTodayEvts=(CAL_EVENTS||[])
     .filter(ev=>ev.date===todayStr&&ev.startTime&&!ev.allDay)
@@ -5440,13 +5383,9 @@ function _tdDrawTimeline(now){
     });
   const ongoing=allTodayEvts.find(ev=>ev.sMins<=nowMins&&nowMins<ev.eMins);
   const soon=allTodayEvts.filter(ev=>ev.sMins>nowMins&&ev.sMins-nowMins<=30).sort((a,b)=>a.sMins-b.sMins);
-  ctx.textBaseline='top'; ctx.textAlign='center';
-  let ey=tY+32;
-  const maxY=H-8; // clamp to canvas height
-  /* One quiet block under the marker: a letterspaced label saying what kind of
-     thing this is, the event's own name at the only weight that carries, and a
-     dim line of detail. Colour is not doing the work here -- spacing and weight
-     are -- so nothing on this readout competes with the session line. */
+  let ey=arrowY+20;
+  /* Colour is not doing the work here — spacing and weight are — so nothing on
+     this readout competes with the session line. */
   const _eyebrow=(t,y)=>{
     ctx.font="300 8.5px 'DM Mono',monospace";
     if('letterSpacing' in ctx) ctx.letterSpacing='0.22em';
@@ -5454,22 +5393,11 @@ function _tdDrawTimeline(now){
     ctx.fillText(t.toUpperCase(),cx,y);
     if('letterSpacing' in ctx) ctx.letterSpacing='0em';
   };
-  const _subject=(t,y)=>{
-    ctx.font="400 12px 'DM Mono',monospace";
-    ctx.fillStyle='rgba(255,255,255,0.82)';
-    ctx.fillText(t,cx,y);
-  };
-  const _detail=(t,y)=>{
-    ctx.font="300 9px 'DM Mono',monospace";
-    ctx.fillStyle='rgba(255,255,255,0.28)';
-    ctx.fillText(t,cx,y);
-  };
+  const _subject=(t,y)=>{ ctx.font="400 12px 'DM Mono',monospace"; ctx.fillStyle='rgba(255,255,255,0.82)'; ctx.fillText(t,cx,y); };
+  const _detail=(t,y)=>{ ctx.font="300 9px 'DM Mono',monospace"; ctx.fillStyle='rgba(255,255,255,0.28)'; ctx.fillText(t,cx,y); };
   const _clip=(t,n)=>t?(t.length>n?t.slice(0,n-1)+'…':t):'event';
 
-  /* Build the blocks first, then draw only the ones that actually fit. Laying
-     them out as we go let the stack run past the bottom of the canvas and
-     collide with whatever sat there. At most two: what you are in, and what is
-     next. */
+  /* Build the blocks first, then draw only the ones that actually fit. */
   const blocks=[];
   if(ongoing) blocks.push(['ongoing',_clip(ongoing.title,22),(ongoing.eMins-nowMins)+'m remaining']);
   soon.slice(0,ongoing?1:2).forEach(ev=>
@@ -5483,7 +5411,7 @@ function _tdDrawTimeline(now){
     _eyebrow(b[0],ey); ey+=14;
     if(b[1]){ _subject(b[1],ey); ey+=15; }
     if(b[2]){ _detail(b[2],ey); ey+=14; }
-    ey+=12;   // breathing room between blocks
+    ey+=12;
   }
 
   // Drift indicator — shown while the rings are scrubbed away from now

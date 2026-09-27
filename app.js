@@ -5098,40 +5098,85 @@ function _tdArcD(r,a0,a1){
 }
 const _tdClamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
 const _tdWa = a => `rgba(255,255,255,${+a.toFixed(3)})`;
+
+/* ══ Palette and motion, measured off timedrift.live ══
+   Every hairline on that dial is the same rgba(255,255,255,.2); every label is
+   the same cool grey #bbbcc7 at full opacity, and the falloff you see comes
+   from a mask over the whole dial rather than from per-label alpha. We keep
+   the distance falloff here because it lands in the same place visually and
+   costs nothing, but the two colours are theirs exactly.
+
+   The motion is the part that makes it read as an instrument: each ring steps
+   once, when its unit changes, and eases into place on Tailwind's ease-out,
+   cubic-bezier(0, 0, .2, 1). The durations lengthen inwards, so a minute lands
+   while the month is still settling. Seconds do not ease at all — they snap. */
+const _TD_DIM  = '#bbbcc7';
+const _TD_LIVE = '#ffffff';
+const _TD_HAIR = 'rgba(255,255,255,0.2)';
+const _TD_STEP_MS = { sec:0, min:2000, hr:2000, dow:3000, dom:3000, mon:4000 };
+
+/* cubic-bezier(0, 0, .2, 1) solved by bisection — close enough that the curve
+   is indistinguishable from the CSS one, without pulling in a solver. */
+function _tdEaseOut(t){
+  if (t<=0) return 0; if (t>=1) return 1;
+  const bx=(u)=>3*u*(1-u)*(1-u)*0 + 3*u*u*(1-u)*0.2 + u*u*u;
+  const by=(u)=>3*u*(1-u)*(1-u)*0 + 3*u*u*(1-u)*1   + u*u*u;
+  let lo=0, hi=1, u=t;
+  for (let i=0;i<24;i++){ u=(lo+hi)/2; if (bx(u)<t) lo=u; else hi=u; }
+  return by(u);
+}
+
+/* Each ring carries its own accumulating position, so a wrap from 59 to 0
+   keeps travelling forwards instead of unwinding the long way round — the same
+   trick the reference uses by letting its rotation run to -900740deg. */
+const _tdRingPos = {};
+function _tdRingExact(ring, cur, now){
+  const n = ring.items.length, id = ring.id;
+  let st = _tdRingPos[id];
+  if (!st) { st = _tdRingPos[id] = { last:cur, acc:cur, from:cur, to:cur, t0:-Infinity }; return cur; }
+  if (cur !== st.last) {
+    const delta = ((cur - st.last) % n + n) % n;
+    st.last = cur; st.from = st.acc; st.to = st.acc + delta; st.t0 = now;
+  }
+  const dur = _TD_STEP_MS[id] ?? 0;
+  if (dur <= 0) { st.acc = st.to; return st.acc; }
+  const age = now - st.t0;
+  st.acc = age >= dur ? st.to : st.from + (st.to - st.from) * _tdEaseOut(age/dur);
+  return st.acc;
+}
 const _tdLerp2 = (a,b,t) => a+(b-a)*t;
 
 const TD_RINGS = [
   { id:'dom', r:74,  bw:32, items:Array.from({length:31},(_,i)=>String(i+1)),
     cur:d=>d.getDate()-1,
     sub:d=>0,
-    maj:1,th:5.2,tm:5.2,fs:7.2,lr:67,bandFill:'rgba(255,255,255,0)',bandStroke:'rgba(255,255,255,0.22)',dimA:0.52 },
+    maj:1,th:5.2,tm:5.2,fs:7.2,lr:67,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
   { id:'mon', r:106, bw:32, items:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     cur:d=>d.getMonth(),
     sub:d=>0,
-    maj:1,th:5.2,tm:5.2,fs:7.2,lr:99,bandFill:'rgba(255,255,255,0)',bandStroke:'rgba(255,255,255,0.22)',dimA:0.52 },
+    maj:1,th:5.2,tm:5.2,fs:7.2,lr:99,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.52 },
   { id:'dow', r:138, bw:32, items:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
     cur:d=>d.getDay(),
     sub:d=>0,
-    maj:1,th:5.6,tm:5.6,fs:7.5,lr:131,bandFill:'rgba(255,255,255,0)',bandStroke:'rgba(255,255,255,0.18)',dimA:0.50 },
+    maj:1,th:5.6,tm:5.6,fs:7.5,lr:131,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.50 },
   { id:'hr',  r:170, bw:32, items:Array.from({length:24},(_,i)=>String(i)),
     cur:d=>d.getHours(),
-    sub:d=>_tdHrSnapFrac,
-    maj:1,th:4.8,tm:2.0,fs:6.8,lr:163,bandFill:'rgba(255,255,255,0)',bandStroke:'rgba(255,255,255,0.18)',dimA:0.44 },
+    sub:d=>0,
+    maj:1,th:4.8,tm:2.0,fs:6.8,lr:163,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.44 },
   { id:'min', r:202, bw:32, items:Array.from({length:60},(_,i)=>String((60-i)%60).padStart(2,'0')),
     cur:d=>(60-d.getMinutes())%60,
-    sub:d=>-_tdMinSnapFrac,
-    maj:1,th:4.4,tm:1.6,fs:6.2,lr:195,bandFill:'rgba(255,255,255,0)',bandStroke:'rgba(255,255,255,0.14)',dimA:0.38 },
+    sub:d=>0,
+    maj:1,th:4.4,tm:1.6,fs:6.2,lr:195,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.38 },
   { id:'sec', r:234, bw:32, items:Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),
     cur:d=>d.getSeconds(),
-    sub:d=>d.getMilliseconds()/1000,
-    maj:1,th:4.4,tm:1.6,fs:6.0,lr:227,bandFill:'rgba(255,255,255,0)',bandStroke:'rgba(255,255,255,0.10)',dimA:0.32 },
+    sub:d=>0,   // the reference snaps seconds; it does not sweep them
+
+    maj:1,th:4.4,tm:1.6,fs:6.0,lr:227,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.32 },
 ];
 
 let _tdSvg=null, _tdElYear=null, _tdElTime=null, _tdElDate=null;
 let _tdRingGroups={}, _tdRaf=null, _tdResizeObs=null, _tdInitialized=false;
 let _tdAnimT0=null;
-let _tdMinSnapT0=-Infinity, _tdLastMin=-1, _tdMinSnapFrac=0;
-let _tdHrSnapT0=-Infinity, _tdLastHr=-1, _tdHrSnapFrac=0;
 let _tdTlCvs=null, _tdTlCtx=null;
 
 function _tdDayStart(d){
@@ -5572,7 +5617,7 @@ function _tdInit(){
       const ox2=_TD_CX+(ring.r+tH)*cosA, oy2=_TD_CY+(ring.r+tH)*sinA;
       const tk=_tdMk('line');
       tk.setAttribute('x1',ox); tk.setAttribute('y1',oy); tk.setAttribute('x2',ox2); tk.setAttribute('y2',oy2);
-      tk.setAttribute('stroke',_tdWa(ring.dimA)); tk.setAttribute('stroke-width',isMaj?'0.9':'0.4');
+      tk.setAttribute('stroke',_TD_DIM); tk.setAttribute('stroke-width',isMaj?'0.9':'0.4');
       tk.setAttribute('class','td-tk'); ig.appendChild(tk);
       const showLabel=true;
       if(showLabel){
@@ -5582,7 +5627,7 @@ function _tdInit(){
         txt.setAttribute('text-anchor','middle'); txt.setAttribute('dominant-baseline','middle');
         txt.setAttribute('font-family',"'DM Mono',monospace");
         txt.setAttribute('font-size',String(ring.fs)); txt.setAttribute('font-weight','300');
-        txt.setAttribute('fill',_tdWa(ring.dimA)); txt.setAttribute('class','td-rl');
+        txt.setAttribute('fill',_TD_DIM); txt.setAttribute('class','td-rl');
         txt.textContent=label; txt.dataset.lx=lx; txt.dataset.ly=ly;
         ig.appendChild(txt); textEls.push(txt);
       }
@@ -5717,7 +5762,8 @@ function _tdLayout(){
 function _tdUpdateRing(info,now,animEase){
   const {g,ring,textEls}=info;
   const n=ring.items.length;
-  const cur=ring.cur(now), frac=ring.sub(now), exact=cur+frac;
+  const cur=ring.cur(now);
+  const exact=_tdRingExact(ring, cur, performance.now()) + ring.sub(now);
   const rot=180-(exact/n)*360;
   let animRot = rot;
   if (animEase < 1) {
@@ -5733,8 +5779,8 @@ function _tdUpdateRing(info,now,animEase){
     txt.setAttribute('transform',`rotate(${-rot},${lx},${ly})`);
   });
   const vis=n*0.28;
-  const activeStroke = 'rgba(255,255,255,1)';
-  const activeFill   = 'rgba(255,255,255,1)';
+  const activeStroke = _TD_LIVE;
+  const activeFill   = _TD_LIVE;
   g.querySelectorAll('.td-ri').forEach(item=>{
     const i=+item.dataset.i, maj=item.dataset.maj==='1';
     let dist=i-exact;
@@ -5747,8 +5793,8 @@ function _tdUpdateRing(info,now,animEase){
       if(rl){rl.setAttribute('fill',activeFill);rl.setAttribute('font-weight','500');rl.setAttribute('font-size',String(ring.fs*1.22));rl.setAttribute('filter','url(#td-wglow)');}
       item.style.opacity='1';
     } else {
-      if(tk){tk.setAttribute('stroke','rgba(255,255,255,0.48)');tk.setAttribute('stroke-width',maj?'0.5':'0.22');tk.removeAttribute('filter');}
-      if(rl){rl.setAttribute('fill','rgba(255,255,255,0.48)');rl.setAttribute('font-weight','300');rl.setAttribute('font-size',String(ring.fs));rl.removeAttribute('filter');}
+      if(tk){tk.setAttribute('stroke',_TD_DIM);tk.setAttribute('stroke-width',maj?'0.5':'0.22');tk.removeAttribute('filter');}
+      if(rl){rl.setAttribute('fill',_TD_DIM);rl.setAttribute('font-weight','300');rl.setAttribute('font-size',String(ring.fs));rl.removeAttribute('filter');}
       item.style.opacity=opac<0.02?'0':String(opac);
     }
   });
@@ -5881,18 +5927,6 @@ function _tdFrame(){
   const t0=performance.now();
   const progress=Math.min(1,(t0-_tdAnimT0)/900);
   const animEase=1-Math.pow(1-progress,3);
-  // Minute snap animation: ring jumps to new minute with ease-out over 400ms
-  const curMin=now.getMinutes();
-  if(_tdLastMin!==-1 && curMin!==_tdLastMin) _tdMinSnapT0=t0;
-  _tdLastMin=curMin;
-  const minAge=t0-_tdMinSnapT0;
-  _tdMinSnapFrac=(minAge<400) ? -(1-Math.pow(1-minAge/400,3)) : 0;
-  // Hour snap animation: ring jumps to new hour with ease-out over 500ms
-  const curHr=now.getHours();
-  if(_tdLastHr!==-1 && curHr!==_tdLastHr) _tdHrSnapT0=t0;
-  _tdLastHr=curHr;
-  const hrAge=t0-_tdHrSnapT0;
-  _tdHrSnapFrac=(hrAge<500) ? -(1-Math.pow(1-hrAge/500,3)) : 0;
   Object.values(_tdRingGroups).forEach(info=>_tdUpdateRing(info,now,animEase));
   _tdUpdateCenter(now);
   _tdApplySessionChrome();

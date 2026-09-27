@@ -5868,9 +5868,12 @@ select.atk-inline option { background:#141414; color:#fff; }
 }
 /* ── Left: compact today calendar ── */
 .dash-cal { padding:24px; display:flex; flex-direction:column; }
-.dash-cal-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; }
+/* The four actions are one group, so the group wraps — not the buttons inside
+   it. Splitting them left three on one line and Commit stranded on a second,
+   which reads as a mistake rather than as a row. */
+.dash-cal-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; flex-wrap:wrap; gap:10px; }
 .dash-cal-title { font-family:var(--font-display); font-weight:300; font-size:var(--fs-title); color:#fff; margin-top:6px; letter-spacing:0.02em; }
-.dash-cal-actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.dash-cal-actions { display:flex; gap:6px; flex-wrap:nowrap; justify-content:flex-end; margin-left:auto; }
 .dash-btn {
   font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.08em; text-transform:uppercase;
   padding:6px 11px; border-radius:var(--r-sm); cursor:pointer;

@@ -5109,7 +5109,9 @@ const _tdWa = a => `rgba(255,255,255,${+a.toFixed(3)})`;
    The motion is the part that makes it read as an instrument: each ring steps
    once, when its unit changes, and eases into place on Tailwind's ease-out,
    cubic-bezier(0, 0, .2, 1). The durations lengthen inwards, so a minute lands
-   while the month is still settling. Seconds do not ease at all — they snap. */
+   while the month is still settling. The seconds ring is ours, not theirs — it
+   sweeps continuously, because a dial that holds perfectly still for a minute
+   at a time reads as broken rather than as calm. */
 const _TD_DIM  = '#bbbcc7';
 const _TD_LIVE = '#ffffff';
 const _TD_HAIR = 'rgba(255,255,255,0.2)';
@@ -5169,7 +5171,13 @@ const TD_RINGS = [
     maj:1,th:4.4,tm:1.6,fs:6.2,lr:195,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.38 },
   { id:'sec', r:234, bw:32, items:Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),
     cur:d=>d.getSeconds(),
-    sub:d=>0,   // the reference snaps seconds; it does not sweep them
+    /* The one deliberate departure from timedrift.live. Sampled over 176
+       elements, nothing on that dial moves between unit changes — it is still
+       for a whole minute at a time. Matching it exactly stopped the dial dead.
+       The seconds ring keeps its sub-second sweep so the instrument is always
+       alive; every ring inside it steps and eases exactly as the reference
+       does. */
+    sub:d=>d.getMilliseconds()/1000,
 
     maj:1,th:4.4,tm:1.6,fs:6.0,lr:227,bandFill:'rgba(255,255,255,0)',bandStroke:_TD_HAIR,dimA:0.32 },
 ];
@@ -15702,6 +15710,7 @@ window.renderInsightsX = renderInsightsX;
 
     // Pills always render (so Captures is reachable even before today's note
     // exists). Body switches on the active mode.
+    if (_mode === 'captures' && !_invoke()) _mode = 'edit';
     const eyebrow = _mode === 'captures' ? '📥 CAPTURES · running inbox' : `✒ VALERIE · ${escHtml(label)}`;
     el.innerHTML =
       `<div class="dash-note-head"><span class="dash-eyebrow" id="dash-note-eyebrow">${eyebrow}</span>
@@ -15710,7 +15719,7 @@ window.renderInsightsX = renderInsightsX;
            <div class="dash-note-pills" id="dash-note-pills" title="⌘E toggles Edit / Read">
              <button type="button" data-mode="edit"${_mode === 'edit' ? ' class="active"' : ''}>Edit</button>
              <button type="button" data-mode="read"${_mode === 'read' ? ' class="active"' : ''}>Read</button>
-             <button type="button" data-mode="captures"${_mode === 'captures' ? ' class="active"' : ''}>📥 Captures</button>
+             ${_invoke() ? `<button type="button" data-mode="captures"${_mode === 'captures' ? ' class="active"' : ''}>📥 Captures</button>` : ''}
            </div>
          </div>
        </div>

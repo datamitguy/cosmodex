@@ -490,6 +490,15 @@
         <!-- Bottom 50%: day timeline -->
         <div id="td-bottom" style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
           <canvas id="td-tl-cvs" style="display:block;flex:1;width:100%;min-height:0;"></canvas>
+          <!-- How much of the day the strip shows. timedrift.live puts 12 HOUR
+               and 36 HOUR down here; these are the same idea with a waking-day
+               range added, since that is the window most days are lived in. -->
+          <div id="td-range" role="group" aria-label="Timeline range">
+            <button class="td-range-btn" data-td-range="focus" title="Three hours either side of now">±3H</button>
+            <button class="td-range-btn" data-td-range="day"   title="06:00 to 22:00 today">DAY</button>
+            <button class="td-range-btn" data-td-range="24h"   title="Midnight to midnight">24H</button>
+            <button class="td-range-btn" data-td-range="36h"   title="Today and tomorrow morning">36H</button>
+          </div>
         </div>
         <!-- Centre readout — the dial hangs off the top edge, the clock sits
              in the clear band between it and the horizon arc. In session mode

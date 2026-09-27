@@ -7313,7 +7313,7 @@ textarea:focus-visible {
 .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
 .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
 .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-.btn-secondary,
+.btn-secondary, .td-range-btn,
 .btn-primary, .ritual-start-btn, .sched-confirm-btn, .dash-btn-commit, .commit-action-btn.done, .friction-action-btn.keep {
   position:relative; overflow:hidden; isolation:isolate;
   /* The clip needs the label to fit: these sit in flex rows beside inputs that
@@ -7338,6 +7338,7 @@ textarea:focus-visible {
 .orb-gadget-btn::before,
 .friction-action-btn:not(.kill):not(.keep)::before,
 .btn-ghost:not(.btn-danger)::before, .btn-secondary::before,
+.td-range-btn::before,
 .btn-primary::before, .ritual-start-btn::before,
 .sched-confirm-btn::before, .dash-btn-commit::before, .commit-action-btn.done::before,
 .friction-action-btn.keep::before {
@@ -7359,8 +7360,8 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary,
-.btn-secondary):not(.active):is(:hover, :focus-visible)::before,
+    .btn-secondary, .td-range-btn,
+.td-range-btn):not(.active):is(:hover, :focus-visible)::before,
 :is(    .btn-primary, .ritual-start-btn, .sched-confirm-btn, .dash-btn-commit, .commit-action-btn.done, .friction-action-btn.keep):is(:hover, :focus-visible)::before {
   /* The animation plays the rise; the transform holds the resting value at 0
      so leaving transitions 0 → -76% and the circle exits through the top. */
@@ -7374,8 +7375,8 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary,
-.btn-secondary).active::before { transform:translateY(0); opacity:1; }
+    .btn-secondary, .td-range-btn,
+.td-range-btn).active::before { transform:translateY(0); opacity:1; }
 @keyframes cdx-sweep-up { from { transform:translateY(74%); } to { transform:translateY(0); } }
 
 /* The inversion, and the shine — thrown around the button, not painted on it.
@@ -7388,8 +7389,8 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary,
-.btn-secondary):not(.active):is(:hover, :focus-visible),
+    .btn-secondary, .td-range-btn,
+.td-range-btn):not(.active):is(:hover, :focus-visible),
 :is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
     .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
     .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item,
@@ -7397,8 +7398,8 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary,
-.btn-secondary).active {
+    .btn-secondary, .td-range-btn,
+.td-range-btn).active {
   background:transparent; color:var(--ink); border-color:var(--gold); text-shadow:none;
   box-shadow:0 0 18px rgba(255,255,255,.34);
   transition:color .28s cubic-bezier(.25,1,.5,1) .12s,
@@ -7424,3 +7425,19 @@ textarea:focus-visible {
 .nav-item.active::after { display:none; }
 .nav-item.active .nav-item-icon { filter:none; }
 .nav-item:is(:hover, .active) .nav-item-count { color:rgba(0,0,0,.55); }
+
+/* ══ TIMEDRIFT RANGE PILLS ══
+   The strip's span control, sitting under the ruler the way timedrift.live
+   puts 12 HOUR / 36 HOUR under its own. They take the sweep like every other
+   button in the app. */
+#td-range {
+  display: flex; justify-content: center; gap: 6px;
+  padding: 0 0 10px; flex-shrink: 0;
+}
+.td-range-btn {
+  font-family: var(--font-mono); font-size: var(--fs-micro);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 5px 13px; border-radius: var(--r-pill); border: none;
+  background: transparent; color: rgba(255,255,255,0.5); cursor: pointer;
+  white-space: nowrap;
+}

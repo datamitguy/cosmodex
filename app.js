@@ -5210,6 +5210,56 @@ function _tdInitTimeline(){
   _tdTlCtx=_tdTlCvs.getContext('2d');
 }
 
+/* ══ STRIP RANGE ══════════════════════════════════════════════════════════
+   How much of the day the bottom strip shows. timedrift.live offers 12 HOUR
+   and 36 HOUR; DAY is added here because a waking day is the window most days
+   are actually lived in, and it is the one that fits a working timeline.
+
+   ±3H is the rolling window this strip has always had: it is the only one
+   centred on now, so the marker stays put and the ruler moves under it. The
+   other three are absolute — the ruler stays put and the marker walks across
+   it, which is what the reference does. */
+const TD_RANGES = {
+  focus: { label:'±3H', rolling:true,  spanH:6,  labelStepH:1, majorStepH:3, minorMin:15 },
+  day:   { label:'DAY', rolling:false, startH:6, endH:22,      labelStepH:2, majorStepH:6, minorMin:30 },
+  '24h': { label:'24H', rolling:false, startH:0, endH:24,      labelStepH:2, majorStepH:6, minorMin:30 },
+  '36h': { label:'36H', rolling:false, startH:0, endH:36,      labelStepH:2, majorStepH:6, minorMin:60 },
+};
+let _tdRange = 'focus';
+try { const v=localStorage.getItem('cdx_td_range'); if (v && TD_RANGES[v]) _tdRange=v; } catch(e){}
+
+function _tdSetRange(id){
+  if (!TD_RANGES[id]) return;
+  _tdRange = id;
+  try { localStorage.setItem('cdx_td_range', id); } catch(e){}
+  _tdSyncRangeBtns();
+}
+function _tdSyncRangeBtns(){
+  document.querySelectorAll('#td-range .td-range-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tdRange === _tdRange));
+}
+function _tdInitRange(){
+  const wrap=document.getElementById('td-range');
+  if (!wrap || wrap.dataset.wired) return;
+  wrap.dataset.wired='1';
+  wrap.addEventListener('click', e => {
+    const b=e.target.closest('.td-range-btn'); if(!b) return;
+    _tdSetRange(b.dataset.tdRange);
+  });
+  _tdSyncRangeBtns();
+}
+
+/* The window the strip covers, in ms, plus the tick cadence for it. */
+function _tdTlWindow(now){
+  const R=TD_RANGES[_tdRange]||TD_RANGES.focus;
+  const dayStart=_tdDayStart(now);
+  if (R.rolling){
+    const half=R.spanH*3600000/2;
+    return { t0:now.getTime()-half, t1:now.getTime()+half, R };
+  }
+  return { t0:dayStart+R.startH*3600000, t1:dayStart+R.endH*3600000, R };
+}
+
 /* ══ BOTTOM STRIP ═════════════════════════════════════════════════════════
    A straight timeline, as on timedrift.live, replacing the horizon arc that
    used to curve across the bottom of this panel. Every feature the arc carried
@@ -5238,67 +5288,79 @@ function _tdDrawTimeline(now){
   const W=cssW, H=cssH, TWO_PI=Math.PI*2;
   const cx=W/2;
 
-  /* ±3 hours, same span the arc showed. HALF_W is how far from the centre the
-     edge of that span sits; everything below is a linear function of it. */
-  const HALF_SPAN=0.125;             // ±3h as a fraction of the day
-  const HALF_W=W*0.47;
-  const axisY=Math.round(H*0.40)+0.5; // the line itself
-  const bandH=Math.max(12, H*0.07);   // the band the ticks and events occupy
+  /* The window is absolute time now, not an offset from now, so that a fixed
+     range like 06:00-22:00 can hold still while the marker walks across it. */
+  const {t0,t1,R}=_tdTlWindow(now);
+  const padX=W*0.03, plotW=W-padX*2;
+  const axisY=Math.round(H*0.40)+0.5;
+  const bandH=Math.max(12, H*0.07);
 
   const todayStr=localDateStr(now);
-  const curFrac=(now.getHours()*3600+now.getMinutes()*60+now.getSeconds())/86400;
-  /* Signed distance from now, in fractions of a day, wrapped so that a time
-     just after midnight reads as "soon" rather than "23 hours ago". */
-  const toOff=frac=>{ let d=frac-curFrac; if(d>0.5)d-=1; if(d<-0.5)d+=1; return d; };
-  const xOf=off=>cx+(off/HALF_SPAN)*HALF_W;
+  const dayStart=_tdDayStart(now);
+  const xAt=ms=>padX+((ms-t0)/(t1-t0))*plotW;
+  const inWin=ms=>ms>=t0&&ms<=t1;
+  /* Events arrive as a date plus a wall-clock time; this puts them on the same
+     millisecond axis as everything else. */
+  const msOf=(frac)=>dayStart+frac*86400000;
+  const clampMs=ms=>Math.max(t0,Math.min(t1,ms));
 
   // ── Calendar events, clipped to the visible span ──────────
   const todayEvts=(CAL_EVENTS||[]).filter(e=>e.date===todayStr&&e.startTime&&!e.allDay);
   const evtSpans=[];
   todayEvts.forEach(ev=>{
     const [sh,sm]=(ev.startTime||'0:0').split(':').map(Number);
-    const sFrac=(sh*60+sm)/1440;
-    const isPast=sFrac<curFrac;
-    let eFrac=sFrac+1/24;
-    if(ev.endTime){const [eh,em]=(ev.endTime||'0:0').split(':').map(Number);eFrac=(eh*60+em)/1440;}
-    const cS=Math.max(toOff(sFrac),-HALF_SPAN), cE=Math.min(toOff(eFrac),HALF_SPAN);
-    if(cS>=cE) return;
-    evtSpans.push({cS,cE,isPast,ev});
+    const sMs=msOf((sh*60+sm)/1440);
+    let eMs=sMs+3600000;
+    if(ev.endTime){const [eh,em]=(ev.endTime||'0:0').split(':').map(Number);eMs=msOf((eh*60+em)/1440);}
+    if(eMs<t0||sMs>t1) return;
+    evtSpans.push({cS:clampMs(sMs), cE:clampMs(eMs), sMs, isPast:sMs<now.getTime(), ev});
   });
   evtSpans.sort((a,b)=>a.cS-b.cS);
 
   // ── The axis, drawn in the gaps between events ────────────
   ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=1;
-  let pos=-HALF_SPAN;
-  const seg=(a,b)=>{ if(b<=a) return; ctx.beginPath(); ctx.moveTo(xOf(a),axisY); ctx.lineTo(xOf(b),axisY); ctx.stroke(); };
+  let pos=t0;
+  const seg=(a,b)=>{ if(b<=a) return; ctx.beginPath(); ctx.moveTo(xAt(a),axisY); ctx.lineTo(xAt(b),axisY); ctx.stroke(); };
   evtSpans.forEach(({cS,cE})=>{ seg(pos,cS); pos=Math.max(pos,cE); });
-  seg(pos,HALF_SPAN);
+  seg(pos,t1);
 
-  // ── Hour ticks, half-hour ticks, hour labels ──────────────
-  for(let h=0;h<24;h++){
-    const off=toOff(h/24);
-    if(Math.abs(off)<=HALF_SPAN){
-      const x=Math.round(xOf(off))+0.5;
-      ctx.beginPath(); ctx.moveTo(x,axisY-bandH*0.45); ctx.lineTo(x,axisY+bandH*0.45);
-      ctx.strokeStyle='rgba(255,255,255,0.38)'; ctx.lineWidth=1; ctx.stroke();
-      const fade=1-Math.abs(off)/HALF_SPAN*0.55;
-      ctx.font="300 9px 'DM Mono',monospace";
-      ctx.textAlign='center'; ctx.textBaseline='top';
-      ctx.fillStyle=`rgba(255,255,255,${(fade*0.62).toFixed(2)})`;
-      ctx.fillText(String(h).padStart(2,'0'), xOf(off), axisY+bandH*0.45+6);
-    }
-    const ho=toOff((h+0.5)/24);
-    if(Math.abs(ho)<=HALF_SPAN){
-      const x=Math.round(xOf(ho))+0.5;
-      ctx.beginPath(); ctx.moveTo(x,axisY-bandH*0.22); ctx.lineTo(x,axisY+bandH*0.22);
-      ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=1; ctx.stroke();
+  /* ── The ruler ─────────────────────────────────────────────
+     Labels above the axis, the tick scale below it, majors taller and
+     brighter. Cadence comes from the range: a three-hour window gets a label
+     an hour and a tick a quarter, a day-and-a-half gets a label every two
+     hours and a tick an hour. */
+  const rulerTop=axisY+bandH*0.35, rulerBot=rulerTop+bandH*0.9;
+  const spanH=(t1-t0)/3600000;
+  for(let m=0; m<=spanH*60; m+=R.minorMin){
+    const ms=t0+m*60000; if(!inWin(ms)) continue;
+    const x=Math.round(xAt(ms))+0.5;
+    const hourAbs=(t0-dayStart)/3600000 + m/60;
+    const isLabel=Math.abs(hourAbs % R.labelStepH)<1e-6;
+    const isMajor=Math.abs(hourAbs % R.majorStepH)<1e-6;
+    const len=isMajor?rulerBot-rulerTop:(isLabel?(rulerBot-rulerTop)*0.62:(rulerBot-rulerTop)*0.34);
+    ctx.beginPath(); ctx.moveTo(x,rulerTop); ctx.lineTo(x,rulerTop+len);
+    ctx.strokeStyle=isMajor?'rgba(255,255,255,0.55)':(isLabel?'rgba(255,255,255,0.34)':'rgba(255,255,255,0.16)');
+    ctx.lineWidth=1; ctx.stroke();
+    if(isLabel){
+      /* Hours past midnight, so a 36-hour window reads 00..36 rather than
+         wrapping back to 00 at noon tomorrow — the same as the reference. */
+      const shown=Math.round(hourAbs);
+      ctx.font=isMajor?"500 10px 'DM Mono',monospace":"300 9px 'DM Mono',monospace";
+      ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillStyle=isMajor?'rgba(255,255,255,0.80)':'rgba(255,255,255,0.42)';
+      ctx.fillText(String(shown).padStart(2,'0'), xAt(ms), axisY-bandH*0.55);
     }
   }
 
   // ── Events: band, waveform, start dot, title on a leader ──
   const phase=performance.now()*0.001;
+  /* On a 36-hour ruler two meetings an hour apart are a few pixels apart, and
+     their titles overprint each other. A title is skipped when its box would
+     touch one already placed — the band, the dot and the leader still mark the
+     event, and the readout underneath still names the next one. */
+  const placedTitles=[];
   evtSpans.forEach(({cS,cE,isPast,ev})=>{
-    const x0=xOf(cS), x1=xOf(cE);
+    const x0=xAt(cS), x1=xAt(cE);
     ctx.fillStyle=isPast?'rgba(255,255,255,0.04)':'rgba(255,255,255,0.10)';
     ctx.fillRect(x0, axisY-4, Math.max(1,x1-x0), 8);
     /* Only what is still ahead of you animates; the past lies flat. */
@@ -5315,7 +5377,7 @@ function _tdDrawTimeline(now){
     }
     ctx.beginPath(); ctx.arc(x0,axisY,2.5,0,TWO_PI);
     ctx.fillStyle=isPast?'rgba(255,255,255,0.20)':'rgba(255,255,255,0.50)'; ctx.fill();
-    if(ev.title && Math.abs(cS)<HALF_SPAN*0.9){
+    if(ev.title && x1-x0>2){
       const mx=(x0+x1)/2, ly0=axisY-6, ly1=axisY-34;
       const a=isPast?0.35:0.9;
       ctx.beginPath(); ctx.moveTo(mx,ly0); ctx.lineTo(mx,ly1);
@@ -5324,11 +5386,15 @@ function _tdDrawTimeline(now){
       ctx.strokeStyle=`rgba(255,255,255,${(a*0.55).toFixed(2)})`; ctx.lineWidth=0.8; ctx.stroke();
       const t=ev.title.length>18?ev.title.slice(0,17)+'…':ev.title;
       ctx.font="500 10px 'DM Mono',monospace";
-      if('letterSpacing' in ctx) ctx.letterSpacing='0.04em';
-      ctx.textAlign='center'; ctx.textBaseline='bottom';
-      ctx.fillStyle=`rgba(255,255,255,${isPast?0.35:0.95})`;
-      ctx.fillText(t, mx, ly1-4);
-      if('letterSpacing' in ctx) ctx.letterSpacing='0em';
+      const tw=ctx.measureText(t).width, tx0=mx-tw/2-6, tx1=mx+tw/2+6;
+      if(!placedTitles.some(([a,b])=>tx0<b&&tx1>a)){
+        placedTitles.push([tx0,tx1]);
+        if('letterSpacing' in ctx) ctx.letterSpacing='0.04em';
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillStyle=`rgba(255,255,255,${isPast?0.35:0.95})`;
+        ctx.fillText(t, mx, ly1-4);
+        if('letterSpacing' in ctx) ctx.letterSpacing='0em';
+      }
     }
   });
 
@@ -5339,15 +5405,13 @@ function _tdDrawTimeline(now){
     const sess=_tdSessionState();
     const S=window.CDX_SESSION;
     if(sess && S && (sess.running||sess.paused)){
-      const endFrac=((S.endAt-_tdDayStart(now))/86400000)%1;
-      const startFrac=endFrac-(S.totalSecs/86400);
-      const cS=Math.max(toOff(startFrac<0?startFrac+1:startFrac),-HALF_SPAN);
-      const cE=Math.min(toOff(endFrac),HALF_SPAN);
-      if(cS<cE){
+      const cE=clampMs(S.endAt);
+      const cS=clampMs(S.endAt-S.totalSecs*1000);
+      if(cS<cE && S.endAt>=t0 && (S.endAt-S.totalSecs*1000)<=t1){
         const col=sess.paused?'rgba(180,168,144,':'rgba(57,255,20,';
         ctx.save();
         ctx.beginPath();
-        ctx.moveTo(xOf(cS),axisY+bandH*0.62); ctx.lineTo(xOf(cE),axisY+bandH*0.62);
+        ctx.moveTo(xAt(cS),axisY+bandH*1.45); ctx.lineTo(xAt(cE),axisY+bandH*1.45);
         ctx.strokeStyle=col+(sess.paused?'0.55)':'0.78)');
         ctx.lineWidth=1.5; ctx.lineCap='round';
         if(!sess.paused){ ctx.shadowColor=col+'0.45)'; ctx.shadowBlur=5; }
@@ -5357,14 +5421,36 @@ function _tdDrawTimeline(now){
     }
   }
 
-  // ── Now marker: a full-height line through the axis, then the arrow ──
+  /* ── Now marker ───────────────────────────────────────────
+     On a fixed range this walks across the ruler, so it needs a label of its
+     own to be readable away from the centre — the pill the reference hangs
+     above its line. On ±3H it sits at the middle, as before. */
+  const nowMs=now.getTime();
+  const markX=Math.round(xAt(clampMs(nowMs)))+0.5;
+  const offRange=!inWin(nowMs);
+  /* The pill rides at the top of the strip and the line drops from it, so it
+     clears the event titles on their leaders whatever the range. Hanging it a
+     fixed distance above the axis put it straight through them. */
+  const pillY=6, pillH=20;
+  const mTop=pillY+pillH+3, mBot=rulerBot+2;
+  ctx.beginPath(); ctx.moveTo(markX,mTop); ctx.lineTo(markX,mBot);
+  ctx.strokeStyle=offRange?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.9)';
+  ctx.lineWidth=1; ctx.stroke();
+
+  const pillTxt=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  ctx.font="400 11px 'DM Mono',monospace";
+  const pw=ctx.measureText(pillTxt).width+18, ph=pillH;
+  const px=Math.max(2, Math.min(W-pw-2, markX-pw/2)), py=pillY;
   ctx.beginPath();
-  ctx.moveTo(Math.round(cx)+0.5, axisY-bandH*0.9);
-  ctx.lineTo(Math.round(cx)+0.5, axisY+bandH*0.9);
-  ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth=1; ctx.stroke();
-  const arrowY=axisY+bandH*0.9+3;
+  if(ctx.roundRect) ctx.roundRect(px,py,pw,ph,ph/2);
+  else ctx.rect(px,py,pw,ph);
+  ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.fill();
+  ctx.fillStyle='#000'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(pillTxt, px+pw/2, py+ph/2+0.5);
+
+  const arrowY=mBot+2;
   ctx.beginPath();
-  ctx.moveTo(cx, arrowY); ctx.lineTo(cx-4, arrowY+7); ctx.lineTo(cx+4, arrowY+7);
+  ctx.moveTo(markX, arrowY); ctx.lineTo(markX-4, arrowY+7); ctx.lineTo(markX+4, arrowY+7);
   ctx.closePath();
   ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fill();
 
@@ -5903,6 +5989,7 @@ function startTimedrift(){
   if (panel) panel.classList.toggle('td-dlv2', _TD_DLV2_ENABLED);
   _tdInit();
   _tdInitScrub();
+  _tdInitRange();
   _tdLayout();
   if(!_tdResizeObs){
     _tdResizeObs=new ResizeObserver(()=>{

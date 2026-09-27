@@ -5080,7 +5080,7 @@ const _TD_CX = 500, _TD_CY = 500;
 const _TD_RING_R = 328;
 const _TD_GAUGE_R = 348;
 const _TD_VB_R = 360;
-const _TD_R_MAX = 760;
+const _TD_R_MAX = 560;   // past this it stops reading as an instrument
 const _TD_R_OF_BAND = 1.0;    // the whole visible half fits the band, no more
 
 /* The visible span of any ring: SVG's y axis points down, so the on-screen
@@ -5272,6 +5272,27 @@ function _tdTlWindow(now){
   return { t0:dayStart+R.startH*3600000, t1:dayStart+R.endH*3600000, R };
 }
 
+/* What the marker calls itself. The line is where you are in the day, so it
+   is labelled with what you are doing there: the task a running session is
+   against, else the meeting you are inside, else — with neither — the time. */
+function _tdMarkerLabel(now, todayStr){
+  const clip=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
+  const S=window.CDX_SESSION;
+  const sess=(typeof _tdSessionState==='function')?_tdSessionState():null;
+  if (S && sess && (sess.running||sess.paused) && S.title) return clip(S.title,26);
+  const mins=now.getHours()*60+now.getMinutes();
+  const ongoing=(CAL_EVENTS||[]).find(ev=>{
+    if(ev.date!==todayStr||!ev.startTime||ev.allDay) return false;
+    const [sh,sm]=ev.startTime.split(':').map(Number);
+    const s0=sh*60+sm;
+    let e0=s0+60;
+    if(ev.endTime){const [eh,em]=ev.endTime.split(':').map(Number); e0=eh*60+em;}
+    return s0<=mins && mins<e0;
+  });
+  if (ongoing && ongoing.title) return clip(ongoing.title,26);
+  return String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+}
+
 /* ══ BOTTOM STRIP ═════════════════════════════════════════════════════════
    A straight timeline, as on timedrift.live, replacing the horizon arc that
    used to curve across the bottom of this panel. Every feature the arc carried
@@ -5456,7 +5477,7 @@ function _tdDrawTimeline(now){
   if(!offRange){ ctx.shadowColor='rgba(57,255,20,0.45)'; ctx.shadowBlur=6; }
   ctx.stroke(); ctx.shadowBlur=0;
 
-  const pillTxt=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const pillTxt=_tdMarkerLabel(now, todayStr);
   ctx.font="400 11px 'DM Mono',monospace";
   const pw=ctx.measureText(pillTxt).width+18, ph=pillH;
   const px=Math.max(2, Math.min(W-pw-2, markX-pw/2)), py=pillY;

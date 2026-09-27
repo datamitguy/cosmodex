@@ -5820,12 +5820,12 @@ select.atk-inline option { background:#141414; color:#fff; }
   transition:all .25s var(--ease-glass);
 }
 .dash-btn:hover { border-color:rgba(255,255,255,0.32); color:#fff; transform:translateY(-1px); }
-/* Commit pill — neon accent to stand out among the add actions */
-.dash-btn-commit { background:rgba(57,255,20,0.08); border-color:var(--neon-dim); color:var(--neon); }
-.dash-btn-commit:hover { background:rgba(57,255,20,0.16); border-color:var(--neon); color:#fff; box-shadow:0 0 12px var(--neon-glow); }
-/* Floating widget toggles — focus lens and observation log (desktop app only) */
-.dash-btn-lens:hover { border-color:var(--neon-dim); color:var(--neon); }
-.dash-btn-lens.active { background:rgba(57,255,20,0.08); border-color:var(--neon-dim); color:var(--neon); }
+/* Commit pill — white at rest to stand out among the add actions, which is
+   what the neon accent used to do. Black sweeps in over it; see SWEEP FILL. */
+.dash-btn-commit { background:var(--gold); border-color:var(--gold); color:var(--ink); }
+/* Floating widget toggles — focus lens and observation log (desktop app only).
+   Their hover and selected states come from SWEEP FILL like every other
+   button; they used to carry the same neon as the commit pill beside them. */
 
 .dash-ms-row { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
 
@@ -7249,7 +7249,9 @@ textarea:focus-visible {
    settled in one place.
 
    Buttons that are already white at rest run the motion inverted — black
-   sweeps in over them, and the label goes white.
+   sweeps in over them, and the label goes white. The commit pill is one of
+   them: white at rest is what makes it the loudest thing on the dashboard,
+   which is the job the neon accent used to do.
 
    Excluded, deliberately: .btn-danger, .friction-action-btn.kill and .cr-leave
    are destructive or abandon work, and must not read as an affirmative white
@@ -7259,10 +7261,12 @@ textarea:focus-visible {
 .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
 .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
 .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item, .mob-nav-btn,
-.nav-item, .dash-btn, .energy-pill, .ritual-energy-btn, .cr-begin,
-.ritual-skip-btn, .commit-action-btn, .nav-footer-btn, .orb-gadget-btn,
-.friction-action-btn:not(.kill), .btn-ghost:not(.btn-danger),
-.btn-primary, .ritual-start-btn, .sched-confirm-btn, .btn-secondary {
+.nav-item, .dash-btn:not(.dash-btn-commit), .energy-pill,
+.ritual-energy-btn, .cr-begin, .ritual-skip-btn, .commit-action-btn,
+.nav-footer-btn, .orb-gadget-btn, .friction-action-btn:not(.kill),
+.btn-ghost:not(.btn-danger),
+.btn-primary, .ritual-start-btn, .sched-confirm-btn, .btn-secondary,
+.dash-btn-commit {
   position:relative; overflow:hidden; isolation:isolate;
   /* The clip needs the label to fit: these sit in flex rows beside inputs that
      grow, and a squeezed button used to spill its text over its own border. */
@@ -7279,13 +7283,14 @@ textarea:focus-visible {
 .ins-viz-tab::before, .view-tab::before, .pcal-vt::before,
 .calx-vtog::before, .cr-dur::before, .dash-pill::before,
 .pomo-preset::before, .mm-tool-btn::before, .settings-nav-item::before,
-.mob-nav-btn::before, .nav-item::before, .dash-btn::before,
-.energy-pill::before, .ritual-energy-btn::before, .cr-begin::before,
-.ritual-skip-btn::before, .commit-action-btn::before,
-.nav-footer-btn::before, .orb-gadget-btn::before,
-.friction-action-btn:not(.kill)::before, .btn-ghost:not(.btn-danger)::before,
+.mob-nav-btn::before, .nav-item::before,
+.dash-btn:not(.dash-btn-commit)::before, .energy-pill::before,
+.ritual-energy-btn::before, .cr-begin::before, .ritual-skip-btn::before,
+.commit-action-btn::before, .nav-footer-btn::before,
+.orb-gadget-btn::before, .friction-action-btn:not(.kill)::before,
+.btn-ghost:not(.btn-danger)::before,
 .btn-primary::before, .ritual-start-btn::before,
-.sched-confirm-btn::before, .btn-secondary::before {
+.sched-confirm-btn::before, .btn-secondary::before, .dash-btn-commit::before {
   content:''; position:absolute; z-index:-1; opacity:1;
   left:-25%; top:-50%; width:150%; height:200%; border-radius:50%;
   background:var(--gold);
@@ -7293,17 +7298,18 @@ textarea:focus-visible {
   transition:transform .5s cubic-bezier(.3,1,.3,1);
 }
 .btn-primary::before, .ritual-start-btn::before,
-.sched-confirm-btn::before, .btn-secondary::before { background:var(--ink); }
+.sched-confirm-btn::before, .btn-secondary::before, .dash-btn-commit::before { background:var(--ink); }
 
 /* Filled: hovering an unselected button, or resting on the selected one. */
 :is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
     .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
     .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item,
-    .mob-nav-btn, .nav-item, .dash-btn, .energy-pill, .ritual-energy-btn,
-    .cr-begin, .ritual-skip-btn, .commit-action-btn, .nav-footer-btn,
-    .orb-gadget-btn, .friction-action-btn:not(.kill),
+    .mob-nav-btn, .nav-item, .dash-btn:not(.dash-btn-commit), .energy-pill,
+    .ritual-energy-btn, .cr-begin, .ritual-skip-btn, .commit-action-btn,
+    .nav-footer-btn, .orb-gadget-btn, .friction-action-btn:not(.kill),
     .btn-ghost:not(.btn-danger)):not(.active):is(:hover, :focus-visible)::before,
-:is(    .btn-primary, .ritual-start-btn, .sched-confirm-btn, .btn-secondary):is(:hover, :focus-visible)::before {
+:is(    .btn-primary, .ritual-start-btn, .sched-confirm-btn, .btn-secondary,
+    .dash-btn-commit):is(:hover, :focus-visible)::before {
   /* The animation plays the rise; the transform holds the resting value at 0
      so leaving transitions 0 → -76% and the circle exits through the top. */
   transform:translateY(0); opacity:1;
@@ -7312,9 +7318,9 @@ textarea:focus-visible {
 :is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
     .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
     .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item,
-    .mob-nav-btn, .nav-item, .dash-btn, .energy-pill, .ritual-energy-btn,
-    .cr-begin, .ritual-skip-btn, .commit-action-btn, .nav-footer-btn,
-    .orb-gadget-btn, .friction-action-btn:not(.kill),
+    .mob-nav-btn, .nav-item, .dash-btn:not(.dash-btn-commit), .energy-pill,
+    .ritual-energy-btn, .cr-begin, .ritual-skip-btn, .commit-action-btn,
+    .nav-footer-btn, .orb-gadget-btn, .friction-action-btn:not(.kill),
     .btn-ghost:not(.btn-danger)).active::before { transform:translateY(0); opacity:1; }
 @keyframes cdx-sweep-up { from { transform:translateY(74%); } to { transform:translateY(0); } }
 
@@ -7324,16 +7330,16 @@ textarea:focus-visible {
 :is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
     .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
     .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item,
-    .mob-nav-btn, .nav-item, .dash-btn, .energy-pill, .ritual-energy-btn,
-    .cr-begin, .ritual-skip-btn, .commit-action-btn, .nav-footer-btn,
-    .orb-gadget-btn, .friction-action-btn:not(.kill),
+    .mob-nav-btn, .nav-item, .dash-btn:not(.dash-btn-commit), .energy-pill,
+    .ritual-energy-btn, .cr-begin, .ritual-skip-btn, .commit-action-btn,
+    .nav-footer-btn, .orb-gadget-btn, .friction-action-btn:not(.kill),
     .btn-ghost:not(.btn-danger)):not(.active):is(:hover, :focus-visible),
 :is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
     .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
     .dash-pill, .pomo-preset, .mm-tool-btn, .settings-nav-item,
-    .mob-nav-btn, .nav-item, .dash-btn, .energy-pill, .ritual-energy-btn,
-    .cr-begin, .ritual-skip-btn, .commit-action-btn, .nav-footer-btn,
-    .orb-gadget-btn, .friction-action-btn:not(.kill),
+    .mob-nav-btn, .nav-item, .dash-btn:not(.dash-btn-commit), .energy-pill,
+    .ritual-energy-btn, .cr-begin, .ritual-skip-btn, .commit-action-btn,
+    .nav-footer-btn, .orb-gadget-btn, .friction-action-btn:not(.kill),
     .btn-ghost:not(.btn-danger)).active {
   background:transparent; color:var(--ink); border-color:var(--gold); text-shadow:none;
   box-shadow:0 0 18px rgba(255,255,255,.34);
@@ -7342,7 +7348,8 @@ textarea:focus-visible {
              border-radius .3s cubic-bezier(.3,1,.3,1),
              box-shadow .4s cubic-bezier(.3,1,.3,1);
 }
-:is(    .btn-primary, .ritual-start-btn, .sched-confirm-btn, .btn-secondary):is(:hover, :focus-visible) {
+:is(    .btn-primary, .ritual-start-btn, .sched-confirm-btn, .btn-secondary,
+    .dash-btn-commit):is(:hover, :focus-visible) {
   background:var(--gold); color:var(--gold); border-color:var(--ink);
   box-shadow:0 0 18px rgba(255,255,255,.34);
   transition:color .28s cubic-bezier(.25,1,.5,1) .12s,

@@ -1551,7 +1551,12 @@
             <div class="settings-section">
               <div class="settings-section-title">Backup &amp; Export</div>
               <div class="settings-desc">Write a full snapshot — tasks, commitments, events, habit log and a daily roll-up — as one markdown file you can read in Obsidian and mine for patterns. Saves to <code style="font-family:var(--font-mono);font-size:var(--fs-micro)">060 ▲ Star logs/Cosmodex Backups/</code> on desktop; downloads in the browser.</div>
-              <button class="btn-secondary" id="settings-backup-btn" style="font-size:var(--fs-micro);padding:8px 16px;color:var(--neon);border-color:var(--neon-dim);">◆ Export backup (.md)</button>
+              <!-- The recommended one of the three export actions. The neon inline style
+                   here was marking it as such; filled-white carries that now, the way
+                   it does for Mark done and Keep it, and its two siblings stay
+                   outlined. Inline styles beat the stylesheet, so this had to come
+                   out of the markup rather than be overridden in CSS. -->
+              <button class="btn-primary" id="settings-backup-btn" style="font-size:var(--fs-micro);padding:8px 16px">◆ Export backup (.md)</button>
               <div class="settings-desc" style="margin-top:14px">Records live in <code style="font-family:var(--font-mono);font-size:var(--fs-micro)">data/cosmodex.db</code> and the server copies it to <code style="font-family:var(--font-mono);font-size:var(--fs-micro)">backups/</code> on every start, so this is for moving between machines rather than for safety. Restore replaces every record and preference, then reloads.</div>
               <div style="display:flex;gap:8px;margin-top:8px">
                 <button class="btn-secondary" id="settings-json-export" style="font-size:var(--fs-micro);padding:8px 16px">⤓ Export data (.json)</button>

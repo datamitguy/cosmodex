@@ -5469,9 +5469,9 @@ select.atk-inline option { background:#141414; color:#fff; }
 .lists-sidebar-items { display:flex; flex-direction:column; gap:6px; margin-top:2px; }
 
 /* Sidebar list cards — glass */
-.list-sidebar-card { padding:11px 13px; border-radius:var(--r-sm); cursor:pointer; display:flex; align-items:center; gap:11px; margin-bottom:0; position:relative; border:1px solid rgba(255,255,255,.05); border-left:3px solid rgba(255,255,255,.28); background:rgba(255,255,255,.015); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); transition:background .15s, border-color .15s; }
-.list-sidebar-card:hover { background:rgba(255,255,255,.05); }
-.list-sidebar-card.active { background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.22); border-left-color:var(--gold); }
+.list-sidebar-card { padding:10px 13px; border-radius:var(--r-sm); cursor:pointer; display:flex; align-items:center; gap:11px; margin-bottom:0; position:relative; border:1px solid rgba(255,255,255,.12); border-left:3px solid rgba(255,255,255,.34); background:rgba(255,255,255,.045); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); transition:background .15s, border-color .15s; }
+.list-sidebar-card:hover { background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.22); }
+.list-sidebar-card.active { background:rgba(255,255,255,.14); border-color:rgba(255,255,255,.34); border-left-color:var(--gold); }
 
 /* Right column */
 .lists-col-right { min-width:0; }
@@ -5491,18 +5491,19 @@ select.atk-inline option { background:#141414; color:#fff; }
 .lists-delete-confirm { display:flex; align-items:center; gap:6px; }
 
 /* Purpose / notes */
-.lists-meta { display:flex; gap:16px; padding:0 4px; }
+.lists-meta { display:flex; gap:16px; padding:0 4px; margin-bottom:4px; }
 .lists-meta-field { flex:1; display:flex; flex-direction:column; gap:3px; min-width:0; }
-.lists-meta-field label { font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color:rgba(255,255,255,.35); }
-.lists-meta-field textarea { resize:none; font-family:var(--font-body); font-size:var(--fs-small); color:rgba(255,255,255,.75); background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.08); outline:none; padding:3px 0; line-height:1.5; width:100%; transition:border-color .2s; }
-.lists-meta-field textarea:focus { border-bottom-color:var(--gold-dim); }
+.lists-meta-field label { font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; text-transform:uppercase; color:rgba(255,255,255,.55); }
+.lists-meta-field textarea { resize:none; font-family:var(--font-body); font-size:var(--fs-small); color:rgba(255,255,255,.88); background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.12); border-radius:var(--r-sm); outline:none; padding:8px 10px; line-height:1.5; width:100%; transition:border-color .2s, background .2s; }
+.lists-meta-field textarea::placeholder { color:rgba(255,255,255,.42); }
+.lists-meta-field textarea:focus { border-color:var(--gold); background:rgba(255,255,255,.06); }
 
 /* Items card */
-.lists-items-card { padding:8px 18px 14px; border-radius:var(--r-md); background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
-.lists-additem { display:flex; align-items:center; gap:10px; margin-top:12px; padding:11px 14px; border-radius:var(--r-sm); background:rgba(255,255,255,.015); border:1px dashed rgba(255,255,255,.1); }
+.lists-items-card { padding:8px 18px 14px; border-radius:var(--r-md); background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.14); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
+.lists-additem { display:flex; align-items:center; gap:10px; margin-top:12px; padding:11px 14px; border-radius:var(--r-sm); background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.2); }
 .lists-additem-plus { color:rgba(255,255,255,.45); font-size:var(--fs-lead); }
 .lists-additem-input { flex:1; background:transparent; border:none; outline:none; font-family:var(--font-display); font-weight:300; font-size:var(--fs-body); color:#fff; }
-.lists-additem-input::placeholder { color:rgba(255,255,255,.32); font-style:italic; }
+.lists-additem-input::placeholder { color:rgba(255,255,255,.46); font-style:italic; }
 .lists-additem-btn { padding:6px 14px; border-radius:var(--r-sm); cursor:pointer; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase; }
 .lists-additem-btn:hover { background:rgba(255,255,255,.14); }
 

@@ -7445,3 +7445,31 @@ textarea:focus-visible {
   background: transparent; color: rgba(255,255,255,0.5); cursor: pointer;
   white-space: nowrap;
 }
+
+/* ══ DASHBOARD TASK LINEAGE ══
+   The commitment a task belongs to, and the goal above that commitment, set
+   under the title. A list of fourteen bare titles says what is due; it does
+   not say what any of it is for. */
+.dash-task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dash-task-row.has-lineage { align-items: flex-start; }
+.dash-task-row.has-lineage .dash-task-check,
+.dash-task-row.has-lineage .dash-task-dot { margin-top: 3px; }
+.dash-task-lineage {
+  display: flex; align-items: center; gap: 5px; min-width: 0;
+  font-family: var(--font-mono); font-size: var(--fs-micro);
+  letter-spacing: 0.06em; line-height: 1.3;
+}
+.dash-task-goal { color: rgba(255,255,255,0.40); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+.dash-task-sep  { color: rgba(255,255,255,0.22); flex-shrink: 0; }
+.dash-task-proj {
+  color: rgba(255,255,255,0.58); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  padding-left: 9px; position: relative;
+}
+/* A dot in the commitment's own colour, so the rail reads at a glance. */
+.dash-task-proj::before {
+  content: ''; position: absolute; left: 0; top: 50%;
+  width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%;
+  background: var(--pc, rgba(255,255,255,.5));
+}

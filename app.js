@@ -5519,6 +5519,55 @@ function _tdDrawTimeline(now){
     }
   });
 
+  /* ── The queue ─────────────────────────────────────────────
+     Tasks that are due but not timeboxed. They have no time, so they get no
+     position on the axis — they sit in a lane of their own, starting at now
+     and running forward, on a dashed baseline that says "not placed yet".
+     Without this the marker could name a task that had nothing to point at.
+
+     A task that has been timeboxed carries a calEventId and is already drawn
+     as a block above, so it is excluded here rather than shown twice. */
+  const queueTop = evTop - 34;
+  const pending = (typeof TASKS !== 'undefined' ? TASKS : [])
+    .filter(t => !t.done && !t.someday && !t.calEventId && t.dueDate && t.dueDate <= todayStr)
+    .sort((a,b) => (_dashPrioRank(b.priority) - _dashPrioRank(a.priority))
+                || (a.dueDate < b.dueDate ? -1 : 1));
+  if (pending.length){
+    const startX = Math.max(padX, Math.min(xAt(clampMs(nowT)), W - 150));
+    ctx.font = "400 9.5px 'DM Mono',monospace";
+    let qx = startX + 10;
+    let shown = 0;
+    // Dashed rule under the lane: these are ahead of you, but unplaced.
+    ctx.save();
+    ctx.setLineDash([2,4]);
+    ctx.beginPath();
+    ctx.moveTo(startX, queueTop+13.5); ctx.lineTo(W-padX, queueTop+13.5);
+    ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.restore();
+    for (const t of pending){
+      const label = (t.title||'').length>20 ? (t.title||'').slice(0,19)+'…' : (t.title||'');
+      const w = ctx.measureText(label).width + 16;
+      if (qx + w > W - padX - 4) break;
+      const isLive = _tdSameLabel(label, pillSays);
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(qx, queueTop, w, 14, 7); else ctx.rect(qx, queueTop, w, 14);
+      ctx.fillStyle = isLive ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.05)';
+      ctx.fill();
+      ctx.strokeStyle = isLive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = isLive ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.55)';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(label, qx + w/2, queueTop + 7.5);
+      qx += w + 7; shown++;
+    }
+    const left = pending.length - shown;
+    if (left > 0 && qx < W - padX - 30){
+      ctx.fillStyle='rgba(255,255,255,0.38)';
+      ctx.textAlign='left'; ctx.textBaseline='middle';
+      ctx.fillText('+'+left, qx, queueTop + 7.5);
+    }
+  }
+
   /* ── Session band ────────────────────────────────────────
      The gauge says how much is left; this says what it is left before. Drawn
      under the axis so the block brackets the events it spans. */
@@ -5552,7 +5601,7 @@ function _tdDrawTimeline(now){
   /* The pill rides at the top of the strip and the line drops from it, so it
      clears the event titles on their leaders whatever the range. Hanging it a
      fixed distance above the axis put it straight through them. */
-  const pillH=20, pillY=Math.max(2, evTop-40);
+  const pillH=20, pillY=Math.max(2, evTop-58);
   const mTop=pillY+pillH+3, mBot=axisY+9;
   ctx.beginPath(); ctx.moveTo(markX,mTop); ctx.lineTo(markX,mBot);
   /* The only colour on this screen. It marks now, and when a session is
@@ -12333,12 +12382,32 @@ function _dashRenderTasksPaint() {
     return;
   }
 
+  /* Each row carries its lineage: the commitment it belongs to and, where that
+     commitment is attached to one, the goal above it. A list of fourteen bare
+     titles says what is due; it does not say what any of it is for. */
+  const projMap = (typeof _buildTaskToProjectMap === 'function') ? _buildTaskToProjectMap() : {};
+  const goalOf = pid => {
+    if (!pid || typeof GOALS === 'undefined') return null;
+    const g = (GOALS || []).find(g => (g.commitmentIds || []).includes(pid) && g.status !== 'dropped');
+    return g ? (g.title || null) : null;
+  };
   const rows = due.map(t => {
     const overdue = t.dueDate < today;
-    return `<div class="dash-task-row" draggable="true" data-dash-task="${escAttr(t.id)}" title="Drag onto the timeline to place it — or click to pick a time">
+    const link = projMap[t.id];
+    const goal = link ? goalOf(link.projectId) : null;
+    const lineage = link
+      ? `<div class="dash-task-lineage">
+           ${goal ? `<span class="dash-task-goal">${escHtml(goal)}</span><span class="dash-task-sep">›</span>` : ''}
+           <span class="dash-task-proj" style="--pc:${link.projectColor || 'rgba(255,255,255,.5)'}">${escHtml(link.projectTitle)}</span>
+         </div>`
+      : '';
+    return `<div class="dash-task-row${lineage ? ' has-lineage' : ''}" draggable="true" data-dash-task="${escAttr(t.id)}" title="Drag onto the timeline to place it — or click to pick a time">
       <span class="dash-task-check" data-dash-done="${escAttr(t.id)}" title="Mark complete"></span>
       <span class="dash-task-dot" style="--nc:${getCatColor(t.category)}"></span>
-      <span class="dash-task-name">${escHtml(t.title)}</span>
+      <span class="dash-task-main">
+        <span class="dash-task-name">${escHtml(t.title)}</span>
+        ${lineage}
+      </span>
       ${overdue ? '<span class="dash-task-over">OVERDUE</span>' : ''}
       <span class="dash-task-del" data-dash-del="${escAttr(t.id)}" title="Delete task">✕</span>
     </div>`;

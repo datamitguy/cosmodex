@@ -5323,31 +5323,29 @@ function _tdSameLabel(a,b){
   const A=n(a), B=n(b);
   return !!A && !!B && (A===B || A.startsWith(B) || B.startsWith(A));
 }
-function _tdMarkerLabel(now, todayStr){
-  const clip=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
+
+/* What the marker calls itself. It only ever speaks about the schedule: the
+   task a running session is against, the block you are inside, or the next
+   block coming. It used to fall back to the week's anchor and then to the
+   highest-priority overdue task, which is a fair answer to "what should I be
+   doing" and the wrong answer to "what is happening at this line" — neither
+   of those is on the calendar, so the marker was naming something the strip
+   could not show. With nothing booked it says so. */
+function _tdMarkerLabel(now, spans, nowMs){
+  const clip=(t,n)=>String(t||'').length>n?String(t).slice(0,n-1)+'…':String(t||'');
   const S=window.CDX_SESSION;
   const sess=(typeof _tdSessionState==='function')?_tdSessionState():null;
   if (S && sess && (sess.running||sess.paused) && S.title) return clip(S.title,26);
-  const mins=now.getHours()*60+now.getMinutes();
-  const ongoing=(CAL_EVENTS||[]).find(ev=>{
-    if(ev.date!==todayStr||!ev.startTime||ev.allDay) return false;
-    const [sh,sm]=ev.startTime.split(':').map(Number);
-    const s0=sh*60+sm;
-    let e0=s0+60;
-    if(ev.endTime){const [eh,em]=ev.endTime.split(':').map(Number); e0=eh*60+em;}
-    return s0<=mins && mins<e0;
-  });
-  if (ongoing && ongoing.title) return clip(ongoing.title,26);
-  /* Nothing running and nothing booked: fall back to what you said today was
-     for — the week's anchor if there is one, else the highest-priority thing
-     due or overdue. The line marks now, and this is what now is for. */
-  const anchor=(typeof _dashWeekAnchor==='object' && _dashWeekAnchor && _dashWeekAnchor.text) || '';
-  if (anchor) return clip(anchor,26);
-  const pool=(typeof TASKS!=='undefined'?TASKS:[]||[])
-    .filter(t=>!t.someday&&!t.done&&t.dueDate&&t.dueDate<=todayStr)
-    .sort((a,b)=>(_dashPrioRank(b.priority)-_dashPrioRank(a.priority))||(a.dueDate<b.dueDate?-1:1));
-  if (pool[0] && pool[0].title) return clip(pool[0].title,26);
-  return 'NO TASK';
+  const list=(spans||[]).filter(x=>x.ev && x.ev.title);
+  const inside=list.find(x=>x.sMs<=nowMs && nowMs<x.eMs);
+  if (inside) return clip(inside.ev.title,26);
+  const next=list.filter(x=>x.sMs>nowMs).sort((a,b)=>a.sMs-b.sMs)[0];
+  if (next){
+    const mins=Math.max(1,Math.round((next.sMs-nowMs)/60000));
+    const when=mins<60?mins+'M':Math.round(mins/60)+'H';
+    return clip('NEXT · '+next.ev.title, 24)+' · '+when;
+  }
+  return 'NOTHING SCHEDULED';
 }
 
 /* ══ BOTTOM STRIP ═════════════════════════════════════════════════════════
@@ -5428,7 +5426,7 @@ function _tdDrawTimeline(now){
       if(eMs<=sMs) eMs+=86400000;
     }
     if(eMs<t0||sMs>t1) return;
-    evtSpans.push({cS:clampMs(sMs), cE:clampMs(eMs), sMs, isPast:sMs<now.getTime(), ev});
+    evtSpans.push({cS:clampMs(sMs), cE:clampMs(eMs), sMs, eMs, isPast:sMs<now.getTime(), ev});
   });
   evtSpans.sort((a,b)=>a.cS-b.cS);
 
@@ -5477,7 +5475,7 @@ function _tdDrawTimeline(now){
   /* Whatever the marker pill is about to say. The running event is already
      named up there, so naming it again twelve pixels below is just the same
      words twice. */
-  const pillSays=_tdMarkerLabel(now, todayStr);
+  const pillSays=_tdMarkerLabel(now, evtSpans, nowT);
   evtSpans.forEach(({cS,cE,sMs,isPast,ev})=>{
     const x0=xAt(cS), x1=xAt(cE), w=Math.max(2,x1-x0);
     const running = sMs<=nowT && nowT<cE;
@@ -5569,7 +5567,7 @@ function _tdDrawTimeline(now){
   if(!offRange){ ctx.shadowColor='rgba(57,255,20,0.45)'; ctx.shadowBlur=6; }
   ctx.stroke(); ctx.shadowBlur=0;
 
-  const pillTxt=_tdMarkerLabel(now, todayStr);
+  const pillTxt=pillSays;
   ctx.font="400 11px 'DM Mono',monospace";
   const pw=ctx.measureText(pillTxt).width+18, ph=pillH;
   const px=Math.max(2, Math.min(W-pw-2, markX-pw/2)), py=pillY;

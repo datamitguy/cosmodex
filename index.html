@@ -101,6 +101,18 @@
         <span class="nav-item-icon">◉</span>
         Planning
       </div>
+      <div class="nav-item" data-panel="orrery" id="nav-orrery" role="button" tabindex="0">
+        <!-- Orrery's mark: a still body at the centre with one satellite on a
+             tilted orbit. The ◉/◈ glyphs were already spoken for twice over. -->
+        <span class="nav-item-icon nav-icon-orrery" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.1">
+            <ellipse cx="8" cy="8" rx="6.6" ry="4.1" opacity=".5" transform="rotate(-18 8 8)"/>
+            <circle cx="8" cy="8" r="2" fill="currentColor" stroke="none"/>
+            <circle cx="13.9" cy="6" r="1.5" fill="currentColor" stroke="none" opacity=".8"/>
+          </svg>
+        </span>
+        Orrery
+      </div>
       <div class="nav-item" data-panel="habits" id="nav-habits" role="button" tabindex="0">
         <span class="nav-item-icon">◎</span>
         Habits
@@ -943,6 +955,10 @@
 
     <!-- Daily Business Communication Drill Panel -->
     <div id="panel-drill" style="display:none;flex:1;flex-direction:column;overflow:hidden"></div><!-- /panel-drill : content rendered by renderDrill() -->
+
+    <!-- Orrery Panel — every plan in one field, sized by weight, moving.
+         Content is rendered by renderOrrery() in src/26-orrery.js. -->
+    <div id="panel-orrery" style="display:none"></div><!-- /panel-orrery -->
 
     <!-- Mind Map Panel -->
     <div id="panel-mindmap" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:#000000;position:relative">

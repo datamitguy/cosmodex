@@ -7294,6 +7294,311 @@ textarea:focus-visible {
   .atk-colhead span:nth-child(5), .atk-row > *:nth-child(5) { display:none; }
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+   ORRERY — plans in a field, by weight
+   ────────────────────────────────────────────────────────────────────────────
+   Black and white only. The plan's own colour appears as a dot and a hairline
+   tint and nowhere else, because a commitment colour is user-assigned data,
+   not a semantic. Everything that carries meaning here is white: rim weight,
+   fill, and the ring that spreads from whichever plan has today.
+
+   The shine is thrown, never painted — box-shadow outside the circle, the same
+   move the buttons make — so a bubble reads as lit rather than filled.
+   ════════════════════════════════════════════════════════════════════════════ */
+#panel-orrery { flex:1; min-height:0; flex-direction:column; overflow:hidden; background:var(--bg); }
+
+.orr-head {
+  display:flex; align-items:flex-end; gap:24px; flex-wrap:wrap;
+  padding:14px 22px 13px; border-bottom:1px solid rgba(255,255,255,0.08);
+  flex-shrink:0;
+}
+.orr-head-l { flex:1; min-width:260px; }
+.orr-eyebrow {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.17em;
+  text-transform:uppercase; color:rgba(255,255,255,0.34);
+}
+.orr-verdict { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-top:7px; }
+.orr-v-lead {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.2em;
+  color:var(--ink); background:var(--gold); border-radius:var(--r-xs); padding:2px 7px 1px;
+}
+.orr-v-name { font-family:var(--font-display); font-size:var(--fs-title); color:#fff; line-height:1.1; }
+.orr-v-why {
+  font-family:var(--font-mono); font-size:var(--fs-small); color:var(--muted);
+  letter-spacing:0.02em;
+}
+
+.orr-ctl { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.orr-ctl-lbl {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.17em;
+  color:rgba(255,255,255,0.30); margin-right:3px;
+}
+.orr-ctl-gap { width:1px; height:18px; background:rgba(255,255,255,0.12); margin:0 6px; }
+.orr-btn {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.13em;
+  text-transform:uppercase; padding:6px 13px; border-radius:var(--r-pill);
+  border:1px solid rgba(255,255,255,0.18); background:transparent;
+  color:rgba(255,255,255,0.62); cursor:pointer;
+}
+.orr-btn-sm { padding:5px 10px; letter-spacing:0.1em; }
+
+/* ── The field ─────────────────────────────────────────────────────────── */
+.orr-field {
+  flex:1; min-height:0; position:relative; overflow:hidden;
+  /* A faint well at the centre, so the eye has somewhere to come to rest even
+     before it notices which bubble is holding still there. */
+  background:radial-gradient(circle at 50% 50%, rgba(255,255,255,0.045), transparent 62%);
+}
+.orr-web { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.orr-ring { fill:none; stroke:rgba(255,255,255,0.075); stroke-width:1; }
+.orr-ring.dash { stroke-dasharray:2 9; stroke:rgba(255,255,255,0.09); }
+.orr-pull { stroke:#fff; stroke-width:1; }
+
+.orr-b {
+  position:absolute; top:0; left:0; width:var(--d); height:var(--d);
+  border-radius:50%; box-sizing:border-box;
+  border:1px solid rgba(255,255,255,0.20);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255,255,255,0.055), transparent 72%),
+    #000;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; isolation:isolate; overflow:hidden;
+  /* Only the loop writes transform; everything else is a cheap paint. */
+  will-change:transform;
+  transition:border-color .32s cubic-bezier(.3,1,.3,1),
+             box-shadow .42s cubic-bezier(.3,1,.3,1),
+             opacity .32s ease, width .42s cubic-bezier(.3,1,.3,1),
+             height .42s cubic-bezier(.3,1,.3,1);
+}
+/* Pull as light: the heavier the claim, the warmer the floor of the bubble. */
+.orr-b-pull {
+  position:absolute; inset:0; border-radius:50%; pointer-events:none; z-index:0;
+  opacity:var(--pf);
+  background:radial-gradient(circle at 50% 118%, rgba(255,255,255,0.22), transparent 66%);
+}
+/* Progress, as a ring on the rim rather than a bar inside it. */
+.orr-b-arc { position:absolute; inset:0; transform:rotate(-90deg); pointer-events:none; z-index:1; }
+.orr-arc-track { fill:none; stroke:rgba(255,255,255,0.05); stroke-width:2; }
+.orr-arc-fill  { fill:none; stroke:rgba(255,255,255,0.72); stroke-width:2; stroke-linecap:round; }
+
+/* The square inscribed in the circle (side = d/√2), centred, clipped. Sizing
+   the content box by width alone leaves the vertical: a tall stack still
+   crosses the rim near the top and bottom, where the circle has narrowed to
+   almost nothing. Inside this box, nothing can. */
+.orr-b-in {
+  position:relative; z-index:2; width:70.7%; height:70.7%; text-align:center;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:3px; overflow:hidden;
+}
+.orr-b-goal {
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em;
+  text-transform:uppercase; color:rgba(255,255,255,0.38);
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.orr-b-title {
+  font-family:var(--font-display); font-size:var(--fs-body); line-height:1.18;
+  color:rgba(255,255,255,0.94);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.orr-b-meta {
+  display:flex; flex-direction:column; align-items:center; gap:1px; max-width:100%;
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.06em;
+  color:rgba(255,255,255,0.50);
+}
+.orr-b-meta span {
+  max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.orr-b-meta span + span { color:rgba(255,255,255,0.36); }
+.orr-b-peek {
+  margin-top:3px; display:flex; flex-direction:column; gap:2px; width:100%;
+  border-top:1px solid rgba(255,255,255,0.09); padding-top:5px;
+}
+.orr-b-peek-row {
+  display:flex; align-items:center; gap:5px; max-width:100%;
+  font-family:var(--font-mono); font-size:var(--fs-micro);
+  color:rgba(255,255,255,0.46);
+}
+.orr-b-peek-row b {
+  flex:1; min-width:0; font-weight:400;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.orr-b-peek-row i {
+  width:3px; height:3px; border-radius:50%; background:var(--bc);
+  flex-shrink:0; opacity:.85;
+}
+/* In the flow, not pinned to the rim — pinned, it landed on top of the task
+   peek the moment a bubble had both. */
+.orr-b-flag {
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.14em;
+  color:var(--ink); background:var(--gold); border-radius:var(--r-xs);
+  padding:1px 6px; white-space:nowrap; align-self:center;
+}
+
+.orr-b:hover, .orr-b:focus-visible {
+  border-color:rgba(255,255,255,0.62);
+  box-shadow:0 0 26px rgba(255,255,255,0.20);
+  outline:none;
+}
+
+/* ── Today's pull ──────────────────────────────────────────────────────────
+   It does not move, and one ring spreads from it — Stillwater's mark, at the
+   scale of a plan. Stillness in a drifting field is the loudest thing on the
+   page, which is exactly the claim being made. */
+.orr-b.prime {
+  border-color:rgba(255,255,255,0.80);
+  box-shadow:0 0 44px rgba(255,255,255,0.16), inset 0 0 40px rgba(255,255,255,0.05);
+}
+.orr-b.prime .orr-b-title { color:#fff; }
+.orr-b.prime::before, .orr-b.prime::after {
+  content:''; position:absolute; inset:-1px; border-radius:50%;
+  border:1px solid rgba(255,255,255,0.5); pointer-events:none; z-index:0;
+  animation:orr-ripple 4.4s cubic-bezier(.2,.6,.2,1) infinite;
+}
+.orr-b.prime::after { animation-delay:2.2s; }
+@keyframes orr-ripple {
+  0%   { transform:scale(1);    opacity:.55; }
+  70%  { opacity:.06; }
+  100% { transform:scale(1.46); opacity:0; }
+}
+
+/* Everything recedes while one plan is open. */
+.orr-field.has-open .orr-b:not(.open) { opacity:.22; }
+.orr-field.has-open .orr-pull { stroke-opacity:.04 !important; }
+.orr-field.has-open .orr-ring { stroke:rgba(255,255,255,0.04); }
+
+/* ── The opened bubble: the plan, inside itself ───────────────────────────── */
+.orr-b.open {
+  cursor:default; border-color:rgba(255,255,255,0.46); z-index:5;
+  box-shadow:0 0 70px rgba(255,255,255,0.10);
+  background:radial-gradient(circle at 50% 10%, rgba(255,255,255,0.07), transparent 70%), #000;
+}
+.orr-b.open .orr-b-arc { z-index:1; }
+.orr-d {
+  position:relative; z-index:2;
+  /* Inset to the square that fits inside the circle, with a little air. */
+  width:100%; height:100%; padding:15.5%;
+  display:flex; flex-direction:column; min-height:0;
+}
+.orr-d-head { flex-shrink:0; text-align:center; padding-bottom:9px; border-bottom:1px solid rgba(255,255,255,0.10); }
+.orr-d-goal {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.16em;
+  text-transform:uppercase; color:rgba(255,255,255,0.42); margin-bottom:3px;
+}
+.orr-d-goal i { color:rgba(255,255,255,0.24); font-style:normal; }
+.orr-d-title { font-family:var(--font-display); font-size:var(--fs-title); color:#fff; line-height:1.14; }
+.orr-d-meta {
+  display:flex; align-items:center; justify-content:center; gap:6px; flex-wrap:wrap; margin-top:5px;
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.11em;
+  color:rgba(255,255,255,0.52);
+}
+.orr-d-meta i { color:rgba(255,255,255,0.22); font-style:normal; }
+.orr-d-prime { color:var(--ink); background:var(--gold); border-radius:var(--r-xs); padding:1px 6px; }
+.orr-d-body { flex:1; min-height:0; overflow-y:auto; padding:8px 0 4px; }
+.orr-d-body::-webkit-scrollbar { width:3px; }
+.orr-d-body::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.16); border-radius:var(--r-pill); }
+
+.orr-t {
+  display:flex; align-items:center; gap:8px; padding:5px 2px;
+  border-bottom:1px solid rgba(255,255,255,0.055);
+}
+.orr-t:last-child { border-bottom:none; }
+.orr-t-check {
+  width:13px; height:13px; border-radius:var(--r-xs); flex-shrink:0; cursor:pointer;
+  border:1px solid rgba(255,255,255,0.32);
+  transition:background .18s ease, border-color .18s ease;
+}
+.orr-t-check:hover { border-color:#fff; background:rgba(255,255,255,0.18); }
+.orr-t-name {
+  flex:1; min-width:0; font-family:var(--font-body); font-size:var(--fs-small);
+  color:rgba(255,255,255,0.86); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.orr-t-due {
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.12em;
+  color:rgba(255,255,255,0.40); flex-shrink:0;
+}
+.orr-t-due.over { color:var(--ink); background:var(--gold); border-radius:var(--r-xs); padding:1px 5px; }
+.orr-d-empty, .orr-d-done {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.08em;
+  color:rgba(255,255,255,0.34); padding:10px 2px; text-align:center;
+}
+.orr-d-done { border-top:1px solid rgba(255,255,255,0.07); margin-top:6px; }
+
+.orr-d-foot {
+  flex-shrink:0; display:flex; align-items:center; gap:6px;
+  border-top:1px solid rgba(255,255,255,0.10); padding-top:8px;
+}
+.orr-d-plus { font-family:var(--font-mono); color:rgba(255,255,255,0.34); font-size:var(--fs-small); }
+.orr-d-add {
+  flex:1; min-width:0; background:transparent; border:none; outline:none;
+  font-family:var(--font-body); font-size:var(--fs-small); color:#fff;
+}
+.orr-d-add::placeholder { color:rgba(255,255,255,0.30); }
+
+/* ── The ladder — the same ranking, readable ─────────────────────────────── */
+.orr-ladder {
+  flex-shrink:0; max-height:146px; overflow-y:auto;
+  border-top:1px solid rgba(255,255,255,0.08);
+  padding:10px 22px 12px;
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(268px, 1fr));
+  gap:2px 22px; align-content:start;
+}
+.orr-l-head {
+  grid-column:1 / -1;
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.17em;
+  text-transform:uppercase; color:rgba(255,255,255,0.28); margin-bottom:4px;
+}
+.orr-l {
+  display:flex; align-items:center; gap:9px; padding:4px 7px; border-radius:var(--r-xs);
+  cursor:pointer; transition:background .18s ease;
+}
+.orr-l:hover, .orr-l:focus-visible { background:rgba(255,255,255,0.055); outline:none; }
+.orr-l.sel { background:rgba(255,255,255,0.10); }
+.orr-l-n {
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.1em;
+  color:rgba(255,255,255,0.30); width:16px; flex-shrink:0;
+}
+.orr-l-dot { width:5px; height:5px; border-radius:50%; background:var(--bc); flex-shrink:0; }
+.orr-l-name {
+  flex:1; min-width:0; font-family:var(--font-body); font-size:var(--fs-small);
+  color:rgba(255,255,255,0.80); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.orr-l.prime .orr-l-name { color:#fff; }
+.orr-l-bar {
+  width:62px; height:2px; flex-shrink:0; border-radius:var(--r-pill);
+  background:rgba(255,255,255,0.10); overflow:hidden;
+}
+.orr-l-bar i { display:block; height:100%; background:rgba(255,255,255,0.72); }
+.orr-l.prime .orr-l-bar i { background:#fff; box-shadow:0 0 8px rgba(255,255,255,.6); }
+.orr-l-open {
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.08em;
+  color:rgba(255,255,255,0.34); width:52px; text-align:right; flex-shrink:0;
+}
+
+/* ── Empty ─────────────────────────────────────────────────────────────── */
+.orr-field.orr-empty { display:flex; align-items:center; justify-content:center; }
+.orr-empty-in { text-align:center; max-width:420px; padding:0 24px; }
+.orr-empty-mark { position:relative; height:84px; margin-bottom:20px; }
+.orr-empty-mark span {
+  position:absolute; left:50%; top:50%; border-radius:50%;
+  border:1px solid rgba(255,255,255,0.16); transform:translate(-50%,-50%);
+}
+.orr-empty-mark span:nth-child(1) { width:16px; height:16px; background:rgba(255,255,255,0.5); border:none; }
+.orr-empty-mark span:nth-child(2) { width:52px; height:46px; }
+.orr-empty-mark span:nth-child(3) { width:84px; height:74px; border-style:dashed; }
+.orr-empty-t { font-family:var(--font-display); font-size:var(--fs-title); color:#fff; }
+.orr-empty-b {
+  font-family:var(--font-body); font-size:var(--fs-small); color:var(--muted);
+  line-height:1.55; margin:8px 0 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orr-b.prime::before, .orr-b.prime::after { animation:none; opacity:.18; }
+}
+@media (max-width: 900px) {
+  .orr-head { padding:12px 16px; }
+  .orr-ladder { padding:10px 16px 12px; max-height:120px; }
+}
+
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
    One motion for every button in the app: a circle of pure white, larger than
    the button and clipped by it, travels upward — in from below on hover, out
@@ -7322,7 +7627,7 @@ textarea:focus-visible {
 .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
 .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
 .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-.btn-secondary, .td-range-btn,
+.btn-secondary, .td-range-btn, .orr-btn,
 .btn-primary, .ritual-start-btn, .sched-confirm-btn, .dash-btn-commit, .commit-action-btn.done, .friction-action-btn.keep {
   position:relative; overflow:hidden; isolation:isolate;
   /* The clip needs the label to fit: these sit in flex rows beside inputs that
@@ -7347,7 +7652,7 @@ textarea:focus-visible {
 .orb-gadget-btn::before,
 .friction-action-btn:not(.kill):not(.keep)::before,
 .btn-ghost:not(.btn-danger)::before, .btn-secondary::before,
-.td-range-btn::before,
+.td-range-btn::before, .orr-btn::before,
 .btn-primary::before, .ritual-start-btn::before,
 .sched-confirm-btn::before, .dash-btn-commit::before, .commit-action-btn.done::before,
 .friction-action-btn.keep::before {
@@ -7369,7 +7674,7 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary, .td-range-btn,
+    .btn-secondary, .td-range-btn, .orr-btn,
 .td-range-btn):not(.active):is(:hover, :focus-visible)::before,
 :is(    .btn-primary, .ritual-start-btn, .sched-confirm-btn, .dash-btn-commit, .commit-action-btn.done, .friction-action-btn.keep):is(:hover, :focus-visible)::before {
   /* The animation plays the rise; the transform holds the resting value at 0
@@ -7384,7 +7689,7 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary, .td-range-btn,
+    .btn-secondary, .td-range-btn, .orr-btn,
 .td-range-btn).active::before { transform:translateY(0); opacity:1; }
 @keyframes cdx-sweep-up { from { transform:translateY(74%); } to { transform:translateY(0); } }
 
@@ -7398,7 +7703,7 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary, .td-range-btn,
+    .btn-secondary, .td-range-btn, .orr-btn,
 .td-range-btn):not(.active):is(:hover, :focus-visible),
 :is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
     .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
@@ -7407,7 +7712,7 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary, .td-range-btn,
+    .btn-secondary, .td-range-btn, .orr-btn,
 .td-range-btn).active {
   background:transparent; color:var(--ink); border-color:var(--gold); text-shadow:none;
   box-shadow:0 0 18px rgba(255,255,255,.34);

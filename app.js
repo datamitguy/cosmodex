@@ -345,6 +345,13 @@ document.querySelectorAll('.nav-item[data-panel]').forEach(item => {
       showMainPanel('milestones');
       return;
     }
+    // Orrery → full page
+    if (panel === 'orrery') {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      showMainPanel('orrery');
+      return;
+    }
     // Timedrift → full screen panel
     if (panel === 'timedrift') {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -458,10 +465,12 @@ function _showMainPanelPaint(name) {
   if (cnsPanel) cnsPanel.style.display = name === 'consolidation' ? 'flex' : 'none';
   document.getElementById('panel-drill').style.display       = name === 'drill' ? 'flex' : 'none';
   document.getElementById('panel-timedrift').style.display   = name === 'timedrift' ? 'flex' : 'none';
+  const orrPanel = document.getElementById('panel-orrery');
+  if (orrPanel) orrPanel.style.display = name === 'orrery' ? 'flex' : 'none';
   document.getElementById('panel-mindmap').style.display     = name === 'mindmap' ? 'flex' : 'none';
   const notesPanel = document.getElementById('panel-notes');
   if (notesPanel) notesPanel.style.display = name === 'notes' ? 'flex' : 'none';
-  const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Stillwater', mindmap:'Mind Map', notes:'Notes' };
+  const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Stillwater', orrery:'Orrery', mindmap:'Mind Map', notes:'Notes' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = (name === 'timedrift' && _tdSessionOpen) ? 'Focus' : (titles[name] || 'Today');
   if (name === 'default') { window.renderDashboardBoard?.(); }
@@ -478,6 +487,9 @@ function _showMainPanelPaint(name) {
   }
   if (name === 'insights') { habitsSubscribe(); requestAnimationFrame(() => { window.renderInsightsX ? renderInsightsX() : renderInsights(); }); }
   if (name === 'consolidation') { initConsolidation(); }
+  // The field reads its size from the panel, so it has to render after the
+  // display flip above — a layout taken while display:none measures zero.
+  if (name === 'orrery') { requestAnimationFrame(() => window.initOrrery?.()); }
   if (name === 'drill') { renderDrill(); }
   const orbEl = document.getElementById('cosmodex-orb');
   if (orbEl) orbEl.style.display = name === 'timedrift' ? 'none' : '';
@@ -2700,6 +2712,7 @@ async function addMilestoneActivity(eventId, text, taskId=null) {
 function renderMilestones() {
   // Keep the design-kit tabs live when commitments/milestones change.
   window._refreshPlanDesign && window._refreshPlanDesign();
+  window._orreryRefresh?.();   // plans are what the Orrery is made of
   // Always show dashboard in left panel; timeline (if active) in right panel
   renderMilestoneDashboard();
   // Only manage timeline/center-panel state when actually on the Planning panel
@@ -6373,6 +6386,7 @@ function initData() {
     drawCosmodex(); // immediate orb sync on task change
     if (_mainPanel === "insights") (window.renderInsightsX || renderInsights)();
     window._refreshPlanTaskViews?.();
+    window._orreryRefresh?.();        // the Orrery weighs plans by their tasks
     window._remindMirrorSchedule?.(); // mirror tasks to Apple Reminders (desktop app)
     window._chartSchedule?.();        // refresh the observation-log widget
   });
@@ -18270,3 +18284,762 @@ async function goalStepDown(parentId) {
     : 'What has to be true this month?', 'info');
   if (ref?.id) openGoalModal(ref.id);
 }
+/* ══════════════════════════════════════════════════════════════════════════
+   ORRERY — every plan you are carrying, in one field, moving
+
+   An orrery is a clockwork model of a system in motion: you read it by
+   watching, not by scrolling. That is the whole argument for this page.
+   Planning answers "what have I committed to" as a list, and a list of nine
+   commitments reads as nine equal things. It is not nine equal things. One of
+   them is due Friday with two tasks already overdue; one is a big rock that
+   will still be there in March; one has not been touched in three weeks.
+
+   So: each plan is a bubble. Size is how much it weighs. Motion is which one
+   has you today — the heaviest pull stops dead in the centre while everything
+   else keeps drifting, because in a field of moving objects the eye goes to
+   the one that is still. (Stillwater's lesson, applied to plans.)
+
+   Click a bubble and it opens into itself: its goal, its deadline, its
+   progress and every task under it, inside the circle. Nothing navigates away.
+
+   ── WHAT DRIVES THE SIZE ───────────────────────────────────────────────────
+   Three modes, one switch:
+
+     PULL      — should I be on this today?  (the default, and the ranking)
+     SCOPE     — how much work is in it?
+     DEADLINE  — how soon is it over?
+
+   PULL is a weighted sum of five readings, each normalised to 0–1:
+
+     pressing   .32   open tasks due today or already overdue
+     urgency    .26   how close the end date is (a big rock is never urgent)
+     neglect    .16   days since anything under it was completed
+     cadence    .12   a weekly promise presses harder than a quarterly one
+     goal       .14   serving a declared goal outranks an orphan plan
+
+   Those weights are a judgement, not a measurement, and the page says so: the
+   verdict line at the top names the reasons in words, so you can disagree with
+   the arithmetic rather than having to trust it.
+
+   ── MOTION ─────────────────────────────────────────────────────────────────
+   One rAF loop writes transforms; nothing else animates per frame. Under
+   prefers-reduced-motion, or with MOTION off, the field is laid out once and
+   left alone — the ranking still reads, because rank is also radius.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* How many bubbles the field will draw. Past this the ring has to shrink
+   everything to fit, and somewhere around twenty-five a bubble is a 13px dot
+   with no name on it — which is not a picture of your plans, it is confetti.
+   The field shows the heaviest sixteen; the ladder underneath lists every one,
+   so nothing is hidden, it is just not drawn as a circle. */
+const _ORR_MAX_BUBBLES = 16;
+
+const _ORR_SIZE_KEY   = 'cdx_orr_size';     // 'pull' | 'scope' | 'soon'
+const _ORR_MOTION_KEY = 'cdx_orr_motion';   // '0' to freeze the field
+
+let _orrSizeMode = 'pull';
+let _orrMotionOn = true;
+let _orrOpenId   = null;      // the bubble currently opened into itself
+let _orrRaf      = null;
+let _orrT0       = 0;         // performance.now() the field's clock is measured from
+let _orrT        = 0;         // elapsed seconds — the field's position in its cycle
+let _orrBodies   = [];        // live orbit state, one per bubble
+let _orrRO       = null;      // ResizeObserver on the field
+let _orrCentre   = { cx: 0, cy: 0 };   // where the field's centre currently is
+
+try {
+  const s = localStorage.getItem(_ORR_SIZE_KEY);
+  if (s === 'pull' || s === 'scope' || s === 'soon') _orrSizeMode = s;
+  _orrMotionOn = localStorage.getItem(_ORR_MOTION_KEY) !== '0';
+} catch (e) {}
+
+/* ── Reading the data ───────────────────────────────────────────────────── */
+
+// Every task under every plan, open and done — progress has to count both.
+function _orrTasksByPlan() {
+  const map = (typeof _buildTaskToProjectMap === 'function') ? _buildTaskToProjectMap() : {};
+  const by = {};
+  (typeof TASKS === 'undefined' ? [] : TASKS).forEach(t => {
+    const link = map[t.id];
+    if (!link) return;
+    (by[link.projectId] = by[link.projectId] || []).push(t);
+  });
+  return by;
+}
+
+function _orrGoalOf(pid) {
+  if (typeof GOALS === 'undefined') return null;
+  return (GOALS || []).find(g => (g.commitmentIds || []).includes(pid) && g.status !== 'dropped') || null;
+}
+
+function _orrDayGap(fromISO, toISO) {
+  return Math.round((new Date(toISO + 'T00:00') - new Date(fromISO + 'T00:00')) / 86400000);
+}
+
+/* The five readings, plus the words for them. `reasons` is ordered by how much
+   each one actually contributed, so the verdict line leads with the real
+   cause rather than with whatever happens to be listed first. */
+function _orrScore(p, tasks, today) {
+  const open     = tasks.filter(t => !t.done);
+  const pressing = open.filter(t => t.dueDate && t.dueDate <= today);
+  const overdue  = pressing.filter(t => t.dueDate < today).length;
+  const cad      = (typeof commitmentCadence === 'function') ? commitmentCadence(p) : 'quarterly';
+
+  // Deadline. A big rock is ongoing by definition, so it gets a flat middling
+  // urgency rather than a date-derived one — otherwise "no end date" would
+  // read as "not urgent" and BAU would sink out of the field entirely.
+  let days = null, urgency;
+  if (p.bigRock)      urgency = 0.34;
+  else if (p.endDate) { days = _orrDayGap(today, p.endDate);
+                        urgency = days <= 0 ? 1 : Math.max(0.08, 1 / (1 + days / 14)); }
+  else                urgency = 0.30;
+
+  const rPressing = Math.min(1, pressing.length / 3);
+  const rCadence  = cad === 'weekly' ? 1 : cad === 'monthly' ? 0.6 : 0.34;
+  const goal      = _orrGoalOf(p.id);
+  const rGoal     = goal ? 1 : 0.34;
+
+  // Neglect only counts where there is open work being neglected. A finished
+  // plan sitting untouched is not a claim on today.
+  const lastDone = tasks.filter(t => t.done && t.doneDate).map(t => t.doneDate).sort().pop();
+  const quiet    = lastDone ? _orrDayGap(lastDone, today) : (open.length ? 10 : 0);
+  const rNeglect = open.length ? Math.min(1, quiet / 14) : 0;
+
+  const parts = [
+    { k: 'pressing', v: rPressing, w: 0.32 },
+    { k: 'urgency',  v: urgency,   w: 0.26 },
+    { k: 'neglect',  v: rNeglect,  w: 0.16 },
+    { k: 'cadence',  v: rCadence,  w: 0.12 },
+    { k: 'goal',     v: rGoal,     w: 0.14 },
+  ];
+  const score = parts.reduce((s, x) => s + x.v * x.w, 0);
+
+  const word = {
+    pressing: overdue
+      ? `${overdue} task${overdue > 1 ? 's' : ''} overdue`
+      : pressing.length ? `${pressing.length} due today` : '',
+    urgency: p.bigRock ? 'ongoing · BAU'
+      : days == null ? ''
+      : days < 0  ? `${-days} day${days === -1 ? '' : 's'} past its end date`
+      : days === 0 ? 'ends today'
+      : days <= 45 ? `${days} day${days === 1 ? '' : 's'} left`
+      : '',
+    neglect: rNeglect >= 0.6 && lastDone ? `nothing finished in ${quiet} days`
+      : rNeglect >= 0.6 ? 'nothing finished under it yet' : '',
+    cadence: cad === 'weekly' ? 'a weekly promise' : cad === 'monthly' ? 'a monthly promise' : '',
+    goal:    goal ? `serves “${goal.title || 'a goal'}”` : '',
+  };
+  const reasons = parts
+    .slice().sort((a, b) => (b.v * b.w) - (a.v * a.w))
+    .map(x => word[x.k]).filter(Boolean);
+
+  return {
+    score, days, open: open.length, done: tasks.length - open.length,
+    total: tasks.length, overdue, pressing: pressing.length,
+    cad, goal, reasons, lastDone,
+  };
+}
+
+/* The three size modes, each returning a 0–1 weight across the set. SCOPE is
+   normalised against the biggest plan rather than an absolute ceiling, so the
+   field reads the same whether you run four plans or forty. */
+function _orrWeight(row, maxTotal) {
+  if (_orrSizeMode === 'scope') {
+    const base = row.s.total + (row.p.bigRock ? 4 : 0);
+    return maxTotal ? Math.min(1, base / maxTotal) : 0.4;
+  }
+  if (_orrSizeMode === 'soon') {
+    if (row.p.bigRock || row.s.days == null) return 0.3;
+    return row.s.days <= 0 ? 1 : Math.max(0.1, 1 / (1 + row.s.days / 14));
+  }
+  return row.s.score;
+}
+
+/* ── Build ──────────────────────────────────────────────────────────────── */
+
+function _orrRows() {
+  const today  = localDateStr(new Date());
+  const active = (typeof MILESTONE_PROJECTS === 'undefined' ? [] : MILESTONE_PROJECTS)
+    .filter(p => !p.isArchived);
+  const byPlan = _orrTasksByPlan();
+  const rows = active.map(p => {
+    const tasks = byPlan[p.id] || [];
+    return { p, tasks, s: _orrScore(p, tasks, today) };
+  });
+  // Ranked by pull always — the ranking is the answer to "today?", and the
+  // size switch only changes how each bubble is drawn, never who is centre.
+  rows.sort((a, b) => b.s.score - a.s.score);
+  const maxTotal = rows.reduce((m, r) => Math.max(m, r.s.total + (r.p.bigRock ? 4 : 0)), 0);
+  rows.forEach((r, i) => { r.rank = i; r.w = _orrWeight(r, maxTotal); });
+  return { rows, today };
+}
+
+function _orrFmtDate(iso) {
+  return new Date(iso + 'T00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function _orrWindowText(p, s) {
+  if (p.bigRock) return 'ONGOING';
+  if (!p.endDate) return s.cad.toUpperCase();
+  return (s.days < 0 ? 'ENDED ' : 'TO ') + _orrFmtDate(p.endDate).toUpperCase();
+}
+
+// The collapsed bubble. Diameter comes from the weight; what fits inside comes
+// from the diameter, so a small bubble shows a name and nothing else rather
+// than three clipped lines of 9px text.
+function _orrBubbleHtml(row, d, pctFill) {
+  const { p, s } = row;
+  const r  = d / 2 - 3;
+  const c  = 2 * Math.PI * r;
+  const pc = s.total ? s.done / s.total : 0;
+  /* What fits is a question about the circle, not about the data. A chord at
+     the top or bottom of a small bubble is barely wider than the gap between
+     two words, so each line earns its place by diameter. */
+  const showMeta  = d >= 112;
+  const showTasks = d >= 186;
+  const showGoal  = d >= 194 && s.goal;
+  const open = row.tasks.filter(t => !t.done)
+    .sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')));
+  // No "+N more" line: the meta above already says how many are open, so it
+  // was a second count of the same thing, and it was the line that pushed the
+  // stack past the chord on the biggest bubble.
+  const peek = showTasks && open.length
+    ? `<div class="orr-b-peek">${open.slice(0, 2).map(t =>
+        `<span class="orr-b-peek-row"><i></i><b>${escHtml(t.title || 'Untitled')}</b></span>`).join('')}</div>`
+    : '';
+
+  return `
+    <div class="orr-b${row.rank === 0 ? ' prime' : ''}" data-orr-b="${escAttr(p.id)}"
+         role="button" tabindex="0" style="--bc:${escAttr(p.color || '#8a8070')};--d:${d}px"
+         title="${escAttr((p.title || 'Untitled') + ' — ' + s.open + ' open')}">
+      <svg class="orr-b-arc" viewBox="0 0 ${d} ${d}" aria-hidden="true">
+        <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-track"/>
+        <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-fill"
+                stroke-dasharray="${c.toFixed(1)}"
+                stroke-dashoffset="${(c * (1 - pc)).toFixed(1)}"/>
+      </svg>
+      <span class="orr-b-pull" style="--pf:${pctFill.toFixed(3)}"></span>
+      <div class="orr-b-in">
+        ${showGoal ? `<div class="orr-b-goal">${escHtml(s.goal.title || 'GOAL')}</div>` : ''}
+        <div class="orr-b-title">${escHtml(p.title || 'Untitled')}</div>
+        ${showMeta ? `<div class="orr-b-meta">
+            <span>${s.open} OPEN</span><span>${escHtml(_orrWindowText(p, s))}</span>
+          </div>` : ''}
+        ${s.overdue && showMeta ? `<span class="orr-b-flag">${s.overdue} OVERDUE</span>` : ''}
+        ${peek}
+      </div>
+    </div>`;
+}
+
+// The opened bubble — the plan, inside itself. Same node shape as the
+// collapsed one, so the layout treats both identically and closing is just a
+// re-render with _orrOpenId cleared rather than DOM surgery.
+function _orrDetailHtml(row, d) {
+  const { p, s } = row;
+  const today = localDateStr(new Date());
+  const open = row.tasks.filter(t => !t.done)
+    .sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')));
+  const done = row.tasks.filter(t => t.done);
+  const pc   = s.total ? Math.round(s.done / s.total * 100) : 0;
+  const r = d / 2 - 3, c = 2 * Math.PI * r;
+
+  const rows = open.length
+    ? open.map(t => `
+        <div class="orr-t" data-orr-t="${escAttr(t.id)}">
+          <span class="orr-t-check" data-orr-done="${escAttr(t.id)}" title="Mark complete"></span>
+          <span class="orr-t-name">${escHtml(t.title || 'Untitled')}</span>
+          ${t.dueDate ? `<span class="orr-t-due${t.dueDate < today ? ' over' : ''}">${
+            t.dueDate < today ? 'OVERDUE' : _orrFmtDate(t.dueDate).toUpperCase()}</span>` : ''}
+        </div>`).join('')
+    : `<div class="orr-d-empty">No open tasks under this plan. ${
+        s.done ? 'All ' + s.done + ' are done.' : 'Add the first one below.'}</div>`;
+
+  return `
+    <div class="orr-b open" data-orr-b="${escAttr(p.id)}"
+         style="--bc:${escAttr(p.color || '#8a8070')};--d:${d}px">
+    <svg class="orr-b-arc" viewBox="0 0 ${d} ${d}" aria-hidden="true">
+      <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-track"/>
+      <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-fill"
+              stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - pc / 100)).toFixed(1)}"/>
+    </svg>
+    <div class="orr-d">
+      <div class="orr-d-head">
+        ${s.goal ? `<div class="orr-d-goal">${escHtml(s.goal.title || 'GOAL')} <i>›</i></div>` : ''}
+        <div class="orr-d-title">${escHtml(p.title || 'Untitled')}</div>
+        <div class="orr-d-meta">
+          <span>${escHtml(s.cad.toUpperCase())}</span><i>·</i>
+          ${p.bigRock || p.endDate
+            ? `<span>${escHtml(_orrWindowText(p, s))}</span><i>·</i>` : ''}
+          <span>${pc}% DONE</span>
+          ${row.rank === 0 ? '<i>·</i><span class="orr-d-prime">TODAY’S PULL</span>' : ''}
+        </div>
+      </div>
+      <div class="orr-d-body">${rows}
+        ${done.length ? `<div class="orr-d-done">${done.length} completed</div>` : ''}
+      </div>
+      <div class="orr-d-foot">
+        <span class="orr-d-plus">＋</span>
+        <input class="orr-d-add" data-orr-add="${escAttr(p.id)}"
+               placeholder="Add a task…" autocomplete="off"/>
+        <button class="orr-btn orr-btn-sm" data-orr-plan="${escAttr(p.id)}" title="Open in Planning">EDIT</button>
+        <button class="orr-btn orr-btn-sm" data-orr-close="1" title="Close (Esc)">✕</button>
+      </div>
+    </div>
+    </div>`;
+}
+
+function _orrLadderHtml(rows) {
+  const top = rows[0] ? rows[0].s.score || 1 : 1;
+  return rows.map(r => `
+    <div class="orr-l${r.rank === 0 ? ' prime' : ''}${_orrOpenId === r.p.id ? ' sel' : ''}"
+         data-orr-b="${escAttr(r.p.id)}" role="button" tabindex="0"
+         style="--bc:${escAttr(r.p.color || '#8a8070')}">
+      <span class="orr-l-n">${String(r.rank + 1).padStart(2, '0')}</span>
+      <span class="orr-l-dot"></span>
+      <span class="orr-l-name">${escHtml(r.p.title || 'Untitled')}</span>
+      <span class="orr-l-bar"><i style="width:${(r.s.score / top * 100).toFixed(0)}%"></i></span>
+      <span class="orr-l-open">${r.s.open} open</span>
+    </div>`).join('');
+}
+
+/* ── Render ─────────────────────────────────────────────────────────────── */
+
+function renderOrrery() {
+  const panel = document.getElementById('panel-orrery');
+  if (!panel) return;
+  const { rows } = _orrRows();
+
+  const sizeBtn = (k, lbl, tip) =>
+    `<button class="orr-btn${_orrSizeMode === k ? ' active' : ''}" data-orr-size="${k}" title="${escAttr(tip)}">${lbl}</button>`;
+
+  const head = `
+    <div class="orr-head">
+      <div class="orr-head-l">
+        <div class="orr-eyebrow">ORRERY · ${rows.length} PLAN${rows.length === 1 ? '' : 'S'} IN ORBIT${
+          rows.length > _ORR_MAX_BUBBLES ? ` · FIELD SHOWS THE HEAVIEST ${_ORR_MAX_BUBBLES}` : ''}</div>
+        <div class="orr-verdict" id="orr-verdict"></div>
+      </div>
+      <div class="orr-ctl">
+        <span class="orr-ctl-lbl">SIZE BY</span>
+        ${sizeBtn('pull',  'PULL',     'How much this plan is asking of today')}
+        ${sizeBtn('scope', 'SCOPE',    'How much work sits inside it')}
+        ${sizeBtn('soon',  'DEADLINE', 'How soon it is over')}
+        <span class="orr-ctl-gap"></span>
+        <button class="orr-btn${_orrMotionOn ? ' active' : ''}" id="orr-motion"
+                title="Stop the field">MOTION</button>
+      </div>
+    </div>`;
+
+  if (!rows.length) {
+    panel.innerHTML = head + `
+      <div class="orr-field orr-empty">
+        <div class="orr-empty-in">
+          <div class="orr-empty-mark"><span></span><span></span><span></span></div>
+          <div class="orr-empty-t">Nothing in orbit.</div>
+          <div class="orr-empty-b">The Orrery weighs the plans you have made. Make one on
+            Planning and it appears here with its mass, its deadline and its tasks.</div>
+          <button class="orr-btn" id="orr-go-plan">◉ PLANNING</button>
+        </div>
+      </div>`;
+    _orrStop();
+    _orrWireHead(panel);
+    document.getElementById('orr-go-plan')?.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      document.getElementById('nav-planning')?.classList.add('active');
+      showMainPanel('milestones');
+    });
+    return;
+  }
+
+  panel.innerHTML = head +
+    `<div class="orr-field" id="orr-field">
+       <svg class="orr-web" id="orr-web" aria-hidden="true"></svg>
+     </div>
+     <div class="orr-ladder" id="orr-ladder">
+       <div class="orr-l-head">BY PULL · HEAVIEST FIRST</div>
+       ${_orrLadderHtml(rows)}
+     </div>`;
+
+  // The verdict, in words. Motion says which one; this says why, so the
+  // ranking is arguable rather than oracular.
+  const top = rows[0];
+  const v = document.getElementById('orr-verdict');
+  if (v) v.innerHTML =
+    `<span class="orr-v-lead">TODAY</span>
+     <span class="orr-v-name">${escHtml(top.p.title || 'Untitled')}</span>
+     <span class="orr-v-why">${escHtml(top.s.reasons.slice(0, 3).join(' · ') || 'the heaviest thing you are carrying')}</span>`;
+
+  // A plan can be archived or deleted while its bubble is open.
+  if (_orrOpenId && !rows.some(r => r.p.id === _orrOpenId)) _orrOpenId = null;
+
+  _orrLayout(rows);
+  _orrWireHead(panel);
+  _orrWireField();
+}
+window.renderOrrery = renderOrrery;
+
+/* ── Walking an ellipse by distance, not by angle ──────────────────────────
+   Stepping θ in equal parts does NOT space points equally on an ellipse: the
+   step is ry·Δθ at the ends of the major axis and rx·Δθ at the top and bottom,
+   so on a wide field the bubbles bunch at the left and right and collide while
+   the top looks empty. These two turn a distance along the rim into the angle
+   that reaches it, which fixes the spacing and, applied per frame, also makes
+   a bubble travel at a constant speed instead of visibly accelerating through
+   the flat of the curve. */
+function _orrArcTable(rx, ry) {
+  const N = 720, t = [0];
+  let L = 0, px = rx, py = 0;
+  for (let i = 1; i <= N; i++) {
+    const a = i / N * Math.PI * 2, x = rx * Math.cos(a), y = ry * Math.sin(a);
+    L += Math.hypot(x - px, y - py); t.push(L); px = x; py = y;
+  }
+  return { t, L };
+}
+function _orrAngAt(tab, s) {
+  const { t, L } = tab, n = t.length - 1;
+  s = ((s % L) + L) % L;
+  let lo = 0, hi = n;
+  while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (t[mid] <= s) lo = mid; else hi = mid; }
+  const f = (s - t[lo]) / Math.max(1e-6, t[hi] - t[lo]);
+  return (lo + f) / n * Math.PI * 2;
+}
+
+/* Lay the bubbles out, then hand them to the loop.
+
+   Ring radii are DERIVED, never fixed. A fixed radius and a weight-driven
+   diameter are the same mistake as a fixed row height and variable text: the
+   moment one plan outweighs the rest, its bubble eats its neighbours. So each
+   ring is pushed out until (a) its members fit around it end to end and (b) it
+   clears whatever is inside it — then the whole field is scaled down by one
+   factor if that pushed it past the edge. Uniform scaling keeps both
+   conditions true, because circumference and diameter scale together.
+
+   Rank still sets the ring, so the ordering survives MOTION being off: radius
+   is information, not decoration. */
+function _orrLayout(allRows) {
+  // An opened plan is always drawn, even if it ranks below the cut.
+  const rows = allRows.slice(0, _ORR_MAX_BUBBLES).some(r => r.p.id === _orrOpenId) || !_orrOpenId
+    ? allRows
+    : [allRows.find(r => r.p.id === _orrOpenId)].concat(allRows.filter(r => r.p.id !== _orrOpenId));
+  const field = document.getElementById('orr-field');
+  const web   = document.getElementById('orr-web');
+  if (!field) return;
+  const W = field.clientWidth, H = field.clientHeight;
+  if (!W || !H) return;             // panel still hidden; the observer re-runs us
+  const cx = W / 2, cy = H / 2;
+  /* The dark between two bubbles. It covers three things at once: the gap you
+     actually see, the ~2% each bubble gains at the top of its breath, and the
+     small amount by which a straight line between two points on the rim falls
+     short of the arc they were spaced along. Sixteen left sub-pixel kisses on
+     a crowded ring; this does not. */
+  const GAP = 22;
+
+  /* Exactly one body holds the centre. Normally that is rank 0 — today's pull.
+     While a bubble is open it takes the centre instead, and rank 0 rejoins the
+     inner ring, so the two never stack on top of each other. */
+  const holdsCentre = r => _orrOpenId ? r.p.id === _orrOpenId : r.rank === 0;
+
+  // The opened plan is a circle big enough to read a task list inside.
+  const openD = Math.round(Math.min(560, W * 0.66, H * 0.94));
+  const unit  = Math.min(W, H) / 2;
+  const maxD  = Math.max(126, Math.min(unit * 0.80, 230));
+  const minD  = Math.max(78, maxD * 0.42);
+  const dOf   = r => r.p.id === _orrOpenId ? openD
+                   : Math.round(minD + (maxD - minD) * Math.pow(r.w, 0.85));
+
+  const shown     = rows.slice(0, _ORR_MAX_BUBBLES);
+  const centreRow = shown.find(holdsCentre);
+  const orbiters  = shown.filter(r => !holdsCentre(r));
+  /* One ring until there are too many for one ring. A third ring looks like
+     more structure than it is: each one has to clear the one inside it, and by
+     the third the field has been scaled down so far that no bubble can hold a
+     name. Nine around a centre is about where a single orbit stops being
+     readable — past that, open the second, and _ORR_MAX_BUBBLES stops it
+     there. Rank is the order around the ring; the ladder gives it exactly. */
+  const ringOf    = i => i >= 9 ? 1 : 0;
+  const SPD       = [0.0111, -0.0076];   // revolutions/sec, opposite directions
+                                         // so the two rings read apart
+
+  const members = [[], []];
+  orbiters.forEach((r, i) => members[ringOf(i)].push({ r, d: dOf(r) }));
+
+  /* How flat the orbits are. A wide field gets wide ellipses; a square one
+     gets near-circles. The floor is not cosmetic: spacing is solved along the
+     rim, but two bubbles overlap along the straight line between them, and at
+     the ends of the major axis of a flat ellipse the curvature is tight enough
+     that the chord falls well short of the arc. Keeping the orbit rounder than
+     0.7 keeps the two close enough that the gap survives. */
+  const q = Math.min(1, Math.max(0.70, H / W));
+
+  /* Two constraints, and the second is the one that is easy to get wrong.
+     Fitting members around the ring is a question about its circumference, so
+     it is answered with the mean radius. Clearing what is inside the ring is a
+     question about its NARROWEST point — the minor axis — because that is
+     where an ellipse passes closest to the centre. Sizing the clearance off
+     the mean radius instead lets the top and bottom bubbles sit on the centre
+     one, which is exactly what it did. */
+  const ryOf = rm => rm * 2 * q / (1 + q);
+  const rmOf = ry => ry * (1 + q) / (2 * q);
+  // Perimeter of the unit ring at this flattening, so `fits` can be asked of
+  // the real rim length rather than of a circle that is not there.
+  const kPerim = _orrArcTable(2 / (1 + q), 2 * q / (1 + q)).L;
+
+  const centreD = centreRow ? dOf(centreRow) : 0;
+  const ringR = [];                 // mean radius per ring, pre-scale
+  let innerRy = centreD / 2, innerMax = 0;
+  members.forEach(mem => {
+    if (!mem.length) { ringR.push(rmOf(innerRy)); return; }
+    const widest = Math.max.apply(null, mem.map(m => m.d));
+    const fits   = mem.reduce((t, m) => t + m.d + GAP, 0) / kPerim;
+    const clearRy = innerRy + innerMax / 2 + widest / 2 + GAP;
+    const rm = Math.max(fits, rmOf(clearRy));
+    ringR.push(rm);
+    innerRy = ryOf(rm); innerMax = widest;
+  });
+
+  // One scale for the whole field, if the rings ran past the edge.
+  let extX = centreD / 2, extY = centreD / 2;
+  members.forEach((mem, k) => {
+    if (!mem.length) return;
+    const widest = Math.max.apply(null, mem.map(m => m.d));
+    const rx = ringR[k] * 2 / (1 + q);
+    extX = Math.max(extX, rx + widest / 2);
+    extY = Math.max(extY, rx * q + widest / 2);
+  });
+  const sc = Math.min(1, (W / 2 - 10) / Math.max(1, extX), (H / 2 - 10) / Math.max(1, extY));
+
+  const html = [], bodies = [], ringPx = [];
+  if (centreRow) {
+    const d = Math.round(centreD * sc);
+    html.push(_orrOpenId === centreRow.p.id
+      ? _orrDetailHtml(centreRow, d)
+      : _orrBubbleHtml(centreRow, d, centreRow.s.score));
+    bodies.push({ id: centreRow.p.id, d, centre: true,
+                  open: _orrOpenId === centreRow.p.id, x: cx, y: cy, phase: 0 });
+  }
+  members.forEach((mem, k) => {
+    const rx = ringR[k] * 2 / (1 + q) * sc, ry = rx * q;
+    ringPx.push({ rx, ry, used: mem.length > 0 });
+    if (!mem.length) return;
+    const tab = _orrArcTable(rx, ry);
+    /* Each bubble gets a share of the rim proportional to its own width, so a
+       big one and a small one keep the same gap on either side of them.
+
+       The gap scales with everything else. It has to: the ring radii were
+       solved from `d + GAP` BEFORE `sc` was known, so holding GAP at its full
+       value while the ring and the bubbles shrink asks a smaller rim to seat
+       the same total — and the shortfall comes out of the gaps, as overlap.
+       `sc` rarely drops below ~0.9, so the gap you see barely changes. */
+    const span = mem.reduce((t, m) => t + (m.d + GAP) * sc, 0);
+    const stretch = tab.L / Math.max(1, span);
+    let run = 0;
+    mem.forEach((m, i) => {
+      const d = Math.round(m.d * sc), slot = (m.d + GAP) * sc;
+      html.push(_orrBubbleHtml(m.r, d, m.r.s.score));
+      const s0 = (run + slot / 2) * stretch;
+      run += slot;
+      bodies.push({
+        id: m.r.p.id, d, centre: false, spd: SPD[k], rx, ry, tab,
+        // Offset each ring so the rings never line up into a spoke — a spoke
+        // reads as a relationship between the plans, which is not there.
+        s0: s0 + k * 0.11 * tab.L,
+        phase: i * 1.7 + k, x: cx, y: cy,
+      });
+    });
+  });
+
+  field.classList.toggle('has-open', !!_orrOpenId);
+  field.insertAdjacentHTML('beforeend', html.join(''));
+  bodies.forEach(b => { b.el = field.querySelector(`[data-orr-b="${b.id}"]`); });
+  _orrBodies = bodies.filter(b => b.el);
+
+  // The gravity web: one hairline from each orbiter to the centre, its
+  // brightness the plan's share of the heaviest pull on the page.
+  if (web) {
+    web.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const top = rows[0].s.score || 1;
+    web.innerHTML =
+      ringPx.map((r, k) => !r.used ? '' :
+        `<ellipse cx="${cx}" cy="${cy}" rx="${r.rx.toFixed(1)}" ry="${r.ry.toFixed(1)}"
+                  class="orr-ring${k === 1 ? ' dash' : ''}"/>`).join('') +
+      orbiters.map(r =>
+        `<line class="orr-pull" data-orr-line="${escAttr(r.p.id)}"
+               x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy}"
+               stroke-opacity="${(0.05 + (r.s.score / top) * 0.20).toFixed(3)}"/>`).join('');
+    _orrBodies.forEach(b => { b.line = web.querySelector(`[data-orr-line="${b.id}"]`); });
+  }
+
+  _orrCentre = { cx, cy };
+  _orrStart();
+}
+
+/* ── The loop ───────────────────────────────────────────────────────────── */
+
+function _orrFrame(now) {
+  _orrRaf = null;
+  const field = document.getElementById('orr-field');
+  if (!field || _mainPanel !== 'orrery') return;
+  const moving = _orrMotionOn && !(typeof mReduce === 'function' && mReduce());
+  /* The clock pauses; it does not reset. Reading `(now - t0)` only while moving
+     and falling back to 0 otherwise meant the whole field snapped back to its
+     starting angles every time MOTION went off — and, worse, on every
+     re-render, because a ticked-off task rebuilds the page. */
+  if (moving) _orrT = (now - _orrT0) / 1000;
+  const t = _orrT;
+  const { cx, cy } = _orrCentre;
+
+  _orrBodies.forEach(b => {
+    if (!b.el) return;
+    let x, y, sc;
+    if (b.centre) {
+      x = cx; y = cy;
+      // The prime bubble breathes rather than travels. Stillness is the signal
+      // in a field where everything else drifts. An opened one holds dead still.
+      sc = b.open ? 1 : 1 + 0.018 * Math.sin(t * 0.8);
+    } else {
+      const a = _orrAngAt(b.tab, b.s0 + t * b.spd * b.tab.L);
+      x = cx + Math.cos(a) * b.rx;
+      y = cy + Math.sin(a) * b.ry;
+      sc = 1 + 0.022 * Math.sin(t * 0.55 + b.phase);
+    }
+    b.x = x; b.y = y;
+    b.el.style.transform =
+      `translate3d(${(x - b.d / 2).toFixed(1)}px,${(y - b.d / 2).toFixed(1)}px,0) scale(${sc.toFixed(4)})`;
+    if (b.line) { b.line.setAttribute('x2', x.toFixed(1)); b.line.setAttribute('y2', y.toFixed(1)); }
+  });
+
+  if (moving) _orrRaf = requestAnimationFrame(_orrFrame);
+}
+
+function _orrStart() {
+  _orrStop();
+  _orrT0 = performance.now() - _orrT * 1000;   // resume where it paused
+  /* Place everything in THIS task, not on the next animation frame. The
+     bubbles are absolutely positioned with no transform until the loop writes
+     one, so waiting a frame stacks them all in the top-left corner first —
+     one visible flash on every render, and renders are frequent. The frame
+     reschedules itself, so this is also how the loop starts. */
+  _orrFrame(performance.now());
+}
+function _orrStop() {
+  if (_orrRaf) cancelAnimationFrame(_orrRaf);
+  _orrRaf = null;
+}
+
+/* ── Open / close a bubble ──────────────────────────────────────────────── */
+
+function _orrOpen(id) {
+  _orrOpenId = id;
+  renderOrrery();
+}
+
+function _orrClose() {
+  if (!_orrOpenId) return;
+  _orrOpenId = null;
+  renderOrrery();
+}
+
+// Controls that only exist inside an opened bubble.
+function _orrWireOpen(field) {
+  const el = field.querySelector('.orr-b.open');
+  if (!el) return;
+  const id = el.dataset.orrB;
+  el.querySelectorAll('[data-orr-done]').forEach(c => c.addEventListener('click', e => {
+    e.stopPropagation(); toggleTask(c.dataset.orrDone);
+  }));
+  el.querySelector('[data-orr-close]')?.addEventListener('click', e => { e.stopPropagation(); _orrClose(); });
+  el.querySelector('[data-orr-plan]')?.addEventListener('click', e => {
+    e.stopPropagation();
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    document.getElementById('nav-planning')?.classList.add('active');
+    showMainPanel('milestones');
+    openMsProjectModal(id);
+  });
+  const add = el.querySelector('[data-orr-add]');
+  add?.addEventListener('click', e => e.stopPropagation());
+  add?.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = add.value; add.value = '';
+    if (typeof _dashAddCommitTask === 'function') _dashAddCommitTask(id, v);
+  });
+}
+
+/* ── Wiring ─────────────────────────────────────────────────────────────── */
+
+function _orrWireHead(panel) {
+  panel.querySelectorAll('[data-orr-size]').forEach(b => b.addEventListener('click', () => {
+    _orrSizeMode = b.dataset.orrSize;
+    try { localStorage.setItem(_ORR_SIZE_KEY, _orrSizeMode); } catch (e) {}
+    renderOrrery();
+  }));
+  document.getElementById('orr-motion')?.addEventListener('click', () => {
+    _orrMotionOn = !_orrMotionOn;
+    try { localStorage.setItem(_ORR_MOTION_KEY, _orrMotionOn ? '1' : '0'); } catch (e) {}
+    document.getElementById('orr-motion')?.classList.toggle('active', _orrMotionOn);
+    _orrStart();
+  });
+}
+
+function _orrWireField() {
+  const field  = document.getElementById('orr-field');
+  const ladder = document.getElementById('orr-ladder');
+  const pick = el => {
+    const id = el.dataset.orrB;
+    if (_orrOpenId === id) _orrClose(); else _orrOpen(id);
+  };
+  field?.addEventListener('click', e => {
+    const b = e.target.closest('[data-orr-b]');
+    // A click on the field itself — the dark between the bubbles — closes.
+    if (!b) { _orrClose(); return; }
+    if (b.classList.contains('open')) return;   // clicks inside the open card
+    pick(b);
+  });
+  field?.querySelectorAll('[data-orr-b]:not(.open)').forEach(b => b.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(b); }
+  }));
+  ladder?.querySelectorAll('[data-orr-b]').forEach(l => {
+    l.addEventListener('click', () => pick(l));
+    l.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(l); }
+    });
+  });
+  if (field) _orrWireOpen(field);
+}
+
+/* The field's size decides ring radii and bubble diameters, so a window or nav
+   resize has to re-lay it out. The observer watches #panel-orrery, which
+   persists across renders — observing #orr-field would re-fire on every render
+   (a fresh observation always calls back) and spin.
+   Only a real size change re-renders; everything else is ignored. */
+let _orrSeen = { w: 0, h: 0 };
+function _orrObserve() {
+  const panel = document.getElementById('panel-orrery');
+  if (!panel || _orrRO || !window.ResizeObserver) return;
+  _orrRO = new ResizeObserver(() => {
+    if (_mainPanel !== 'orrery') return;
+    const w = panel.clientWidth, h = panel.clientHeight;
+    if (Math.abs(w - _orrSeen.w) < 2 && Math.abs(h - _orrSeen.h) < 2) return;
+    _orrSeen = { w, h };
+    renderOrrery();
+  });
+  _orrRO.observe(panel);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && _mainPanel === 'orrery' && _orrOpenId) { _orrClose(); }
+});
+
+/* Called by the panel switch, and by the task / commitment snapshots so the
+   field tracks the data without its own listener. */
+function initOrrery() {
+  const panel = document.getElementById('panel-orrery');
+  if (panel) _orrSeen = { w: panel.clientWidth, h: panel.clientHeight };
+  renderOrrery();
+  _orrObserve();
+}
+window.initOrrery = initOrrery;
+
+window._orreryRefresh = function () {
+  if (_mainPanel !== 'orrery') return;
+  renderOrrery();
+};

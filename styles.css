@@ -7307,22 +7307,30 @@ textarea:focus-visible {
    ════════════════════════════════════════════════════════════════════════════ */
 #panel-orrery { flex:1; min-height:0; flex-direction:column; overflow:hidden; background:var(--bg); }
 
+/* The header is the Planning hero's shape, not a toolbar of its own invention:
+   same 22/28 padding, same eyebrow, and the headline in Fraunces 300 at the
+   size #page-title uses everywhere else. It was 22px at Fraunces' default
+   weight inside a 57px bar with a rule under it — nothing else in the app
+   looks like that, which is exactly how it read. The rule is gone too: the
+   field below is a dark canvas, like Stillwater's, and it needs no lid. */
 .orr-head {
   display:flex; align-items:flex-end; gap:24px; flex-wrap:wrap;
-  padding:14px 22px 13px; border-bottom:1px solid rgba(255,255,255,0.08);
-  flex-shrink:0;
+  padding:22px 28px 16px; flex-shrink:0;
 }
 .orr-head-l { flex:1; min-width:260px; }
 .orr-eyebrow {
-  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.17em;
-  text-transform:uppercase; color:rgba(255,255,255,0.34);
+  font-family:var(--font-mono); font-size:var(--fs-micro); font-weight:400;
+  letter-spacing:0.18em; text-transform:uppercase; color:rgba(255,255,255,0.5);
 }
-.orr-verdict { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-top:7px; }
+.orr-verdict { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-top:6px; }
 .orr-v-lead {
   font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.2em;
   color:var(--ink); background:var(--gold); border-radius:var(--r-xs); padding:2px 7px 1px;
 }
-.orr-v-name { font-family:var(--font-display); font-size:var(--fs-title); color:#fff; line-height:1.1; }
+.orr-v-name {
+  font-family:var(--font-display); font-weight:300; font-size:var(--fs-lead);
+  letter-spacing:0.02em; color:#fff; line-height:1.2;
+}
 .orr-v-why {
   font-family:var(--font-mono); font-size:var(--fs-small); color:var(--muted);
   letter-spacing:0.02em;
@@ -7396,8 +7404,8 @@ textarea:focus-visible {
   max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .orr-b-title {
-  font-family:var(--font-display); font-size:var(--fs-body); line-height:1.18;
-  color:rgba(255,255,255,0.94);
+  font-family:var(--font-display); font-weight:300; font-size:var(--fs-body);
+  line-height:1.2; letter-spacing:0.01em; color:rgba(255,255,255,0.94);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
 }
 .orr-b-meta {
@@ -7485,7 +7493,8 @@ textarea:focus-visible {
   text-transform:uppercase; color:rgba(255,255,255,0.42); margin-bottom:3px;
 }
 .orr-d-goal i { color:rgba(255,255,255,0.24); font-style:normal; }
-.orr-d-title { font-family:var(--font-display); font-size:var(--fs-title); color:#fff; line-height:1.14; }
+.orr-d-title { font-family:var(--font-display); font-weight:300; font-size:var(--fs-title);
+  letter-spacing:0.01em; color:#fff; line-height:1.14; }
 .orr-d-meta {
   display:flex; align-items:center; justify-content:center; gap:6px; flex-wrap:wrap; margin-top:5px;
   font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.11em;
@@ -7538,7 +7547,7 @@ textarea:focus-visible {
 .orr-ladder {
   flex-shrink:0; max-height:146px; overflow-y:auto;
   border-top:1px solid rgba(255,255,255,0.08);
-  padding:10px 22px 12px;
+  padding:10px 28px 14px;
   display:grid; grid-template-columns:repeat(auto-fill, minmax(268px, 1fr));
   gap:2px 22px; align-content:start;
 }
@@ -7585,7 +7594,8 @@ textarea:focus-visible {
 .orr-empty-mark span:nth-child(1) { width:16px; height:16px; background:rgba(255,255,255,0.5); border:none; }
 .orr-empty-mark span:nth-child(2) { width:52px; height:46px; }
 .orr-empty-mark span:nth-child(3) { width:84px; height:74px; border-style:dashed; }
-.orr-empty-t { font-family:var(--font-display); font-size:var(--fs-title); color:#fff; }
+.orr-empty-t { font-family:var(--font-display); font-weight:300; font-size:var(--fs-title);
+  letter-spacing:0.01em; color:#fff; }
 .orr-empty-b {
   font-family:var(--font-body); font-size:var(--fs-small); color:var(--muted);
   line-height:1.55; margin:8px 0 18px;
@@ -7595,9 +7605,13 @@ textarea:focus-visible {
   .orr-b.prime::before, .orr-b.prime::after { animation:none; opacity:.18; }
 }
 @media (max-width: 900px) {
-  .orr-head { padding:12px 16px; }
-  .orr-ladder { padding:10px 16px 12px; max-height:120px; }
+  .orr-head { padding:16px 18px 12px; }
+  .orr-ladder { padding:10px 18px 12px; max-height:120px; }
 }
+/* On a short window the field is what gets squeezed, and it is the part worth
+   keeping — the ladder says the same thing in less space. */
+@media (max-height: 680px) { .orr-ladder { max-height:92px; } }
+@media (max-height: 520px) { .orr-ladder { display:none; } }
 
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
    One motion for every button in the app: a circle of pure white, larger than

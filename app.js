@@ -18686,33 +18686,59 @@ window.renderOrrery = renderOrrery;
    that reaches it, which fixes the spacing and, applied per frame, also makes
    a bubble travel at a constant speed instead of visibly accelerating through
    the flat of the curve. */
-function _orrArcTable(rx, ry) {
-  const N = 720, t = [0];
-  let L = 0, px = rx, py = 0;
-  for (let i = 1; i <= N; i++) {
-    const a = i / N * Math.PI * 2, x = rx * Math.cos(a), y = ry * Math.sin(a);
-    L += Math.hypot(x - px, y - py); t.push(L); px = x; py = y;
-  }
-  return { t, L };
+/* ── Spacing on an ellipse ─────────────────────────────────────────────────
+   Dividing the rim into equal lengths is right on a circle and wrong on
+   anything else, because two bubbles overlap along the STRAIGHT LINE between
+   them and a flattened orbit's rim is far longer than that line. Worse, the
+   error is not fixed: the ring turns, so a pair that is comfortable on the
+   flat of the curve is touching by the time it reaches the end of the major
+   axis, where the orbit doubles back on itself.
+
+   There is a closed form for exactly this. Take two points a fixed ANGLE 2h
+   apart on an ellipse (rx, ry), at angles φ±h. The distance between them is
+
+       2·sin(h)·√( rx²·sin²φ + ry²·cos²φ )
+
+   which is smallest at φ = 0 — the end of the major axis, as expected — and
+   there it is simply 2·min(rx,ry)·sin(h). The long axis drops out entirely.
+
+   So: give each neighbouring pair at least 2·asin(need / 2r) of angle, where r
+   is the SHORT semi-axis, and turn the ring at a constant angular rate. The
+   clearance then holds at every point of the turn rather than only where the
+   bubbles were first placed, and the long axis is free to be as long as the
+   screen is wide. Which is the whole point — a 34" desk should not be asked to
+   show a circle in the middle of itself. */
+
+// The shortest semi-axis on which these gaps can be kept all the way round.
+function _orrMinR(needs) {
+  const floor = Math.max.apply(null, needs) / 2;   // one pair must fit at all
+  const ok = r => needs.reduce((t, c) => t + Math.asin(Math.min(1, c / (2 * r))), 0) <= Math.PI;
+  let lo = floor, hi = floor;
+  for (let i = 0; i < 48 && !ok(hi); i++) hi *= 1.25;
+  for (let i = 0; i < 36; i++) { const m = (lo + hi) / 2; if (ok(m)) hi = m; else lo = m; }
+  return hi;
 }
-function _orrAngAt(tab, s) {
-  const { t, L } = tab, n = t.length - 1;
-  s = ((s % L) + L) % L;
-  let lo = 0, hi = n;
-  while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (t[mid] <= s) lo = mid; else hi = mid; }
-  const f = (s - t[lo]) / Math.max(1e-6, t[hi] - t[lo]);
-  return (lo + f) / n * Math.PI * 2;
+
+// Where each one sits, with whatever angle is left over shared out evenly so
+// the ring is used rather than merely cleared.
+function _orrAngles(needs, r) {
+  const base  = needs.map(c => 2 * Math.asin(Math.min(1, c / (2 * r))));
+  const extra = Math.max(0, Math.PI * 2 - base.reduce((a, b) => a + b, 0)) / needs.length;
+  const out = [];
+  let a = 0;
+  for (let i = 0; i < needs.length; i++) { out.push(a); a += base[i] + extra; }
+  return out;
 }
 
 /* Lay the bubbles out, then hand them to the loop.
 
-   Ring radii are DERIVED, never fixed. A fixed radius and a weight-driven
-   diameter are the same mistake as a fixed row height and variable text: the
-   moment one plan outweighs the rest, its bubble eats its neighbours. So each
-   ring is pushed out until (a) its members fit around it end to end and (b) it
-   clears whatever is inside it — then the whole field is scaled down by one
-   factor if that pushed it past the edge. Uniform scaling keeps both
-   conditions true, because circumference and diameter scale together.
+   Nothing here is a fixed number. A fixed ring radius next to a weight-driven
+   diameter is the same mistake as a fixed row height next to variable text:
+   the moment one plan outweighs the rest, its bubble eats its neighbours. So
+   each ring is pushed out until it can keep its own members apart all the way
+   round AND clear whatever is inside it, and if that overruns the screen the
+   diameters come down until it does not. Then, if there is room left over, the
+   rings grow into it while the bubbles stay as they are.
 
    Rank still sets the ring, so the ordering survives MOTION being off: radius
    is information, not decoration. */
@@ -18727,12 +18753,10 @@ function _orrLayout(allRows) {
   const W = field.clientWidth, H = field.clientHeight;
   if (!W || !H) return;             // panel still hidden; the observer re-runs us
   const cx = W / 2, cy = H / 2;
-  /* The dark between two bubbles. It covers three things at once: the gap you
-     actually see, the ~2% each bubble gains at the top of its breath, and the
-     small amount by which a straight line between two points on the rim falls
-     short of the arc they were spaced along. Sixteen left sub-pixel kisses on
-     a crowded ring; this does not. */
+  /* The dark between two bubbles — what you see, plus the ~2% each one gains
+     at the top of its breath. */
   const GAP = 22;
+  const M   = 12;                   // how close a bubble may come to the edge
 
   /* Exactly one body holds the centre. Normally that is rank 0 — today's pull.
      While a bubble is open it takes the centre instead, and rank 0 rejoins the
@@ -18740,10 +18764,10 @@ function _orrLayout(allRows) {
   const holdsCentre = r => _orrOpenId ? r.p.id === _orrOpenId : r.rank === 0;
 
   // The opened plan is a circle big enough to read a task list inside.
-  const openD = Math.round(Math.min(560, W * 0.66, H * 0.94));
+  const openD = Math.round(Math.min(560, W * 0.52, H * 0.94));
   const unit  = Math.min(W, H) / 2;
-  const maxD  = Math.max(126, Math.min(unit * 0.80, 230));
-  const minD  = Math.max(78, maxD * 0.42);
+  const maxD  = Math.max(112, Math.min(unit * 0.66, 186));
+  const minD  = Math.max(72, maxD * 0.44);
   const dOf   = r => r.p.id === _orrOpenId ? openD
                    : Math.round(minD + (maxD - minD) * Math.pow(r.w, 0.85));
 
@@ -18756,94 +18780,98 @@ function _orrLayout(allRows) {
      name. Nine around a centre is about where a single orbit stops being
      readable — past that, open the second, and _ORR_MAX_BUBBLES stops it
      there. Rank is the order around the ring; the ladder gives it exactly. */
-  const ringOf    = i => i >= 9 ? 1 : 0;
-  const SPD       = [0.0111, -0.0076];   // revolutions/sec, opposite directions
-                                         // so the two rings read apart
+  const ringOf = i => i >= 9 ? 1 : 0;
+  const SPD    = [0.0111, -0.0076];   // revolutions/sec, opposite directions
+                                      // so the two rings read apart
 
-  const members = [[], []];
-  orbiters.forEach((r, i) => members[ringOf(i)].push({ r, d: dOf(r) }));
+  /* The floor only guards against a zero or negative half-field. It must stay
+     small: set high enough to be "comfortable", it quietly licenses the rings
+     to be bigger than the field they are in, and a short window then pushes
+     bubbles out through the bottom. */
+  const avX = Math.max(24, W / 2 - M), avY = Math.max(24, H / 2 - M);
+  const shortHave = Math.min(avX, avY);     // the axis every constraint is on
+  const wide      = avX >= avY;             // landscape field → long axis is x
 
-  /* How flat the orbits are. A wide field gets wide ellipses; a square one
-     gets near-circles. The floor is not cosmetic: spacing is solved along the
-     rim, but two bubbles overlap along the straight line between them, and at
-     the ends of the major axis of a flat ellipse the curvature is tight enough
-     that the chord falls well short of the arc. Keeping the orbit rounder than
-     0.7 keeps the two close enough that the gap survives. */
-  const q = Math.min(1, Math.max(0.70, H / W));
+  /* Solve the rings at a given diameter scale. Every quantity below is linear
+     in that scale, so when the result does not fit the field, scaling by how
+     far it missed and re-solving lands on the answer; the extra passes are
+     only there to absorb the rounding. */
+  const solve = k => {
+    const mem = [[], []];
+    orbiters.forEach((r, i) => mem[ringOf(i)].push({ r, d: Math.round(dOf(r) * k) }));
+    const centreD = centreRow ? Math.round(dOf(centreRow) * k) : 0;
+    const gap = GAP * k;
+    const rings = [];
+    let inner = centreD / 2, innerMax = 0;
+    mem.forEach(m => {
+      if (!m.length) { rings.push({ r: inner, widest: 0, needs: [] }); return; }
+      const widest = Math.max.apply(null, m.map(x => x.d));
+      // What each neighbouring pair needs between it, going round.
+      const needs = m.map((x, i) => (x.d + m[(i + 1) % m.length].d) / 2 + gap);
+      // Two constraints: keep its own members apart all the way round, and
+      // clear whatever is inside it. Both are about the short semi-axis —
+      // that is where an ellipse passes closest to its own centre, and where
+      // two points a fixed angle apart come closest to each other.
+      const r = Math.max(m.length > 1 ? _orrMinR(needs) : 0,
+                         inner + innerMax / 2 + widest / 2 + gap);
+      rings.push({ r, widest, needs });
+      inner = r; innerMax = widest;
+    });
+    let last = -1;
+    mem.forEach((m, i) => { if (m.length) last = i; });
+    const shortNeed = last < 0 ? centreD / 2
+                               : rings[last].r + rings[last].widest / 2;
+    return { mem, centreD, gap, rings, last, shortNeed };
+  };
 
-  /* Two constraints, and the second is the one that is easy to get wrong.
-     Fitting members around the ring is a question about its circumference, so
-     it is answered with the mean radius. Clearing what is inside the ring is a
-     question about its NARROWEST point — the minor axis — because that is
-     where an ellipse passes closest to the centre. Sizing the clearance off
-     the mean radius instead lets the top and bottom bubbles sit on the centre
-     one, which is exactly what it did. */
-  const ryOf = rm => rm * 2 * q / (1 + q);
-  const rmOf = ry => ry * (1 + q) / (2 * q);
-  // Perimeter of the unit ring at this flattening, so `fits` can be asked of
-  // the real rim length rather than of a circle that is not there.
-  const kPerim = _orrArcTable(2 / (1 + q), 2 * q / (1 + q)).L;
+  let S = solve(1), k = 1;
+  for (let i = 0; i < 5 && S.shortNeed > shortHave && k > 0.12; i++) {
+    k = Math.max(0.12, k * shortHave / S.shortNeed);
+    S = solve(k);
+  }
+  const { mem, centreD, gap, rings, last } = S;
 
-  const centreD = centreRow ? dOf(centreRow) : 0;
-  const ringR = [];                 // mean radius per ring, pre-scale
-  let innerRy = centreD / 2, innerMax = 0;
-  members.forEach(mem => {
-    if (!mem.length) { ringR.push(rmOf(innerRy)); return; }
-    const widest = Math.max.apply(null, mem.map(m => m.d));
-    const fits   = mem.reduce((t, m) => t + m.d + GAP, 0) / kPerim;
-    const clearRy = innerRy + innerMax / 2 + widest / 2 + GAP;
-    const rm = Math.max(fits, rmOf(clearRy));
-    ringR.push(rm);
-    innerRy = ryOf(rm); innerMax = widest;
-  });
-
-  // One scale for the whole field, if the rings ran past the edge.
-  let extX = centreD / 2, extY = centreD / 2;
-  members.forEach((mem, k) => {
-    if (!mem.length) return;
-    const widest = Math.max.apply(null, mem.map(m => m.d));
-    const rx = ringR[k] * 2 / (1 + q);
-    extX = Math.max(extX, rx + widest / 2);
-    extY = Math.max(extY, rx * q + widest / 2);
-  });
-  const sc = Math.min(1, (W / 2 - 10) / Math.max(1, extX), (H / 2 - 10) / Math.max(1, extY));
+  /* Room to spare? The rings grow into it and the bubbles do not. The point of
+     a wide screen is more space between the plans, not larger circles — and
+     more space only ever makes the spacing above easier, so nothing needs
+     re-checking. The long axis then simply reaches for the edge, which is what
+     stops a 34" desk showing a circle in the middle of itself. Inner rings
+     take the same shape rather than the same length, so they stay inside the
+     outer one instead of crossing it. */
+  const grow   = last < 0 || rings[last].r <= 0 ? 1
+    : Math.max(1, (shortHave - rings[last].widest / 2) / rings[last].r);
+  const rOuter = last < 0 ? 0 : rings[last].r * grow;
+  const longOuter = last < 0 ? 0
+    : Math.max(rOuter, (wide ? avX : avY) - rings[last].widest / 2);
+  const axes = i => {
+    const r    = rings[i].r * grow;
+    const long = rOuter > 0 ? longOuter * (r / rOuter) : r;
+    return wide ? { rx: long, ry: r } : { rx: r, ry: long };
+  };
 
   const html = [], bodies = [], ringPx = [];
   if (centreRow) {
-    const d = Math.round(centreD * sc);
     html.push(_orrOpenId === centreRow.p.id
-      ? _orrDetailHtml(centreRow, d)
-      : _orrBubbleHtml(centreRow, d, centreRow.s.score));
-    bodies.push({ id: centreRow.p.id, d, centre: true,
+      ? _orrDetailHtml(centreRow, centreD)
+      : _orrBubbleHtml(centreRow, centreD, centreRow.s.score));
+    bodies.push({ id: centreRow.p.id, d: centreD, centre: true,
                   open: _orrOpenId === centreRow.p.id, x: cx, y: cy, phase: 0 });
   }
-  members.forEach((mem, k) => {
-    const rx = ringR[k] * 2 / (1 + q) * sc, ry = rx * q;
-    ringPx.push({ rx, ry, used: mem.length > 0 });
-    if (!mem.length) return;
-    const tab = _orrArcTable(rx, ry);
-    /* Each bubble gets a share of the rim proportional to its own width, so a
-       big one and a small one keep the same gap on either side of them.
-
-       The gap scales with everything else. It has to: the ring radii were
-       solved from `d + GAP` BEFORE `sc` was known, so holding GAP at its full
-       value while the ring and the bubbles shrink asks a smaller rim to seat
-       the same total — and the shortfall comes out of the gaps, as overlap.
-       `sc` rarely drops below ~0.9, so the gap you see barely changes. */
-    const span = mem.reduce((t, m) => t + (m.d + GAP) * sc, 0);
-    const stretch = tab.L / Math.max(1, span);
-    let run = 0;
-    mem.forEach((m, i) => {
-      const d = Math.round(m.d * sc), slot = (m.d + GAP) * sc;
-      html.push(_orrBubbleHtml(m.r, d, m.r.s.score));
-      const s0 = (run + slot / 2) * stretch;
-      run += slot;
+  mem.forEach((m, k2) => {
+    if (!m.length) { ringPx.push({ rx: 0, ry: 0, used: false }); return; }
+    const { rx, ry } = axes(k2);
+    ringPx.push({ rx, ry, used: true });
+    const ang = m.length > 1
+      ? _orrAngles(rings[k2].needs, Math.min(rx, ry))
+      : [0];
+    m.forEach((x, i) => {
+      html.push(_orrBubbleHtml(x.r, x.d, x.r.s.score));
       bodies.push({
-        id: m.r.p.id, d, centre: false, spd: SPD[k], rx, ry, tab,
-        // Offset each ring so the rings never line up into a spoke — a spoke
+        id: x.r.p.id, d: x.d, centre: false, spd: SPD[k2], rx, ry,
+        // Offset each ring so the two never line up into a spoke — a spoke
         // reads as a relationship between the plans, which is not there.
-        s0: s0 + k * 0.11 * tab.L,
-        phase: i * 1.7 + k, x: cx, y: cy,
+        ang: ang[i] + k2 * 0.7,
+        phase: i * 1.7 + k2, x: cx, y: cy,
       });
     });
   });
@@ -18897,7 +18925,13 @@ function _orrFrame(now) {
       // in a field where everything else drifts. An opened one holds dead still.
       sc = b.open ? 1 : 1 + 0.018 * Math.sin(t * 0.8);
     } else {
-      const a = _orrAngAt(b.tab, b.s0 + t * b.spd * b.tab.L);
+      /* A constant ANGULAR rate, not a constant speed along the rim. It has
+         to be: the clearance proved above holds for a fixed angle between two
+         bubbles, so the ring must turn rigidly in angle or the proof says
+         nothing once it has moved. It also happens to look right — a body
+         crawls through the far ends of a long orbit and sweeps across the near
+         side, which is what an orbit does. */
+      const a = b.ang + t * b.spd * Math.PI * 2;
       x = cx + Math.cos(a) * b.rx;
       y = cy + Math.sin(a) * b.ry;
       sc = 1 + 0.022 * Math.sin(t * 0.55 + b.phase);

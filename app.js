@@ -18299,8 +18299,11 @@ async function goalStepDown(parentId) {
    else keeps drifting, because in a field of moving objects the eye goes to
    the one that is still. (Stillwater's lesson, applied to plans.)
 
-   Click a bubble and it opens into itself: its goal, its deadline, its
-   progress and every task under it, inside the circle. Nothing navigates away.
+   Click a bubble and a drawer opens beside the field: its goal, its deadline,
+   its progress and every task under it. The bubble stays in its orbit —
+   an earlier version swelled the opened plan into a giant circle at the
+   centre, which hid the very field you were reading it against. Nothing
+   navigates away.
 
    ── WHAT DRIVES THE SIZE ───────────────────────────────────────────────────
    Three modes, one switch:
@@ -18327,7 +18330,7 @@ async function goalStepDown(parentId) {
    left alone — the ranking still reads, because rank is also radius.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* How many bubbles the field will draw. Past this the ring has to shrink
+/* How many bubbles the field will draw. Past this the orbits have to shrink
    everything to fit, and somewhere around twenty-five a bubble is a 13px dot
    with no name on it — which is not a picture of your plans, it is confetti.
    The field shows the heaviest sixteen; the ladder underneath lists every one,
@@ -18339,13 +18342,13 @@ const _ORR_MOTION_KEY = 'cdx_orr_motion';   // '0' to freeze the field
 
 let _orrSizeMode = 'pull';
 let _orrMotionOn = true;
-let _orrOpenId   = null;      // the bubble currently opened into itself
+let _orrOpenId   = null;      // the plan shown in the drawer
 let _orrRaf      = null;
 let _orrT0       = 0;         // performance.now() the field's clock is measured from
 let _orrT        = 0;         // elapsed seconds — the field's position in its cycle
 let _orrBodies   = [];        // live orbit state, one per bubble
 let _orrRO       = null;      // ResizeObserver on the field
-let _orrCentre   = { cx: 0, cy: 0 };   // where the field's centre currently is
+let _orrView     = { cx: 0, cy: 0, sx: 0, sy: 0 };   // the field's centre and its two orbit scales
 
 try {
   const s = localStorage.getItem(_ORR_SIZE_KEY);
@@ -18484,10 +18487,39 @@ function _orrWindowText(p, s) {
   return (s.days < 0 ? 'ENDED ' : 'TO ') + _orrFmtDate(p.endDate).toUpperCase();
 }
 
-// The collapsed bubble. Diameter comes from the weight; what fits inside comes
-// from the diameter, so a small bubble shows a name and nothing else rather
-// than three clipped lines of 9px text.
-function _orrBubbleHtml(row, d, pctFill) {
+/* How many lines the name takes inside the circle — 0 if it does not fit. The
+   inscribed square is 0.707·d on a side, and Fraunces 300 at body size averages
+   about 7px a character. This is an estimate on purpose: measuring needs the
+   DOM, and the answer has to be known while the HTML is being built. It errs
+   toward "outside" — a name set below the bubble is always legible, a clipped
+   one inside it never is. A third line is allowed because the prime bubble is
+   usually the one with the longest name, and a prime bubble whose name hangs
+   below it in the middle of the field is the worst place for a label. */
+function _orrNameLines(title, d) {
+  /* The box was the square inscribed in the circle, which is the right bound
+     for a tall stack but far too mean for a name on its own. A name sits at
+     the vertical CENTRE, where the chord is the full diameter, not at the top
+     where it has narrowed to the side of that square — so sizing it off the
+     square pushed names out of bubbles with plenty of room, leaving 100px
+     empty circles with their titles floating beside them. Three lines centred
+     on the middle reach ±22% of the diameter, where the chord is still about
+     0.80·d, so that is the width to ask about. */
+  const w = d * 0.80, h = d * 0.62;
+  const words = String(title).split(/\s+/).filter(Boolean);
+  if (!words.length || Math.max.apply(null, words.map(x => x.length)) * 7.2 > w) return 0;
+  let lines = 1, cur = 0;
+  words.forEach(x => {
+    const len = x.length * 7.2;
+    if (cur && cur + 7.2 + len > w) { lines++; cur = len; } else cur += (cur ? 7.2 : 0) + len;
+  });
+  return lines <= 3 && lines * 16 <= h ? lines : 0;
+}
+
+/* One body = a wrapper (carries the transform, the depth and the label) around
+   the circle (carries the clipping). The label has to live outside the circle
+   because the circle is overflow:hidden — that is what keeps the arc and the
+   inner stack inside the rim — and a name set below it would be cut off. */
+function _orrBubbleHtml(row, d, pctFill, inside) {
   const { p, s } = row;
   const r  = d / 2 - 3;
   const c  = 2 * Math.PI * r;
@@ -18495,7 +18527,8 @@ function _orrBubbleHtml(row, d, pctFill) {
   /* What fits is a question about the circle, not about the data. A chord at
      the top or bottom of a small bubble is barely wider than the gap between
      two words, so each line earns its place by diameter. */
-  const showMeta  = d >= 112;
+  const nl = inside ? _orrNameLines(p.title || 'Untitled', d) : 0;
+  const showMeta  = d >= 112 && nl < 3;   // three lines of name leave no room for the meta
   const showTasks = d >= 186;
   const showGoal  = d >= 194 && s.goal;
   const open = row.tasks.filter(t => !t.done)
@@ -18507,41 +18540,41 @@ function _orrBubbleHtml(row, d, pctFill) {
     ? `<div class="orr-b-peek">${open.slice(0, 2).map(t =>
         `<span class="orr-b-peek-row"><i></i><b>${escHtml(t.title || 'Untitled')}</b></span>`).join('')}</div>`
     : '';
+  const name = escHtml(p.title || 'Untitled');
+  const inner = (showGoal ? `<div class="orr-b-goal">${escHtml(s.goal.title || 'GOAL')}</div>` : '') +
+    (inside ? `<div class="orr-b-title">${name}</div>` : '') +
+    (showMeta ? `<div class="orr-b-meta">
+        <span>${s.open} OPEN</span><span>${escHtml(_orrWindowText(p, s))}</span>
+      </div>` : '') +
+    (s.overdue && showMeta ? `<span class="orr-b-flag">${s.overdue} OVERDUE</span>` : '') + peek;
 
   return `
-    <div class="orr-b${row.rank === 0 ? ' prime' : ''}" data-orr-b="${escAttr(p.id)}"
-         role="button" tabindex="0" style="--bc:${escAttr(p.color || '#8a8070')};--d:${d}px"
-         title="${escAttr((p.title || 'Untitled') + ' — ' + s.open + ' open')}">
-      <svg class="orr-b-arc" viewBox="0 0 ${d} ${d}" aria-hidden="true">
-        <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-track"/>
-        <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-fill"
-                stroke-dasharray="${c.toFixed(1)}"
-                stroke-dashoffset="${(c * (1 - pc)).toFixed(1)}"/>
-      </svg>
-      <span class="orr-b-pull" style="--pf:${pctFill.toFixed(3)}"></span>
-      <div class="orr-b-in">
-        ${showGoal ? `<div class="orr-b-goal">${escHtml(s.goal.title || 'GOAL')}</div>` : ''}
-        <div class="orr-b-title">${escHtml(p.title || 'Untitled')}</div>
-        ${showMeta ? `<div class="orr-b-meta">
-            <span>${s.open} OPEN</span><span>${escHtml(_orrWindowText(p, s))}</span>
-          </div>` : ''}
-        ${s.overdue && showMeta ? `<span class="orr-b-flag">${s.overdue} OVERDUE</span>` : ''}
-        ${peek}
+    <div class="orr-o${_orrOpenId === p.id ? ' sel' : ''}" data-orr-b="${escAttr(p.id)}"
+         style="--bc:${escAttr(p.color || '#8a8070')};--d:${d}px">
+      <div class="orr-b${row.rank === 0 ? ' prime' : ''}" role="button" tabindex="0"
+           title="${escAttr((p.title || 'Untitled') + ' — ' + s.open + ' open')}">
+        <svg class="orr-b-arc" viewBox="0 0 ${d} ${d}" aria-hidden="true">
+          <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-track"/>
+          <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-fill"
+                  stroke-dasharray="${c.toFixed(1)}"
+                  stroke-dashoffset="${(c * (1 - pc)).toFixed(1)}"/>
+        </svg>
+        <span class="orr-b-pull" style="--pf:${pctFill.toFixed(3)}"></span>
+        ${inner ? `<div class="orr-b-in">${inner}</div>` : ''}
       </div>
+      ${inside ? '' : `<div class="orr-lbl"><i></i>${name}</div>`}
     </div>`;
 }
 
-// The opened bubble — the plan, inside itself. Same node shape as the
-// collapsed one, so the layout treats both identically and closing is just a
-// re-render with _orrOpenId cleared rather than DOM surgery.
-function _orrDetailHtml(row, d) {
+// The drawer: the plan, beside the field instead of inside a bubble. It reuses
+// the old opened-bubble markup so the task rows and their class names carry over.
+function _orrSideHtml(row) {
   const { p, s } = row;
   const today = localDateStr(new Date());
   const open = row.tasks.filter(t => !t.done)
     .sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')));
   const done = row.tasks.filter(t => t.done);
   const pc   = s.total ? Math.round(s.done / s.total * 100) : 0;
-  const r = d / 2 - 3, c = 2 * Math.PI * r;
 
   const rows = open.length
     ? open.map(t => `
@@ -18555,37 +18588,32 @@ function _orrDetailHtml(row, d) {
         s.done ? 'All ' + s.done + ' are done.' : 'Add the first one below.'}</div>`;
 
   return `
-    <div class="orr-b open" data-orr-b="${escAttr(p.id)}"
-         style="--bc:${escAttr(p.color || '#8a8070')};--d:${d}px">
-    <svg class="orr-b-arc" viewBox="0 0 ${d} ${d}" aria-hidden="true">
-      <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-track"/>
-      <circle cx="${d / 2}" cy="${d / 2}" r="${r}" class="orr-arc-fill"
-              stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - pc / 100)).toFixed(1)}"/>
-    </svg>
-    <div class="orr-d">
-      <div class="orr-d-head">
-        ${s.goal ? `<div class="orr-d-goal">${escHtml(s.goal.title || 'GOAL')} <i>›</i></div>` : ''}
-        <div class="orr-d-title">${escHtml(p.title || 'Untitled')}</div>
-        <div class="orr-d-meta">
-          <span>${escHtml(s.cad.toUpperCase())}</span><i>·</i>
-          ${p.bigRock || p.endDate
-            ? `<span>${escHtml(_orrWindowText(p, s))}</span><i>·</i>` : ''}
-          <span>${pc}% DONE</span>
-          ${row.rank === 0 ? '<i>·</i><span class="orr-d-prime">TODAY’S PULL</span>' : ''}
+    <aside class="orr-side" id="orr-side" data-orr-side="${escAttr(p.id)}"
+           style="--bc:${escAttr(p.color || '#8a8070')}">
+      <div class="orr-d">
+        <div class="orr-d-head">
+          ${s.goal ? `<div class="orr-d-goal">${escHtml(s.goal.title || 'GOAL')} <i>›</i></div>` : ''}
+          <div class="orr-d-title"><span class="orr-d-dot"></span>${escHtml(p.title || 'Untitled')}</div>
+          <div class="orr-d-meta">
+            <span>${escHtml(s.cad.toUpperCase())}</span><i>·</i>
+            ${p.bigRock || p.endDate
+              ? `<span>${escHtml(_orrWindowText(p, s))}</span><i>·</i>` : ''}
+            <span>${pc}% DONE</span>
+            ${row.rank === 0 ? '<i>·</i><span class="orr-d-prime">TODAY’S PULL</span>' : ''}
+          </div>
+        </div>
+        <div class="orr-d-body">${rows}
+          ${done.length ? `<div class="orr-d-done">${done.length} completed</div>` : ''}
+        </div>
+        <div class="orr-d-foot">
+          <span class="orr-d-plus">＋</span>
+          <input class="orr-d-add" data-orr-add="${escAttr(p.id)}"
+                 placeholder="Add a task…" autocomplete="off"/>
+          <button class="orr-btn orr-btn-sm" data-orr-plan="${escAttr(p.id)}" title="Open in Planning">EDIT</button>
+          <button class="orr-btn orr-btn-sm" data-orr-close="1" title="Close (Esc)">✕</button>
         </div>
       </div>
-      <div class="orr-d-body">${rows}
-        ${done.length ? `<div class="orr-d-done">${done.length} completed</div>` : ''}
-      </div>
-      <div class="orr-d-foot">
-        <span class="orr-d-plus">＋</span>
-        <input class="orr-d-add" data-orr-add="${escAttr(p.id)}"
-               placeholder="Add a task…" autocomplete="off"/>
-        <button class="orr-btn orr-btn-sm" data-orr-plan="${escAttr(p.id)}" title="Open in Planning">EDIT</button>
-        <button class="orr-btn orr-btn-sm" data-orr-close="1" title="Close (Esc)">✕</button>
-      </div>
-    </div>
-    </div>`;
+    </aside>`;
 }
 
 function _orrLadderHtml(rows) {
@@ -18651,9 +18679,15 @@ function renderOrrery() {
     return;
   }
 
+  // A plan can be archived or deleted while its drawer is open.
+  if (_orrOpenId && !rows.some(r => r.p.id === _orrOpenId)) _orrOpenId = null;
+  const openRow = _orrOpenId ? rows.find(r => r.p.id === _orrOpenId) : null;
   panel.innerHTML = head +
-    `<div class="orr-field" id="orr-field">
-       <svg class="orr-web" id="orr-web" aria-hidden="true"></svg>
+    `<div class="orr-stage">
+       <div class="orr-field" id="orr-field">
+         <svg class="orr-web" id="orr-web" aria-hidden="true"></svg>
+       </div>
+       ${openRow ? _orrSideHtml(openRow) : ''}
      </div>
      <div class="orr-ladder" id="orr-ladder">
        <div class="orr-l-head">BY PULL · HEAVIEST FIRST</div>
@@ -18669,241 +18703,310 @@ function renderOrrery() {
      <span class="orr-v-name">${escHtml(top.p.title || 'Untitled')}</span>
      <span class="orr-v-why">${escHtml(top.s.reasons.slice(0, 3).join(' · ') || 'the heaviest thing you are carrying')}</span>`;
 
-  // A plan can be archived or deleted while its bubble is open.
-  if (_orrOpenId && !rows.some(r => r.p.id === _orrOpenId)) _orrOpenId = null;
-
   _orrLayout(rows);
+  _orrWireSide();
   _orrWireHead(panel);
   _orrWireField();
 }
 window.renderOrrery = renderOrrery;
 
-/* ── Walking an ellipse by distance, not by angle ──────────────────────────
-   Stepping θ in equal parts does NOT space points equally on an ellipse: the
-   step is ry·Δθ at the ends of the major axis and rx·Δθ at the top and bottom,
-   so on a wide field the bubbles bunch at the left and right and collide while
-   the top looks empty. These two turn a distance along the rim into the angle
-   that reaches it, which fixes the spacing and, applied per frame, also makes
-   a bubble travel at a constant speed instead of visibly accelerating through
-   the flat of the curve. */
-/* ── Spacing on an ellipse ─────────────────────────────────────────────────
-   Dividing the rim into equal lengths is right on a circle and wrong on
-   anything else, because two bubbles overlap along the STRAIGHT LINE between
-   them and a flattened orbit's rim is far longer than that line. Worse, the
-   error is not fixed: the ring turns, so a pair that is comfortable on the
-   flat of the curve is touching by the time it reaches the end of the major
-   axis, where the orbit doubles back on itself.
+/* ── Kepler ────────────────────────────────────────────────────────────────
+   Each plan is on its own orbit, and the orbit is a pure function of the plan's
+   id. Ring seating was the earlier answer: one shared track per rank, bubbles
+   spaced so they could never touch. It was safe and it was a clock face — eight
+   things on a circle read as eight equal things. Separate eccentric orbits give
+   up the no-overlap guarantee (see _orrDeflect for what replaces it) in
+   exchange for motion that has a reason: close is quick, far is slow.
 
-   There is a closed form for exactly this. Take two points a fixed ANGLE 2h
-   apart on an ellipse (rx, ry), at angles φ±h. The distance between them is
+   The numbers are unit-less, with the innermost semi-major axis = 1. The
+   screen scale comes from the field (see _orrLayout), which is why nothing
+   here knows a pixel. */
+const _ORR_A_MIN = 1, _ORR_A_MAX = 2.6;
+const _ORR_F     = 3 * _ORR_A_MAX;        // the lens: how far the camera stands back
+const _ORR_ZR    = _ORR_A_MAX * 1.25;     // z that maps to "nearest": a(1+e)·sin(i) tops out near here
+const _ORR_T_IN  = 55;                    // seconds per orbit for the innermost; calm, not frantic
+const _ORR_SIZE_LENS = 0.07;              // share of the perspective that reaches a radius
 
-       2·sin(h)·√( rx²·sin²φ + ry²·cos²φ )
-
-   which is smallest at φ = 0 — the end of the major axis, as expected — and
-   there it is simply 2·min(rx,ry)·sin(h). The long axis drops out entirely.
-
-   So: give each neighbouring pair at least 2·asin(need / 2r) of angle, where r
-   is the SHORT semi-axis, and turn the ring at a constant angular rate. The
-   clearance then holds at every point of the turn rather than only where the
-   bubbles were first placed, and the long axis is free to be as long as the
-   screen is wide. Which is the whole point — a 34" desk should not be asked to
-   show a circle in the middle of itself. */
-
-// The shortest semi-axis on which these gaps can be kept all the way round.
-function _orrMinR(needs) {
-  const floor = Math.max.apply(null, needs) / 2;   // one pair must fit at all
-  const ok = r => needs.reduce((t, c) => t + Math.asin(Math.min(1, c / (2 * r))), 0) <= Math.PI;
-  let lo = floor, hi = floor;
-  for (let i = 0; i < 48 && !ok(hi); i++) hi *= 1.25;
-  for (let i = 0; i < 36; i++) { const m = (lo + hi) / 2; if (ok(m)) hi = m; else lo = m; }
-  return hi;
+/* A stable string hash → [0,1). FNV-1a, then an avalanche so that ids differing
+   in their last character (p1, p2, p3 …) do not get neighbouring orbits.
+   Deterministic on purpose: Math.random() would reshuffle every plan's orbit on
+   every render, and a task being ticked off re-renders. */
+function _orrHash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  h ^= h >>> 15; h = Math.imul(h, 2246822507);
+  h ^= h >>> 13; h = Math.imul(h, 3266489909);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
 
-// Where each one sits, with whatever angle is left over shared out evenly so
-// the ring is used rather than merely cleared.
-function _orrAngles(needs, r) {
-  const base  = needs.map(c => 2 * Math.asin(Math.min(1, c / (2 * r))));
-  const extra = Math.max(0, Math.PI * 2 - base.reduce((a, b) => a + b, 0)) / needs.length;
-  const out = [];
-  let a = 0;
-  for (let i = 0; i < needs.length; i++) { out.push(a); a += base[i] + extra; }
-  return out;
+function _orrOrbit(id, a) {
+  return {
+    a,
+    e:   0.14 + 0.24 * _orrHash(id + '|e'),
+    w:   Math.PI * 2 * _orrHash(id + '|w'),            // argument of periapsis
+    inc: 0.45 + 0.60 * _orrHash(id + '|i'),
+    M0:  Math.PI * 2 * _orrHash(id + '|m'),            // where on its orbit it starts
+    // Kepler's third law: T ∝ a^1.5, so the heavy inner plans hurry.
+    n:   Math.PI * 2 / (_ORR_T_IN * Math.pow(a / _ORR_A_MIN, 1.5)),
+  };
+}
+
+// A point on the orbit for a given eccentric anomaly, in the unprojected frame.
+function _orrOrbitPoint(o, E) {
+  const x0 = o.a * (Math.cos(E) - o.e);
+  const y0 = o.a * Math.sqrt(1 - o.e * o.e) * Math.sin(E);
+  const cw = Math.cos(o.w), sw = Math.sin(o.w);
+  const xr = x0 * cw - y0 * sw, yr = x0 * sw + y0 * cw;
+  // Tilt about the x-axis: part of the orbit's y becomes depth.
+  return { x: xr, y: yr * Math.cos(o.inc), z: yr * Math.sin(o.inc) };
+}
+
+function _orrKepler(o, M) {
+  M = M % (Math.PI * 2);
+  // Four Newton steps on M = E − e·sin E is plenty for e < 0.4.
+  let E = M;
+  for (let i = 0; i < 4; i++) E -= (E - o.e * Math.sin(E) - M) / (1 - o.e * Math.cos(E));
+  return _orrOrbitPoint(o, E);
 }
 
 /* Lay the bubbles out, then hand them to the loop.
 
-   Nothing here is a fixed number. A fixed ring radius next to a weight-driven
-   diameter is the same mistake as a fixed row height next to variable text:
-   the moment one plan outweighs the rest, its bubble eats its neighbours. So
-   each ring is pushed out until it can keep its own members apart all the way
-   round AND clear whatever is inside it, and if that overruns the screen the
-   diameters come down until it does not. Then, if there is room left over, the
-   rings grow into it while the bubbles stay as they are.
+   Nothing here is a fixed number of pixels. Diameters come from the weights and
+   the field; the orbits come from a pure function of the plan id; and what
+   joins them is two scale factors, one per axis. Perspective is scale-free
+   (k = f / (f − z) does not care what unit z is in), so stretching the
+   projected orbit by sx, sy is the same as having drawn a bigger one.
 
-   Rank still sets the ring, so the ordering survives MOTION being off: radius
-   is information, not decoration. */
+   Fit, or fill: each body's orbit is measured at unit scale over a whole turn,
+   and sx / sy are the largest that keep every body, with the room its radius
+   needs, inside the field. A short window shrinks the orbits; a 34-inch one
+   grows them until the long axis reaches the edge. If even that leaves the
+   bubbles too crowded to read, it is the bubbles that give — the diameters
+   come down until they take 14% of the field's area at most. */
 function _orrLayout(allRows) {
-  // An opened plan is always drawn, even if it ranks below the cut.
-  const rows = allRows.slice(0, _ORR_MAX_BUBBLES).some(r => r.p.id === _orrOpenId) || !_orrOpenId
-    ? allRows
-    : [allRows.find(r => r.p.id === _orrOpenId)].concat(allRows.filter(r => r.p.id !== _orrOpenId));
   const field = document.getElementById('orr-field');
   const web   = document.getElementById('orr-web');
   if (!field) return;
   const W = field.clientWidth, H = field.clientHeight;
   if (!W || !H) return;             // panel still hidden; the observer re-runs us
   const cx = W / 2, cy = H / 2;
-  /* The dark between two bubbles — what you see, plus the ~2% each one gains
-     at the top of its breath. */
-  const GAP = 22;
-  const M   = 12;                   // how close a bubble may come to the edge
+  const M  = 12;                    // how close a bubble may come to the edge
+  const LBL = 36;                   // a two-line label and its gap, reserved above and below
 
-  /* Exactly one body holds the centre. Normally that is rank 0 — today's pull.
-     While a bubble is open it takes the centre instead, and rank 0 rejoins the
-     inner ring, so the two never stack on top of each other. */
-  const holdsCentre = r => _orrOpenId ? r.p.id === _orrOpenId : r.rank === 0;
-
-  // The opened plan is a circle big enough to read a task list inside.
-  const openD = Math.round(Math.min(560, W * 0.52, H * 0.94));
-  const unit  = Math.min(W, H) / 2;
-  const maxD  = Math.max(112, Math.min(unit * 0.66, 186));
-  const minD  = Math.max(72, maxD * 0.44);
-  const dOf   = r => r.p.id === _orrOpenId ? openD
-                   : Math.round(minD + (maxD - minD) * Math.pow(r.w, 0.85));
-
-  const shown     = rows.slice(0, _ORR_MAX_BUBBLES);
-  const centreRow = shown.find(holdsCentre);
-  const orbiters  = shown.filter(r => !holdsCentre(r));
-  /* One ring until there are too many for one ring. A third ring looks like
-     more structure than it is: each one has to clear the one inside it, and by
-     the third the field has been scaled down so far that no bubble can hold a
-     name. Nine around a centre is about where a single orbit stops being
-     readable — past that, open the second, and _ORR_MAX_BUBBLES stops it
-     there. Rank is the order around the ring; the ladder gives it exactly. */
-  const ringOf = i => i >= 9 ? 1 : 0;
-  const SPD    = [0.0111, -0.0076];   // revolutions/sec, opposite directions
-                                      // so the two rings read apart
-
-  /* The floor only guards against a zero or negative half-field. It must stay
-     small: set high enough to be "comfortable", it quietly licenses the rings
-     to be bigger than the field they are in, and a short window then pushes
-     bubbles out through the bottom. */
-  const avX = Math.max(24, W / 2 - M), avY = Math.max(24, H / 2 - M);
-  const shortHave = Math.min(avX, avY);     // the axis every constraint is on
-  const wide      = avX >= avY;             // landscape field → long axis is x
-
-  /* Solve the rings at a given diameter scale. Every quantity below is linear
-     in that scale, so when the result does not fit the field, scaling by how
-     far it missed and re-solving lands on the answer; the extra passes are
-     only there to absorb the rounding. */
-  const solve = k => {
-    const mem = [[], []];
-    orbiters.forEach((r, i) => mem[ringOf(i)].push({ r, d: Math.round(dOf(r) * k) }));
-    const centreD = centreRow ? Math.round(dOf(centreRow) * k) : 0;
-    const gap = GAP * k;
-    const rings = [];
-    let inner = centreD / 2, innerMax = 0;
-    mem.forEach(m => {
-      if (!m.length) { rings.push({ r: inner, widest: 0, needs: [] }); return; }
-      const widest = Math.max.apply(null, m.map(x => x.d));
-      // What each neighbouring pair needs between it, going round.
-      const needs = m.map((x, i) => (x.d + m[(i + 1) % m.length].d) / 2 + gap);
-      // Two constraints: keep its own members apart all the way round, and
-      // clear whatever is inside it. Both are about the short semi-axis —
-      // that is where an ellipse passes closest to its own centre, and where
-      // two points a fixed angle apart come closest to each other.
-      const r = Math.max(m.length > 1 ? _orrMinR(needs) : 0,
-                         inner + innerMax / 2 + widest / 2 + gap);
-      rings.push({ r, widest, needs });
-      inner = r; innerMax = widest;
-    });
-    let last = -1;
-    mem.forEach((m, i) => { if (m.length) last = i; });
-    const shortNeed = last < 0 ? centreD / 2
-                               : rings[last].r + rings[last].widest / 2;
-    return { mem, centreD, gap, rings, last, shortNeed };
-  };
-
-  let S = solve(1), k = 1;
-  for (let i = 0; i < 5 && S.shortNeed > shortHave && k > 0.12; i++) {
-    k = Math.max(0.12, k * shortHave / S.shortNeed);
-    S = solve(k);
+  // A selected plan is always drawn, even if it ranks below the cut.
+  let shown = allRows.slice(0, _ORR_MAX_BUBBLES);
+  if (_orrOpenId && !shown.some(r => r.p.id === _orrOpenId)) {
+    const o = allRows.find(r => r.p.id === _orrOpenId);
+    if (o) shown = shown.slice(0, _ORR_MAX_BUBBLES - 1).concat(o);
   }
-  const { mem, centreD, gap, rings, last } = S;
+  const centreRow = shown.find(r => r.rank === 0);
+  const orbiters  = shown.filter(r => r.rank !== 0).sort((a, b) => a.rank - b.rank);
+  const n = orbiters.length;
 
-  /* Room to spare? The rings grow into it and the bubbles do not. The point of
-     a wide screen is more space between the plans, not larger circles — and
-     more space only ever makes the spacing above easier, so nothing needs
-     re-checking. The long axis then simply reaches for the edge, which is what
-     stops a 34" desk showing a circle in the middle of itself. Inner rings
-     take the same shape rather than the same length, so they stay inside the
-     outer one instead of crossing it. */
-  const grow   = last < 0 || rings[last].r <= 0 ? 1
-    : Math.max(1, (shortHave - rings[last].widest / 2) / rings[last].r);
-  const rOuter = last < 0 ? 0 : rings[last].r * grow;
-  const longOuter = last < 0 ? 0
-    : Math.max(rOuter, (wide ? avX : avY) - rings[last].widest / 2);
-  const axes = i => {
-    const r    = rings[i].r * grow;
-    const long = rOuter > 0 ? longOuter * (r / rOuter) : r;
-    return wide ? { rx: long, ry: r } : { rx: r, ry: long };
-  };
+  const unit = Math.min(W, H) / 2;
+  /* Smaller than the ring layout's 112–186. Rings seated every bubble so it
+     could not touch; orbits cannot, and at the old sizes eight plans on a
+     1220×620 field were overlapping 93% of the time, by 32px on average at the
+     worst pair. Roughly halving the area (70–140) brought that to 42% and 10px,
+     and names are always legible now that they can sit outside the circle, so
+     the bubble no longer has to be big enough to hold one. */
+  const maxD = Math.max(96, Math.min(unit * 0.50, 168));
+  const minD = Math.max(68, maxD * 0.46);
+  const dOf  = r => Math.round(minD + (maxD - minD) * Math.pow(r.w, 0.85));
 
-  const html = [], bodies = [], ringPx = [];
-  if (centreRow) {
-    html.push(_orrOpenId === centreRow.p.id
-      ? _orrDetailHtml(centreRow, centreD)
-      : _orrBubbleHtml(centreRow, centreD, centreRow.s.score));
-    bodies.push({ id: centreRow.p.id, d: centreD, centre: true,
-                  open: _orrOpenId === centreRow.p.id, x: cx, y: cy, phase: 0 });
-  }
-  mem.forEach((m, k2) => {
-    if (!m.length) { ringPx.push({ rx: 0, ry: 0, used: false }); return; }
-    const { rx, ry } = axes(k2);
-    ringPx.push({ rx, ry, used: true });
-    const ang = m.length > 1
-      ? _orrAngles(rings[k2].needs, Math.min(rx, ry))
-      : [0];
-    m.forEach((x, i) => {
-      html.push(_orrBubbleHtml(x.r, x.d, x.r.s.score));
-      bodies.push({
-        id: x.r.p.id, d: x.d, centre: false, spd: SPD[k2], rx, ry,
-        // Offset each ring so the two never line up into a spoke — a spoke
-        // reads as a relationship between the plans, which is not there.
-        ang: ang[i] + k2 * 0.7,
-        phase: i * 1.7 + k2, x: cx, y: cy,
-      });
-    });
+  const orbs = orbiters.map((r, i) =>
+    _orrOrbit(r.p.id, n > 1 ? _ORR_A_MIN + (_ORR_A_MAX - _ORR_A_MIN) * i / (n - 1) : _ORR_A_MIN));
+  /* Measure each orbit once, projected, at unit scale. Position scales linearly
+     with the field, so one pass here replaces testing every frame. */
+  orbs.forEach(o => {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (let j = 0; j < 96; j++) {
+      const q = _orrOrbitPoint(o, j / 96 * Math.PI * 2), k = _ORR_F / (_ORR_F - q.z);
+      const X = q.x * k, Y = q.y * k;
+      x0 = Math.min(x0, X); x1 = Math.max(x1, X);
+      y0 = Math.min(y0, Y); y1 = Math.max(y1, Y);
+    }
+    o.x0 = x0; o.x1 = x1; o.y0 = y0; o.y1 = y1;
   });
 
-  field.classList.toggle('has-open', !!_orrOpenId);
-  field.insertAdjacentHTML('beforeend', html.join(''));
-  bodies.forEach(b => { b.el = field.querySelector(`[data-orr-b="${b.id}"]`); });
-  _orrBodies = bodies.filter(b => b.el);
+  const areaCap = 0.17 * Math.max(1, W - 2 * M) * Math.max(1, H - 2 * M);
+  let kD = 1, sx = 0, sy = 0, ds = [], centreD = 0, shiftX = 0, shiftY = 0;
+  for (let it = 0; it < 24; it++) {
+    centreD = centreRow ? Math.round(dOf(centreRow) * kD) : 0;
+    ds = orbiters.map(r => Math.round(dOf(r) * kD));
+    /* The room each body needs beyond its orbit: its radius, the breath, the
+       perspective's token share of it, and the deflection it may be pushed —
+       and for height, the label that may hang from it. */
+    const pads = orbiters.map((r, i) => {
+      const pr = ds[i] / 2 * 1.022 * (1 + (_ORR_F / (_ORR_F - _ORR_ZR) - 1) * _ORR_SIZE_LENS) * 1.45;
+      const lbl = _orrNameLines(r.p.title || 'Untitled', ds[i]) ? 0 : LBL;
+      // A label is wider than the small bubble it hangs from: about 7.7px a
+      // character in mono at this tracking, wrapped at 150px.
+      const lw = lbl ? Math.min(150, (r.p.title || 'Untitled').length * 7.7 + 12) / 2 * 1.1 : 0;
+      return { x: Math.max(pr, lw), top: pr + lbl, bot: pr + lbl };
+    });
 
-  // The gravity web: one hairline from each orbiter to the centre, its
-  // brightness the plan's share of the heaviest pull on the page.
+    /* The drawn box, signed, at a given scale. A Kepler orbit has its focus at
+       the origin, so it is NOT symmetric about it — periapsis sits at a(1−e)
+       one side, apoapsis at a(1+e) the other. Measuring only max|x| reserved
+       the apoapsis distance on BOTH sides, which wasted the field and left the
+       system visibly high in it: 147px of dead band above the cloud against 41
+       below, on a field it was filling to 74%. Measure the real box, fit THAT,
+       and then move the system so the box is centred. */
+    const spanX = sc => {
+      let lo = centreRow ? -centreD / 2 : 1e9, hi = centreRow ? centreD / 2 : -1e9;
+      orbiters.forEach((r, i) => {
+        lo = Math.min(lo, sc * orbs[i].x0 - pads[i].x);
+        hi = Math.max(hi, sc * orbs[i].x1 + pads[i].x);
+      });
+      return [lo, hi];
+    };
+    const spanY = sc => {
+      let lo = centreRow ? -centreD / 2 : 1e9, hi = centreRow ? centreD / 2 : -1e9;
+      orbiters.forEach((r, i) => {
+        lo = Math.min(lo, sc * orbs[i].y0 - pads[i].top);
+        hi = Math.max(hi, sc * orbs[i].y1 + pads[i].bot);
+      });
+      return [lo, hi];
+    };
+    // The pads are pixels and do not scale with the orbit, so the largest scale
+    // that still fits is found by bisection — the box only ever grows with it.
+    const solve = (span, avail) => {
+      let lo = 0, hi = Math.max(1, avail * 4);
+      for (let q = 0; q < 24; q++) {
+        const mid = (lo + hi) / 2, b = span(mid);
+        if (b[1] - b[0] <= avail) lo = mid; else hi = mid;
+      }
+      return lo;
+    };
+    sx = n ? solve(spanX, W - 2 * M) : 0;
+    sy = n ? solve(spanY, H - 2 * M) : 0;
+    const area = [centreD].concat(ds).reduce((t, d) => t + Math.PI * d * d / 4, 0);
+    const centreOk = centreD / 2 * 1.02 <= Math.min(W, H) / 2 - M;
+    if ((!n || (sx > 0 && sy > 0)) && area <= areaCap && centreOk) {
+      const bx = spanX(sx), by = spanY(sy);
+      shiftX = n ? -(bx[0] + bx[1]) / 2 : 0;
+      shiftY = n ? -(by[0] + by[1]) / 2 : 0;
+      break;
+    }
+    kD = Math.max(0.12, kD * 0.9);
+  }
+  sx = Math.max(0, sx); sy = Math.max(0, sy);
+  // A 4:1 stretch is already a very flat orbit; past that it stops looking like
+  // one and starts looking like a scanline.
+  if (sx > sy * 4) sx = sy * 4;
+  if (sy > sx * 4) sy = sx * 4;
+
+  const html = [], bodies = [];
+  if (centreRow) {
+    const fits = _orrNameLines(centreRow.p.title || 'Untitled', centreD);
+    html.push(_orrBubbleHtml(centreRow, centreD, centreRow.s.score, fits));
+    bodies.push({ id: centreRow.p.id, d: centreD, centre: true, phase: 0, ox: 0, oy: 0 });
+  }
+  orbiters.forEach((r, i) => {
+    html.push(_orrBubbleHtml(r, ds[i], r.s.score, _orrNameLines(r.p.title || 'Untitled', ds[i])));
+    bodies.push({ id: r.p.id, d: ds[i], centre: false, orb: orbs[i], phase: i * 1.7, ox: 0, oy: 0 });
+  });
+
+  field.insertAdjacentHTML('beforeend', html.join(''));
+  const els = {};
+  field.querySelectorAll('.orr-o').forEach(el => { els[el.dataset.orrB] = el; });
+  bodies.forEach(b => {
+    b.el = els[b.id];
+    if (!b.el) return;
+    b.circ = b.el.querySelector('.orr-b');
+    b.lbl  = b.el.querySelector('.orr-lbl');
+  });
+
+  /* The gravity web: one hairline from each orbiter to the centre, its
+     brightness the plan's share of the heaviest pull and its weight written
+     per frame from depth.
+
+     Deliberately no orbit tracks. Eight of them crossing, plus a tether to
+     each body, put fourteen lines across the field — and "too many equal
+     lines" is the complaint this whole redesign started from. The paths are
+     legible in the motion itself; drawn, they only crowd it. */
   if (web) {
     web.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    const top = rows[0].s.score || 1;
+    const top = allRows[0].s.score || 1;
     web.innerHTML =
-      ringPx.map((r, k) => !r.used ? '' :
-        `<ellipse cx="${cx}" cy="${cy}" rx="${r.rx.toFixed(1)}" ry="${r.ry.toFixed(1)}"
-                  class="orr-ring${k === 1 ? ' dash' : ''}"/>`).join('') +
       orbiters.map(r =>
         `<line class="orr-pull" data-orr-line="${escAttr(r.p.id)}"
                x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy}"
-               stroke-opacity="${(0.05 + (r.s.score / top) * 0.20).toFixed(3)}"/>`).join('');
-    _orrBodies.forEach(b => { b.line = web.querySelector(`[data-orr-line="${b.id}"]`); });
+               data-base="${(0.05 + (r.s.score / top) * 0.20).toFixed(3)}"/>`).join('');
+    const lines = {};
+    web.querySelectorAll('[data-orr-line]').forEach(l => { lines[l.dataset.orrLine] = l; });
+    bodies.forEach(b => { b.line = lines[b.id]; if (b.line) b.base = +b.line.dataset.base; });
   }
 
-  _orrCentre = { cx, cy };
+  _orrBodies = bodies.filter(b => b.el);
+  /* The system's origin — the focus every orbit shares, and where the centre
+     bubble sits — is the middle of the drawn box, not the middle of the panel.
+     With the focus off to one side of each orbit those two are not the same
+     point, and centring on the panel is what left the dead band above. */
+  _orrView = { cx: cx + shiftX, cy: cy + shiftY, sx, sy };
   _orrStart();
+}
+
+/* ── Overlap deflection ────────────────────────────────────────────────────
+   Independent orbits will collide; that was the price of leaving the rings.
+   Rather than forbid it, nudge. Each frame the true orbital positions are
+   relaxed against each other a few times — every overlapping pair is pushed
+   apart along the line between them — and the result becomes a per-body offset
+   that the body EASES toward. Two consequences, both wanted: bubbles drift
+   apart as they meet and drift back as they part instead of snapping, and the
+   offset is clamped to under half a radius, so a bubble can never stray far
+   enough from its orbit for its position to stop meaning it.
+
+   The centre never moves, so a body sliding over it takes the whole push. It
+   usually cannot clear the centre inside the clamp — and does not need to: it
+   is at a different depth and passes behind or in front. */
+function _orrDeflect(bs) {
+  const PAD = 10, CLAMP = 0.45, EASE = 0.12, DEPTH = 0.30;
+  bs.forEach(b => { b.tx = 0; b.ty = 0; });
+  for (let it = 0; it < 4; it++) {
+    for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+      const a = bs[i], c = bs[j];
+      /* Two bodies far apart in DEPTH are not colliding — one is passing in
+         front of the other, which is the whole point of putting the field in
+         three dimensions. Shoving them apart denies the thing the perspective
+         is there to show, and spends the offset budget on pairs that did not
+         need it. Only things at a similar depth are in each other's way. */
+      if (Math.abs(a.near - c.near) > DEPTH) continue;
+      const dx = (c.px + c.tx) - (a.px + a.tx), dy = (c.py + c.ty) - (a.py + a.ty);
+      const dist = Math.hypot(dx, dy), need = a.r + c.r + PAD;
+      if (dist >= need) continue;
+      // Two centres on the same pixel have no line between them. Pick one from
+      // the ids — the same pair always separates the same way.
+      let ux, uy;
+      if (dist < 0.001) { const g = Math.PI * 2 * _orrHash(a.id + '|' + c.id); ux = Math.cos(g); uy = Math.sin(g); }
+      else { ux = dx / dist; uy = dy / dist; }
+      const push = need - dist;
+      const wa = a.centre ? 0 : (c.centre ? 1 : 0.5), wc = c.centre ? 0 : (a.centre ? 1 : 0.5);
+      a.tx -= ux * push * wa; a.ty -= uy * push * wa;
+      c.tx += ux * push * wc; c.ty += uy * push * wc;
+    }
+    bs.forEach(b => {
+      const lim = CLAMP * b.r, m = Math.hypot(b.tx, b.ty);
+      if (m > lim) { b.tx *= lim / m; b.ty *= lim / m; }
+    });
+  }
+  bs.forEach(b => {
+    b.ox += (b.tx - b.ox) * EASE; b.oy += (b.ty - b.oy) * EASE;
+    // The radius breathes, so a previously legal offset can outgrow the clamp.
+    const lim = CLAMP * b.r, m = Math.hypot(b.ox, b.oy);
+    if (m > lim) { b.ox *= lim / m; b.oy *= lim / m; }
+  });
 }
 
 /* ── The loop ───────────────────────────────────────────────────────────── */
 
-function _orrFrame(now) {
+// `settle` runs the deflection to rest instead of one eased step. It is for a
+// field that is not about to be redrawn next frame — MOTION off, or the first
+// placement after a render — which would otherwise freeze half-way between the
+// orbital positions and the deflected ones.
+function _orrFrame(now, settle) {
   _orrRaf = null;
   const field = document.getElementById('orr-field');
   if (!field || _mainPanel !== 'orrery') return;
@@ -18914,32 +19017,58 @@ function _orrFrame(now) {
      re-render, because a ticked-off task rebuilds the page. */
   if (moving) _orrT = (now - _orrT0) / 1000;
   const t = _orrT;
-  const { cx, cy } = _orrCentre;
+  const { cx, cy, sx, sy } = _orrView;
 
   _orrBodies.forEach(b => {
-    if (!b.el) return;
-    let x, y, sc;
+    let k = 1;
     if (b.centre) {
-      x = cx; y = cy;
       // The prime bubble breathes rather than travels. Stillness is the signal
-      // in a field where everything else drifts. An opened one holds dead still.
-      sc = b.open ? 1 : 1 + 0.018 * Math.sin(t * 0.8);
+      // in a field where everything else drifts.
+      b.px = cx; b.py = cy; b.near = 0.5; b.sc = 1 + 0.018 * Math.sin(t * 0.8);
     } else {
-      /* A constant ANGULAR rate, not a constant speed along the rim. It has
-         to be: the clearance proved above holds for a fixed angle between two
-         bubbles, so the ring must turn rigidly in angle or the proof says
-         nothing once it has moved. It also happens to look right — a body
-         crawls through the far ends of a long orbit and sweeps across the near
-         side, which is what an orbit does. */
-      const a = b.ang + t * b.spd * Math.PI * 2;
-      x = cx + Math.cos(a) * b.rx;
-      y = cy + Math.sin(a) * b.ry;
-      sc = 1 + 0.022 * Math.sin(t * 0.55 + b.phase);
+      const q = _orrKepler(b.orb, b.orb.M0 + t * b.orb.n);
+      k = _ORR_F / (_ORR_F - q.z);
+      // Position takes the full lens; size takes 7% of it. Letting perspective
+      // scale a bubble freely made a heavy far plan read as a light one, and
+      // size is this page's claim about weight.
+      b.px = cx + q.x * k * sx; b.py = cy + q.y * k * sy;
+      b.near = Math.max(0, Math.min(1, (q.z / _ORR_ZR + 1) / 2));
+      b.sc = (1 + (k - 1) * _ORR_SIZE_LENS) * (1 + 0.022 * Math.sin(t * 0.55 + b.phase));
     }
+    b.r = b.d / 2 * b.sc;
+  });
+
+  for (let i = 0, n = settle || !moving ? 40 : 1; i < n; i++) _orrDeflect(_orrBodies);
+
+  _orrBodies.forEach(b => {
+    const x = b.px + b.ox, y = b.py + b.oy;
     b.x = x; b.y = y;
     b.el.style.transform =
-      `translate3d(${(x - b.d / 2).toFixed(1)}px,${(y - b.d / 2).toFixed(1)}px,0) scale(${sc.toFixed(4)})`;
-    if (b.line) { b.line.setAttribute('x2', x.toFixed(1)); b.line.setAttribute('y2', y.toFixed(1)); }
+      `translate3d(${(x - b.d / 2).toFixed(1)}px,${(y - b.d / 2).toFixed(1)}px,0) scale(${b.sc.toFixed(4)})`;
+    /* Draw order from depth: the bubbles are DOM nodes, so z-index is the only
+       way to put one behind another. The centre sits at 50, which is z = 0, so
+       near > 0.5 is in front of it and near < 0.5 behind. */
+    let z = Math.round(b.near * 100);
+    if (!b.centre && z === 50) z = b.near < 0.5 ? 49 : 51;
+    b.el.style.zIndex = b.centre ? 50 : z;
+    const sel = b.el.classList.contains('sel');
+    // Haze, never absence: a far plan is dimmer, not gone.
+    b.circ.style.opacity = sel || b.centre ? 1 : (0.55 + 0.45 * b.near).toFixed(3);
+    if (b.lbl) {
+      b.lbl.style.opacity = b.centre ? 1 : (0.62 + 0.38 * b.near).toFixed(3);
+      // Hang the label on the outward side, so it points away from the middle
+      // of the field rather than into its neighbours. Hysteresis stops a body
+      // crossing the midline from flickering between the two.
+      const dy = y - cy;
+      if (!b.centre && Math.abs(dy) > 8 && (dy < 0) !== !!b.up) {
+        b.up = dy < 0; b.lbl.classList.toggle('above', b.up);
+      }
+    }
+    if (b.line) {
+      b.line.setAttribute('x2', x.toFixed(1)); b.line.setAttribute('y2', y.toFixed(1));
+      b.line.style.strokeOpacity = (b.base * (0.45 + 0.55 * b.near)).toFixed(3);
+      b.line.style.strokeWidth   = (0.5 + 1.1 * b.near).toFixed(2);
+    }
   });
 
   if (moving) _orrRaf = requestAnimationFrame(_orrFrame);
@@ -18953,15 +19082,19 @@ function _orrStart() {
      one, so waiting a frame stacks them all in the top-left corner first —
      one visible flash on every render, and renders are frequent. The frame
      reschedules itself, so this is also how the loop starts. */
-  _orrFrame(performance.now());
+  _orrFrame(performance.now(), true);
 }
 function _orrStop() {
   if (_orrRaf) cancelAnimationFrame(_orrRaf);
   _orrRaf = null;
 }
 
-/* ── Open / close a bubble ──────────────────────────────────────────────── */
+/* ── Select / deselect a plan ───────────────────────────────────────────── */
 
+/* Both re-render, and that is what re-lays the field out: the drawer takes 380px
+   from it, so the orbit scale has to be solved again at the new width. The
+   ResizeObserver cannot do this job — it watches #panel-orrery, whose own size
+   does not change when the drawer opens inside it. */
 function _orrOpen(id) {
   _orrOpenId = id;
   renderOrrery();
@@ -18973,11 +19106,11 @@ function _orrClose() {
   renderOrrery();
 }
 
-// Controls that only exist inside an opened bubble.
-function _orrWireOpen(field) {
-  const el = field.querySelector('.orr-b.open');
+// Controls that only exist while the drawer is open.
+function _orrWireSide() {
+  const el = document.getElementById('orr-side');
   if (!el) return;
-  const id = el.dataset.orrB;
+  const id = el.dataset.orrSide;
   el.querySelectorAll('[data-orr-done]').forEach(c => c.addEventListener('click', e => {
     e.stopPropagation(); toggleTask(c.dataset.orrDone);
   }));
@@ -18990,7 +19123,6 @@ function _orrWireOpen(field) {
     openMsProjectModal(id);
   });
   const add = el.querySelector('[data-orr-add]');
-  add?.addEventListener('click', e => e.stopPropagation());
   add?.addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     const v = add.value; add.value = '';
@@ -19025,10 +19157,9 @@ function _orrWireField() {
     const b = e.target.closest('[data-orr-b]');
     // A click on the field itself — the dark between the bubbles — closes.
     if (!b) { _orrClose(); return; }
-    if (b.classList.contains('open')) return;   // clicks inside the open card
     pick(b);
   });
-  field?.querySelectorAll('[data-orr-b]:not(.open)').forEach(b => b.addEventListener('keydown', e => {
+  field?.querySelectorAll('.orr-o').forEach(b => b.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(b); }
   }));
   ladder?.querySelectorAll('[data-orr-b]').forEach(l => {
@@ -19037,11 +19168,12 @@ function _orrWireField() {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(l); }
     });
   });
-  if (field) _orrWireOpen(field);
 }
 
-/* The field's size decides ring radii and bubble diameters, so a window or nav
-   resize has to re-lay it out. The observer watches #panel-orrery, which
+/* The field's size decides orbit scale and bubble diameters, so a window or nav
+   resize has to re-lay it out. (Opening the drawer narrows the field without
+   resizing this panel, so _orrOpen re-renders by hand rather than relying on
+   this.) The observer watches #panel-orrery, which
    persists across renders — observing #orr-field would re-fire on every render
    (a fresh observation always calls back) and spin.
    Only a real size change re-renders; everything else is ignored. */

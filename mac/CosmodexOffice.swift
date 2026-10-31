@@ -22,10 +22,13 @@
 
 import AppKit
 
-let port = 8765
-let pageURL = URL(string: "http://localhost:\(port)/")!
+// The same range start-cosmodex.command uses, so the two launchers always find
+// each other's server: if one had to move off 8765, the other looks for it.
+let firstPort = 8765, lastPort = 8774
 
 final class Launcher: NSObject, NSApplicationDelegate {
+    private var port = firstPort
+    private var pageURL: URL { URL(string: "http://localhost:\(port)/")! }
     private var server: Process?
     private var quitting = false
     private let info = Bundle.main.infoDictionary ?? [:]
@@ -37,21 +40,28 @@ final class Launcher: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
-        switch probe() {
-        case .ours:
-            // Already up — most likely started from start-cosmodex.command in
-            // Terminal. Use it. It is not ours to stop, so we keep no handle.
+        // Already up — most likely started from start-cosmodex.command in
+        // Terminal, on whichever port it found. Use it. It is not ours to stop,
+        // so we keep no handle on it.
+        if let p = (firstPort...lastPort).first(where: { probe($0) == .ours }) {
+            port = p
             openPage()
-        case .foreign:
-            fail("Something other than Cosmodex is using port \(port). If a Cosmodex Terminal window is open, close it and try again.")
-        case .free:
-            guard FileManager.default.fileExists(atPath: dir + "/cosmodex-server.py") else {
-                fail("The Cosmodex folder is not where it was:\n\(dir)\n\nIf you moved it, double-click make-mac-launcher.command in its new place to rebuild this app.")
-                return
-            }
-            guard startServer() else { return }
-            waitThenOpen()
+            return
         }
+        guard FileManager.default.fileExists(atPath: dir + "/cosmodex-server.py") else {
+            fail("The Cosmodex folder is not where it was:\n\(dir)\n\nIf you moved it, double-click make-mac-launcher.command in its new place to rebuild this app.")
+            return
+        }
+        // Another program on 8765 is not a reason to give up: take the next
+        // free port. Preferences live in Cosmodex's own database, so they
+        // follow it to a new address.
+        guard let p = (firstPort...lastPort).first(where: isFree) else {
+            fail("Every port from \(firstPort) to \(lastPort) is in use by other programs.")
+            return
+        }
+        port = p
+        guard startServer() else { return }
+        waitThenOpen()
     }
 
     // A click on the Dock icon while we are running brings the page back —
@@ -122,7 +132,7 @@ final class Launcher: NSObject, NSApplicationDelegate {
     private func waitThenOpen() {
         DispatchQueue.global().async {
             for _ in 0..<50 {                                     // up to ~10 s
-                if self.probe() == .ours { DispatchQueue.main.async { self.openPage() }; return }
+                if self.probe(self.port) == .ours { DispatchQueue.main.async { self.openPage() }; return }
                 usleep(200_000)
             }
             DispatchQueue.main.async {
@@ -136,9 +146,10 @@ final class Launcher: NSObject, NSApplicationDelegate {
     private enum Port { case free, ours, foreign }
 
     // Is anything answering on the port, and is it Cosmodex? Something else
-    // may hold 8765, and opening that would look like Cosmodex had broken.
-    private func probe() -> Port {
-        var req = URLRequest(url: pageURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 1)
+    // may hold it, and opening that would look like Cosmodex had broken.
+    private func probe(_ p: Int) -> Port {
+        let url = URL(string: "http://localhost:\(p)/")!
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 1)
         req.httpMethod = "GET"
         let done = DispatchSemaphore(value: 0)
         var result = Port.free
@@ -151,6 +162,25 @@ final class Launcher: NSObject, NSApplicationDelegate {
         }.resume()
         _ = done.wait(timeout: .now() + 2)
         return result
+    }
+
+    // Free means we could bind it ourselves — the honest test. "Nothing
+    // answered over HTTP" is not the same thing: a program that listens but
+    // never replies would pass that and then make the server fail to start.
+    private func isFree(_ p: Int) -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { Darwin.close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(UInt16(p).bigEndian)
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        return withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+            }
+        }
     }
 
     private func openPage() {

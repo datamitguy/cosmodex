@@ -94,6 +94,17 @@ onto the right-hand end of the Dock, beside the Bin (the left part of the Dock
 only takes apps). One click on it opens a Terminal window and the app. That
 window *is* Cosmodex: leave it open while you work, close it to stop.
 
+- **Clicking it again is safe.** If Cosmodex is already running it just brings
+  the page back and closes the extra window. A fast double-click starts one
+  server, not two.
+- **If another program has port 8765**, it uses the next free port (up to
+  8774) and says so. Your preferences are kept in Cosmodex's database, so they
+  come along.
+- **It gives itself the Cosmodex icon** the first time it runs. If the Dock
+  still shows a plain document icon after that, drag it off the Dock and back
+  on once. A `git pull` that updates the file can drop the icon; the next run
+  puts it back.
+
 If double-clicking it does nothing, open Terminal once and run
 `chmod +x start-cosmodex.command` from this folder.
 

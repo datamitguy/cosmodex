@@ -166,7 +166,6 @@ function _habitWithDefaults(h) {
 
 // Orb petal state
 let _orbGeometry  = null; // set by drawCosmodex when expanded
-let _orbClickHour = 9;    // hour of last petal click
 
 // Data listeners — stored so they can be cleaned up on signout
 let _tasksUnsub       = null;
@@ -2981,10 +2980,18 @@ function renderMilestoneListsPanel(projId) {
     cb.addEventListener('change', () => toggleMilestoneItem(projId, cb.dataset.msToggle));
   });
 
-  // Linked-task completion — toggle the real task, then refresh this panel.
+  // Linked-task completion. Closing a task asks for the time it took, as it
+  // does everywhere else — this list used to close it silently, so tasks done
+  // from Planning logged no time. The checkbox ticks itself before this runs,
+  // so it is put back until the answer is in: the task snapshot redraws this
+  // panel ticked if it was completed, and a cancelled popover leaves it open.
+  // Reopening a done task needs no question.
   body.querySelectorAll('[data-plink-toggle]').forEach(cb => {
-    cb.addEventListener('change', () => {
-      const p = toggleTask(cb.dataset.plinkToggle);
+    cb.addEventListener('change', e => {
+      const id = cb.dataset.plinkToggle;
+      const t = TASKS.find(x => x.id === id);
+      if (t && !t.done) { cb.checked = false; handleCheckClick(id, e); return; }
+      const p = toggleTask(id);
       (p && p.then ? p : Promise.resolve()).then(() => renderMilestoneListsPanel(projId));
     });
   });
@@ -3557,7 +3564,10 @@ function initMilestonesPanel() {
       const activitiesToSave = await Promise.all(_msNewActivities.map(async a => {
         if (!a.taskId && a.text) {
           const { addDoc, serverTimestamp } = window.CDX_FB;
-          const ref = await addDoc(_uc('tasks'), newTaskDoc({ title: a.text, dueDate: date || null }));
+          // projId is the commitment this milestone belongs to. It was not
+          // passed, so every task added here was an orphan, tied to its
+          // commitment only through the activity list.
+          const ref = await addDoc(_uc('tasks'), newTaskDoc({ title: a.text, dueDate: date || null, projectId: projId || null }));
           return { ...a, taskId: ref.id };
         }
         return a;
@@ -4926,41 +4936,12 @@ function initFocusBuckets() {
 
 
 /* ══ ORB PETAL QUICK-ADD ══ */
+/* A petal click is a capture at that hour, so it opens quick capture rather
+   than a modal of its own. The old one filed every task under "personal" with
+   no commitment — an orphan by construction — and was a second, weaker copy of
+   the same form. */
 function openOrbAddTaskModal(hour) {
-  _orbClickHour = hour;
-  const label = hour === 0 ? '12am' : hour < 12 ? `${hour}am` : hour === 12 ? '12pm' : `${hour - 12}pm`;
-  document.getElementById('orb-add-task-title').textContent = `Add task at ${label}`;
-  document.getElementById('orb-task-time').value = `${String(hour).padStart(2, '0')}:00`;
-  document.getElementById('orb-task-title-input').value = '';
-  openOverlay('orb-add-task-modal');
-  setTimeout(() => document.getElementById('orb-task-title-input')?.focus(), 80);
-}
-
-async function confirmOrbAddTask() {
-  const title    = document.getElementById('orb-task-title-input').value.trim();
-  const time     = document.getElementById('orb-task-time').value;
-  const duration = parseInt(document.getElementById('orb-task-duration').value) || 60;
-  if (!title || !time) return;
-  const { addDoc, serverTimestamp } = window.CDX_FB;
-  const today = localDateStr(new Date());
-  const endTime = addMinutes(time, duration);
-  // Create calendar event
-  const evRef = await addDoc(_uc('calEvents'), {
-    title, date: today, startTime: time, endTime, duration,
-    color: getCatColor('personal'), createdAt: serverTimestamp()
-  });
-  // Create linked task
-  await addDoc(_uc('tasks'), newTaskDoc({
-    title, dueDate: today, category: 'personal', calEventId: evRef.id,
-  }));
-  closeOverlay('orb-add-task-modal');
-}
-
-function initOrbAddTask() {
-  document.getElementById('orb-add-task-confirm')?.addEventListener('click', confirmOrbAddTask);
-  document.getElementById('orb-task-title-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') confirmOrbAddTask();
-  });
+  openQuickCapture({ start: `${String(hour).padStart(2, '0')}:00` });
 }
 
 /* ── Date label ────────────────────────────────────────── */
@@ -6225,7 +6206,9 @@ function showToast(msg, type = 'info', duration = 3000) {
 }
 
 /* ── Undo toast — reversible actions get a 6s escape hatch ── */
-function showUndoToast(msg, onUndo, duration = 6000) {
+// `label` names the action; it is "undo" for what this was written for, and
+// "link" where a new task is offered its missing commitment.
+function showUndoToast(msg, onUndo, duration = 6000, label = 'undo') {
   const container = document.getElementById('cdx-toast-container');
   if (!container) { return; }
   const toast = document.createElement('div');
@@ -6236,7 +6219,7 @@ function showUndoToast(msg, onUndo, duration = 6000) {
   const btn = document.createElement('button');
   btn.className = 'cdx-toast-undo';
   btn.type = 'button';
-  btn.textContent = 'undo';
+  btn.textContent = label;
   let dismissed = false;
   const dismiss = () => {
     if (dismissed) return;
@@ -7082,6 +7065,19 @@ function openTaskEditModal(taskId) {
   document.getElementById('te-priority').value = task.priority || 'med';
   document.getElementById('te-notes').value    = task.notes || '';
 
+  /* Commitment. This field is how an orphan gets rescued — before it, a task
+     created without a commitment could only be linked from the Tasks page or a
+     calendar event, so most never were. It shows the EFFECTIVE link: a task
+     tied in through a milestone's activity list has no projectId of its own,
+     and showing "No commitment" for it would be wrong. Saving then writes the
+     link onto the task directly, which is what the data layer's one-time
+     backfill does for the same tasks anyway. */
+  const projSel = document.getElementById('te-project');
+  if (projSel) {
+    const link = (typeof _buildTaskToProjectMap === 'function') ? _buildTaskToProjectMap()[task.id] : null;
+    projSel.innerHTML = _qcapProjectOptions(task.projectId || link?.projectId || '');
+  }
+
   // Category select
   const catSel = document.getElementById('te-category');
   catSel.innerHTML = '<option value="">No category</option>' +
@@ -7123,8 +7119,13 @@ async function confirmTaskEdit() {
   const energyType = document.getElementById('te-energy-picker')
     .querySelector('.energy-pill.active')?.dataset.energy || null;
 
+  const projSel  = document.getElementById('te-project');
+  const projectId = projSel ? (projSel.value || null) : undefined;
+
   if (!title) { showToast('Title is required', 'error'); return; }
-  await updateTask(_editTaskId, { title, dueDate, priority, category, recurrence, notes, energyType });
+  const patch = { title, dueDate, priority, category, recurrence, notes, energyType };
+  if (projectId !== undefined) patch.projectId = projectId;
+  await updateTask(_editTaskId, patch);
   syncTaskTitleToMilestone(_editTaskId, title);
   closeOverlay('task-edit-modal');
   _editTaskId = null;
@@ -7157,7 +7158,7 @@ async function addTask(title, priority = 'med', dueDate = '', category = '', rec
   if (!title?.trim()) { showToast('Task title cannot be empty', 'error'); return; }
   const { addDoc, serverTimestamp } = window.CDX_FB;
   try {
-    await addDoc(_uc('tasks'), newTaskDoc({
+    const ref = await addDoc(_uc('tasks'), newTaskDoc({
       title, priority,
       dueDate: dueDate || null,
       category: category || null,
@@ -7165,11 +7166,28 @@ async function addTask(title, priority = 'med', dueDate = '', category = '', rec
       energyType: energyType || null,
       people: people.length ? people : null,
     }));
-    showToast('Task added', 'success');
+    /* Every caller of this is a one-line input — the Tasks page, the
+       dashboard's + Task, the palette, the daily note — and none has room for a
+       commitment picker, so every task made here starts as an orphan. Rather
+       than slow the inputs down, say so and offer the editor, which has the
+       picker. Quick capture is the route that asks up front. */
+    showUndoToast('Task added · no commitment', () => _openTaskEditorWhenReady(ref.id), 6000, 'link');
+    return ref.id;
   } catch (err) {
     console.error('addTask error:', err);
     showToast('Failed to add task', 'error');
   }
+}
+
+// The toast's "link" can be pressed before the new task's snapshot has
+// arrived, when the editor has nothing to open yet. Wait for it briefly.
+function _openTaskEditorWhenReady(id, tries = 0) {
+  if (TASKS.some(t => t.id === id)) {
+    openTaskEditModal(id);
+    setTimeout(() => document.getElementById('te-project')?.focus(), 120);
+    return;
+  }
+  if (tries < 30) setTimeout(() => _openTaskEditorWhenReady(id, tries + 1), 100);
 }
 
 /* Duplicate an existing task into a fresh, not-done copy. Useful when a task is
@@ -8996,6 +9014,7 @@ function initSettingsPanel() {
     initNewCatColorPicker();
     renderSettingsPeople();
     window._orrRenderTickerSettings?.();
+    window._qcapRenderSettings?.();
     // Update UID display
     const uid = window.CDX_USER?.uid;
     const uidEl = document.getElementById('settings-uid-display');
@@ -9785,6 +9804,7 @@ const CMD_COMMANDS_BASE = [
   { label: 'Today',            icon: '◈', action: () => {}, keys: '' },
   { label: 'Open Calendar',    icon: '◻', action: () => {}, keys: '' },
   { label: 'New Task',         icon: '+', action: () => {}, keys: 'N' },
+  { label: 'Quick capture',    icon: '＋', action: () => openQuickCapture(), keys: '' },
   { label: 'Focus — Stillwater', icon: '◎', action: () => { showMainPanel('focus'); document.getElementById('left-nav')?.classList.add('collapsed'); }, keys: 'F' },
   { label: 'Open Notes',       icon: '✎', action: () => openNotesPage(), keys: '' },
   { label: 'Ask Cosmos',       icon: '✦', action: () => openOverlay('claude-panel'), keys: '' },
@@ -10855,7 +10875,6 @@ window.addEventListener('cdx-auth-ready', () => {
     initHabitsPage();
     initMilestonesPanel();
     initFocusBuckets();
-    initOrbAddTask();
     initDailyRitual();
     initReentryModal();
     initCommitMode();
@@ -17267,8 +17286,10 @@ function _dashRenderCommitments() {
     showMainPanel('milestones');
     openMsProjectModal(b.dataset.dashCEdit);
   }));
+  // These rows are open tasks, so this always completes — through the time
+  // popover, like the rest of the dashboard, not around it.
   el.querySelectorAll('[data-dash-done]').forEach(c => c.addEventListener('click', e => {
-    e.stopPropagation(); toggleTask(c.dataset.dashDone);
+    e.stopPropagation(); handleCheckClick(c.dataset.dashDone, e);
   }));
   el.querySelectorAll('[data-dash-del]').forEach(d => d.addEventListener('click', e => {
     e.stopPropagation(); deleteTask(d.dataset.dashDel);
@@ -19118,8 +19139,9 @@ function _orrWireSide() {
   const el = document.getElementById('orr-side');
   if (!el) return;
   const id = el.dataset.orrSide;
+  // Open tasks only, so this completes — asking for the time it took.
   el.querySelectorAll('[data-orr-done]').forEach(c => c.addEventListener('click', e => {
-    e.stopPropagation(); toggleTask(c.dataset.orrDone);
+    e.stopPropagation(); handleCheckClick(c.dataset.orrDone, e);
   }));
   el.querySelector('[data-orr-close]')?.addEventListener('click', e => { e.stopPropagation(); _orrClose(); });
   el.querySelector('[data-orr-plan]')?.addEventListener('click', e => {
@@ -19459,3 +19481,418 @@ window._orreryRefresh = function () {
   if (_mainPanel !== 'orrery') return;
   renderOrrery();
 };
+/* ══════════════════════════════════════════════════════════════════════════
+   QUICK CAPTURE — a task, from any page, without leaving it
+   ──────────────────────────────────────────────────────────────────────────
+   One shortcut (⌥⇧N unless changed in Settings › Quick capture) or the ＋ at
+   the foot of the sidebar opens a small panel: title, when, how long, which
+   commitment, category, priority. It creates the task and its calendar block
+   together — the same pair the calendar's "New Event" modal makes — starting
+   now and running the default length (30 minutes unless changed).
+
+   The commitment is the field that matters most. A task with none is an
+   orphan: it counts toward no plan, no goal's progress and no commitment's
+   time, and an audit of the app found five ways of creating one. So the
+   picker remembers the last commitment used, prefers the one on screen when
+   there is one (the Orrery's open drawer, the Planning page's focused
+   commitment), and says plainly what leaving it empty means.
+
+   On Stillwater the same capture becomes the focus task, and — depending on
+   Settings — the panel asks whether to start a session on it, starts one
+   straight away, or just leaves it selected. It never touches a session that
+   is already running: setPomoTask resets the timer, and a capture should not
+   cost anyone the session they are in.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const _QCAP_KEY = 'cdx_qcap';
+const _QCAP_DEFAULTS = {
+  code: 'KeyN', alt: true, shift: true, ctrl: false, meta: false,   // ⌥⇧N
+  mins: 30,
+  still: 'ask',          // 'ask' | 'start' | 'select'
+  lastProject: '',
+};
+const _QCAP_LENGTHS = [15, 30, 45, 60, 90];
+const _QCAP_IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+
+let _qcapBusy      = false;
+let _qcapRecording = false;
+let _qcapCatTouched = false;   // the user picked a category, so a commitment change must not overwrite it
+let _qcapLen       = 30;
+
+// Read fresh each time rather than cached: the office build restores
+// preferences from its database after the page has loaded, and a cached copy
+// would keep the shortcut from before that landed.
+function _qcapPrefs() {
+  try { return { ..._QCAP_DEFAULTS, ...JSON.parse(localStorage.getItem(_QCAP_KEY) || '{}') }; }
+  catch (e) { return { ..._QCAP_DEFAULTS }; }
+}
+function _qcapSave(patch) {
+  const p = { ..._qcapPrefs(), ...patch };
+  try { localStorage.setItem(_QCAP_KEY, JSON.stringify(p)); } catch (e) {}
+  return p;
+}
+
+function _qcapKeyLabel(p) {
+  const k = String(p.code || '')
+    .replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ')
+    .replace('Space', _QCAP_IS_MAC ? '␣' : 'Space').replace('Period', '.').replace('Comma', ',')
+    .replace('Slash', '/').replace('Semicolon', ';').replace('Quote', "'")
+    .replace('BracketLeft', '[').replace('BracketRight', ']').replace('Backquote', '`')
+    .replace('Minus', '-').replace('Equal', '=');
+  return _QCAP_IS_MAC
+    ? [p.ctrl && '⌃', p.alt && '⌥', p.shift && '⇧', p.meta && '⌘', k].filter(Boolean).join('')
+    : [p.ctrl && 'Ctrl', p.alt && 'Alt', p.shift && 'Shift', p.meta && 'Win', k].filter(Boolean).join('+');
+}
+
+/* ── The commitment picker ─────────────────────────────────────────────────
+   Grouped under their goals so the choice shows the lineage it creates —
+   goal › commitment — which is the chain the rest of the app reports on.
+   Shared with the task editor, so both pickers look and order the same. */
+function _qcapProjectOptions(selected) {
+  const plans = (typeof MILESTONE_PROJECTS === 'undefined' ? [] : MILESTONE_PROJECTS)
+    .filter(p => !p.isArchived)
+    .sort((a, b) => (b.bigRock ? 1 : 0) - (a.bigRock ? 1 : 0) ||
+                    String(a.title || '').localeCompare(String(b.title || '')));
+  const goals = (typeof GOALS === 'undefined' ? [] : GOALS).filter(g => g.status !== 'dropped');
+  const opt = p => `<option value="${escAttr(p.id)}"${p.id === selected ? ' selected' : ''}>${escHtml(p.title || 'Untitled')}</option>`;
+  const used = new Set();
+  let html = `<option value=""${selected ? '' : ' selected'}>No commitment</option>`;
+  goals.forEach(g => {
+    const mine = plans.filter(p => (g.commitmentIds || []).includes(p.id) && !used.has(p.id));
+    if (!mine.length) return;
+    mine.forEach(p => used.add(p.id));
+    html += `<optgroup label="${escAttr(g.title || 'Goal')}">${mine.map(opt).join('')}</optgroup>`;
+  });
+  const rest = plans.filter(p => !used.has(p.id));
+  if (rest.length) html += `<optgroup label="${used.size ? 'Not under a goal' : 'Commitments'}">${rest.map(opt).join('')}</optgroup>`;
+  return html;
+}
+
+// Which commitment to offer first: the one on screen, else the last one used.
+function _qcapDefaultProject() {
+  const live = id => id && (MILESTONE_PROJECTS || []).some(p => p.id === id && !p.isArchived);
+  if (_mainPanel === 'orrery' && typeof _orrOpenId !== 'undefined' && live(_orrOpenId)) return _orrOpenId;
+  if (_mainPanel === 'milestones' && typeof _msFocusProj !== 'undefined' && live(_msFocusProj)) return _msFocusProj;
+  const last = _qcapPrefs().lastProject;
+  return live(last) ? last : '';
+}
+
+/* ── Open ──────────────────────────────────────────────────────────────── */
+
+function openQuickCapture(opts) {
+  opts = opts || {};
+  if (!window.CDX_USER?.uid) return;
+  const modal = document.getElementById('qcap-modal');
+  if (!modal) return;
+  const prefs = _qcapPrefs();
+  const now = new Date();
+  // Round to the nearest five minutes: a block that starts at 14:03 makes the
+  // calendar look like a mistake, and nobody means "14:03" when they say "now".
+  const rounded = new Date(Math.round(now.getTime() / 300000) * 300000);
+  const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+
+  document.getElementById('qcap-form').hidden  = false;
+  document.getElementById('qcap-focus').hidden = true;
+  const title = document.getElementById('qcap-title');
+  title.value = opts.title || '';
+  document.getElementById('qcap-date').value  = opts.date || localDateStr(now);
+  document.getElementById('qcap-start').value = opts.start || hhmm(rounded);
+
+  _qcapLen = prefs.mins || 30;
+  _qcapRenderLengths();
+
+  const projSel = document.getElementById('qcap-project');
+  projSel.innerHTML = _qcapProjectOptions(opts.projectId || _qcapDefaultProject());
+
+  const catSel = document.getElementById('qcap-category');
+  catSel.innerHTML = '<option value="">No category</option>' +
+    Object.entries(CATEGORIES).map(([k, v]) => `<option value="${escAttr(k)}">${escHtml(v.label)}</option>`).join('');
+  _qcapCatTouched = false;
+  catSel.value = _settings.defaultCategory || '';
+  _qcapFollowProjectCategory();
+
+  document.getElementById('qcap-priority').value = 'med';
+  _qcapOrphanHint();
+
+  const still = _mainPanel === 'timedrift';
+  document.getElementById('qcap-go').textContent = still ? 'Create & focus' : 'Create';
+  document.getElementById('qcap-heading').textContent = still ? 'Quick capture · Stillwater' : 'Quick capture';
+  document.getElementById('qcap-keyhint').textContent = _qcapKeyLabel(prefs);
+
+  openOverlay('qcap-modal');
+  setTimeout(() => title.focus(), 60);
+}
+window.openQuickCapture = openQuickCapture;
+
+function _qcapRenderLengths() {
+  const wrap = document.getElementById('qcap-lengths');
+  if (!wrap) return;
+  const lens = _QCAP_LENGTHS.includes(_qcapLen) ? _QCAP_LENGTHS : _QCAP_LENGTHS.concat(_qcapLen).sort((a, b) => a - b);
+  wrap.innerHTML = lens.map(m =>
+    `<button type="button" class="qcap-chip${m === _qcapLen ? ' active' : ''}" data-qcap-len="${m}">${m < 60 ? m + 'M' : (m / 60) + 'H'}</button>`
+  ).join('');
+  _qcapEndsLabel();
+}
+
+/* A block lives on one date, so it cannot run past midnight. addMinutes wraps
+   at 24:00 — 23:40 plus 30 gives 00:10 — which handed the calendar an event
+   ending before it began. That is no corner case here: capture starts at "now",
+   so every capture after 23:30 would hit it. The block stops at 23:59 instead
+   and the panel says so, rather than quietly being shorter than asked. */
+function _qcapFit(start, mins) {
+  const [h, m] = String(start).split(':').map(Number);
+  const room = 24 * 60 - 1 - (h * 60 + m);             // minutes left before 23:59
+  const fit = Math.max(1, Math.min(mins, room));
+  return { mins: fit, end: addMinutes(start, fit), capped: fit < mins };
+}
+
+function _qcapEndsLabel() {
+  const start = document.getElementById('qcap-start')?.value;
+  const el = document.getElementById('qcap-ends');
+  if (!el) return;
+  if (!start) { el.textContent = ''; return; }
+  const f = _qcapFit(start, _qcapLen);
+  el.textContent = 'ENDS ' + f.end + (f.capped ? ' · END OF DAY' : '');
+}
+
+// A commitment usually belongs to one area of life; if it records one, take it
+// — unless the user has already chosen a category themselves.
+function _qcapFollowProjectCategory() {
+  if (_qcapCatTouched) return;
+  const pid = document.getElementById('qcap-project')?.value;
+  const p = pid && (MILESTONE_PROJECTS || []).find(x => x.id === pid);
+  if (p && p.category && CATEGORIES[p.category]) document.getElementById('qcap-category').value = p.category;
+}
+
+function _qcapOrphanHint() {
+  const none = !document.getElementById('qcap-project')?.value;
+  const el = document.getElementById('qcap-orphan');
+  if (el) el.hidden = !none;
+}
+
+/* ── Create ────────────────────────────────────────────────────────────── */
+
+async function _qcapSubmit() {
+  if (_qcapBusy) return;
+  const titleEl = document.getElementById('qcap-title');
+  const title = titleEl.value.trim();
+  if (!title) { titleEl.focus(); titleEl.classList.add('qcap-shake'); setTimeout(() => titleEl.classList.remove('qcap-shake'), 400); return; }
+  const date  = document.getElementById('qcap-date').value || localDateStr(new Date());
+  const start = document.getElementById('qcap-start').value;
+  if (!start) { document.getElementById('qcap-start').focus(); return; }
+  const fit       = _qcapFit(start, _qcapLen);
+  const mins      = fit.mins;
+  const projectId = document.getElementById('qcap-project').value || null;
+  const category  = document.getElementById('qcap-category').value || null;
+  const priority  = document.getElementById('qcap-priority').value || 'med';
+
+  _qcapBusy = true;
+  const go = document.getElementById('qcap-go');
+  go.disabled = true;
+  try {
+    const { addDoc, serverTimestamp } = window.CDX_FB;
+    // The same task + block pair the calendar's New Event modal makes, in the
+    // same order, so everything that reads one reads the other — and the task
+    // keeps a pointer to its block, which the calendar's unschedule path uses.
+    const taskRef = await addDoc(_uc('tasks'), newTaskDoc({ title, dueDate: date, category, priority, projectId }));
+    const evRef = await addDoc(_uc('calEvents'), {
+      title, date, startTime: start, endTime: fit.end, duration: mins,
+      taskId: taskRef.id, projectId, color: getCatColor(category), createdAt: serverTimestamp(),
+    });
+    await updateTask(taskRef.id, { calEventId: evRef.id });
+    _qcapSave({ lastProject: projectId || '' });
+
+    // The session gets the length that was asked for, not the block's: only
+    // the calendar block has to stop at midnight, and a focus session started
+    // at 23:45 should not be cut to fourteen minutes because of it.
+    if (_mainPanel === 'timedrift') { _qcapToFocus({ id: taskRef.id, title }, _qcapLen); return; }
+    closeOverlay('qcap-modal');
+    const proj = projectId && (MILESTONE_PROJECTS || []).find(p => p.id === projectId);
+    showToast(proj ? `Captured · ${proj.title}` : 'Captured · no commitment', proj ? 'success' : 'info');
+  } catch (err) {
+    console.error('quick capture:', err);
+    showToast('Could not create the task', 'error');
+  } finally {
+    _qcapBusy = false;
+    go.disabled = false;
+  }
+}
+
+/* ── Stillwater ────────────────────────────────────────────────────────── */
+
+function _qcapToFocus(task, mins) {
+  // Never reset a session someone is in the middle of.
+  if (window.CDX_SESSION?.running) {
+    closeOverlay('qcap-modal');
+    showToast('Added to today\'s focus list — a session is already running', 'info');
+    return;
+  }
+  const mode = _qcapPrefs().still;
+  if (mode === 'start') { closeOverlay('qcap-modal'); _qcapStartFocus(task, mins); return; }
+  window.setPomoTask?.(task, mins);
+  if (mode === 'select') {
+    closeOverlay('qcap-modal');
+    showToast('Selected as your focus task', 'success');
+    return;
+  }
+  // Ask: the panel turns into the question, so nothing new opens on top.
+  document.getElementById('qcap-form').hidden  = true;
+  const f = document.getElementById('qcap-focus');
+  f.hidden = false;
+  document.getElementById('qcap-focus-title').textContent = task.title;
+  document.getElementById('qcap-focus-len').textContent = mins < 60 ? mins + '-minute' : (mins / 60) + '-hour';
+  f._task = task; f._mins = mins;
+  setTimeout(() => document.getElementById('qcap-focus-go')?.focus(), 40);
+}
+
+function _qcapStartFocus(task, mins) {
+  // 'focus' is Stillwater with the session armed. Arming re-paints the page
+  // through a view transition, so the task is chosen and the timer started
+  // after that lands, not before — selecting first would be painted over.
+  const armed = typeof _tdSessionOpen !== 'undefined' && _tdSessionOpen;
+  if (!armed) showMainPanel('focus');
+  setTimeout(() => {
+    window.setPomoTask?.(task, mins);
+    if (!window.CDX_SESSION?.running) document.getElementById('pomo-start')?.click();
+  }, armed ? 0 : 160);
+}
+
+/* ── Settings › Quick capture ──────────────────────────────────────────── */
+
+function _qcapRenderSettings() {
+  const p = _qcapPrefs();
+  const keyEl = document.getElementById('qcap-set-key');
+  if (keyEl) keyEl.textContent = _qcapKeyLabel(p);
+  const minsEl = document.getElementById('qcap-set-mins');
+  if (minsEl) minsEl.innerHTML = _QCAP_LENGTHS.map(m =>
+    `<button type="button" class="qcap-chip${m === p.mins ? ' active' : ''}" data-qcap-set-mins="${m}">${m < 60 ? m + 'M' : (m / 60) + 'H'}</button>`).join('');
+  const stillEl = document.getElementById('qcap-set-still');
+  if (stillEl) stillEl.innerHTML = [['ask', 'Ask me'], ['start', 'Start focus'], ['select', 'Just select it']].map(([v, l]) =>
+    `<button type="button" class="qcap-chip${p.still === v ? ' active' : ''}" data-qcap-set-still="${v}">${l}</button>`).join('');
+  _qcapSyncButtonTitle();
+}
+// Opening Settings starts clean: a "Saved —" line from last time would read
+// as if something had just happened.
+window._qcapRenderSettings = function () {
+  const msg = document.getElementById('qcap-set-msg');
+  if (msg && !_qcapRecording) msg.textContent = '';
+  _qcapRenderSettings();
+};
+
+function _qcapSyncButtonTitle() {
+  const b = document.getElementById('qcap-btn');
+  if (b) b.title = 'Quick capture (' + _qcapKeyLabel(_qcapPrefs()) + ')';
+}
+
+// Combinations the browser or the app already owns. Recording one would look
+// like it worked and then do nothing, or do something else.
+function _qcapReserved(k) {
+  const mod = k.meta || k.ctrl;
+  if (mod && (k.code === 'Space' || k.code === 'KeyK') && !k.alt && !k.shift) return 'opens the command palette';
+  if (k.meta && !k.alt && !k.ctrl && ['KeyQ', 'KeyW', 'KeyT', 'KeyN', 'KeyR', 'KeyH', 'KeyM', 'KeyL', 'KeyP'].includes(k.code))
+    return 'is kept by the browser';
+  if (k.ctrl && !k.alt && !k.meta && !_QCAP_IS_MAC && ['KeyW', 'KeyT', 'KeyN', 'KeyR', 'KeyL', 'KeyP'].includes(k.code))
+    return 'is kept by the browser';
+  return '';
+}
+
+function _qcapStartRecording() {
+  const keyEl = document.getElementById('qcap-set-key');
+  const msg = document.getElementById('qcap-set-msg');
+  _qcapRecording = true;
+  keyEl.textContent = 'Press keys…';
+  keyEl.classList.add('rec');
+  if (msg) msg.textContent = 'Hold ⌥, ⌃ or ⌘ and press a key. Esc to cancel.';
+  const done = text => {
+    _qcapRecording = false;
+    keyEl.classList.remove('rec');
+    window.removeEventListener('keydown', onKey, true);
+    if (msg) msg.textContent = text || '';
+    _qcapRenderSettings();
+  };
+  const onKey = e => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'Escape') { done(''); return; }
+    if (['Shift', 'Alt', 'Control', 'Meta', 'CapsLock', 'Fn'].includes(e.key)) return;   // still choosing modifiers
+    // A modifier is required: a bare letter would fire while typing anywhere.
+    if (!e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (msg) msg.textContent = 'Needs ⌥, ⌃ or ⌘ as well — a single key would fire while you type.';
+      return;
+    }
+    const k = { code: e.code, alt: e.altKey, shift: e.shiftKey, ctrl: e.ctrlKey, meta: e.metaKey };
+    const clash = _qcapReserved(k);
+    if (clash) { if (msg) msg.textContent = `${_qcapKeyLabel(k)} ${clash}. Try another.`; return; }
+    _qcapSave(k);
+    done(`Saved — ${_qcapKeyLabel(k)} opens quick capture.`);
+  };
+  window.addEventListener('keydown', onKey, true);
+}
+
+/* ── Wiring ────────────────────────────────────────────────────────────── */
+
+// Capture phase on window, so the shortcut wins over the page's own handlers
+// and works from inside a text field — it always carries a modifier, so it
+// cannot collide with typing.
+window.addEventListener('keydown', e => {
+  if (_qcapRecording || e.repeat) return;
+  const p = _qcapPrefs();
+  if (e.code !== p.code || e.altKey !== !!p.alt || e.shiftKey !== !!p.shift ||
+      e.ctrlKey !== !!p.ctrl || e.metaKey !== !!p.meta) return;
+  if (!window.CDX_USER?.uid) return;
+  e.preventDefault(); e.stopPropagation();
+  if (document.getElementById('qcap-modal')?.classList.contains('open')) {
+    document.getElementById('qcap-title')?.focus();
+    return;
+  }
+  openQuickCapture();
+}, true);
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('qcap-btn')?.addEventListener('click', () => openQuickCapture());
+  _qcapSyncButtonTitle();
+
+  const modal = document.getElementById('qcap-modal');
+  if (!modal) return;
+  document.getElementById('qcap-go')?.addEventListener('click', _qcapSubmit);
+  modal.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); closeOverlay('qcap-modal'); return; }
+    if (e.key !== 'Enter' || document.getElementById('qcap-form').hidden) return;
+    // Enter in the title creates; ⌘/Ctrl+Enter creates from any field.
+    if (e.target.id === 'qcap-title' || e.metaKey || e.ctrlKey) { e.preventDefault(); _qcapSubmit(); }
+  });
+  document.getElementById('qcap-lengths')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-qcap-len]'); if (!b) return;
+    _qcapLen = +b.dataset.qcapLen; _qcapRenderLengths();
+  });
+  document.getElementById('qcap-start')?.addEventListener('input', _qcapEndsLabel);
+  document.getElementById('qcap-project')?.addEventListener('change', () => { _qcapFollowProjectCategory(); _qcapOrphanHint(); });
+  document.getElementById('qcap-category')?.addEventListener('change', () => { _qcapCatTouched = true; });
+
+  document.getElementById('qcap-focus-go')?.addEventListener('click', () => {
+    const f = document.getElementById('qcap-focus');
+    closeOverlay('qcap-modal');
+    _qcapStartFocus(f._task, f._mins);
+  });
+  document.getElementById('qcap-focus-later')?.addEventListener('click', () => {
+    closeOverlay('qcap-modal');
+    showToast('Selected as your focus task — press Focus when you are ready', 'success');
+  });
+
+  // Settings › Quick capture
+  document.getElementById('qcap-set-record')?.addEventListener('click', _qcapStartRecording);
+  document.getElementById('qcap-set-reset')?.addEventListener('click', () => {
+    const d = _QCAP_DEFAULTS;
+    _qcapSave({ code: d.code, alt: d.alt, shift: d.shift, ctrl: d.ctrl, meta: d.meta });
+    const msg = document.getElementById('qcap-set-msg');
+    if (msg) msg.textContent = 'Back to ' + _qcapKeyLabel(d) + '.';
+    _qcapRenderSettings();
+  });
+  document.getElementById('qcap-set-mins')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-qcap-set-mins]'); if (!b) return;
+    _qcapSave({ mins: +b.dataset.qcapSetMins }); _qcapRenderSettings();
+  });
+  document.getElementById('qcap-set-still')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-qcap-set-still]'); if (!b) return;
+    _qcapSave({ still: b.dataset.qcapSetStill }); _qcapRenderSettings();
+  });
+});

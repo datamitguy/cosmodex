@@ -7714,6 +7714,74 @@ textarea:focus-visible {
 }
 .orr-set-none { font-family:var(--font-body); font-size:var(--fs-small); color:var(--muted); }
 
+/* ══ QUICK CAPTURE ══════════════════════════════════════════════════════════
+   The calendar's New Event modal is the shape people already know, so this is
+   built from its parts — .overlay-panel, .sched-label, .sched-input,
+   .sched-confirm-btn — and adds only what it does not have: length chips, the
+   orphan line, and Stillwater's second step. Black and white only. */
+.qcap-panel { width:min(420px, 92vw); }
+.qcap-body  { padding:18px 20px 16px; display:flex; flex-direction:column; gap:12px; }
+.qcap-body[hidden] { display:none; }
+.qcap-keyhint {
+  margin-left:auto; margin-right:10px;
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.08em;
+  color:rgba(255,255,255,0.4); border:1px solid rgba(255,255,255,0.14);
+  border-radius:var(--r-xs); padding:1px 6px;
+}
+.qcap-title { font-size:var(--fs-lead); }
+.qcap-when  { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.qcap-len-head { display:flex; align-items:baseline; justify-content:space-between; }
+.qcap-ends {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.12em;
+  color:rgba(255,255,255,0.45);
+}
+.qcap-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.qcap-chip {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.12em;
+  text-transform:uppercase; padding:6px 12px; border-radius:var(--r-pill);
+  border:1px solid rgba(255,255,255,0.18); background:transparent;
+  color:rgba(255,255,255,0.62); cursor:pointer;
+}
+/* Said once, quietly, and only when it is true. Not an error — some tasks
+   genuinely belong to nothing — but the cost of leaving it empty is not
+   visible anywhere else at the moment the choice is made. */
+.qcap-orphan {
+  margin-top:6px; font-family:var(--font-body); font-size:var(--fs-small);
+  color:rgba(255,255,255,0.5);
+}
+.qcap-orphan[hidden] { display:none; }
+.qcap-foot {
+  text-align:center; font-family:var(--font-mono); font-size:var(--fs-micro);
+  letter-spacing:0.06em; color:rgba(255,255,255,0.3);
+}
+.qcap-shake { animation:qcap-shake .32s ease; }
+@keyframes qcap-shake { 25% { transform:translateX(-4px); } 75% { transform:translateX(4px); } }
+
+/* Stillwater's second step */
+.qcap-focus-eyebrow {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.18em;
+  color:rgba(255,255,255,0.5);
+}
+.qcap-focus-title { font-family:var(--font-display); font-weight:300; font-size:var(--fs-title); color:#fff; line-height:1.2; }
+.qcap-focus-q { font-family:var(--font-body); font-size:var(--fs-body); color:var(--muted); }
+.qcap-focus-btns { display:flex; gap:8px; align-items:center; }
+.qcap-focus-btns .sched-confirm-btn { flex:1; }
+
+/* Settings › Quick capture */
+.qcap-set-row { display:flex; align-items:center; gap:8px; }
+.qcap-set-key {
+  font-family:var(--font-mono); font-size:var(--fs-body); letter-spacing:0.08em; color:#fff;
+  border:1px solid rgba(255,255,255,0.28); border-radius:var(--r-sm); padding:5px 12px;
+  min-width:64px; text-align:center;
+}
+.qcap-set-key.rec { border-color:#fff; box-shadow:0 0 14px rgba(255,255,255,0.25); }
+.qcap-set-msg {
+  margin-top:8px; min-height:1em; font-family:var(--font-body); font-size:var(--fs-small);
+  color:var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) { .qcap-shake { animation:none; } }
+
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
    One motion for every button in the app: a circle of pure white, larger than
    the button and clipped by it, travels upward — in from below on hover, out
@@ -7742,7 +7810,7 @@ textarea:focus-visible {
 .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
 .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
 .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-.btn-secondary, .td-range-btn, .orr-btn,
+.btn-secondary, .td-range-btn, .orr-btn, .qcap-chip,
 .btn-primary, .ritual-start-btn, .sched-confirm-btn, .dash-btn-commit, .commit-action-btn.done, .friction-action-btn.keep {
   position:relative; overflow:hidden; isolation:isolate;
   /* The clip needs the label to fit: these sit in flex rows beside inputs that
@@ -7767,7 +7835,7 @@ textarea:focus-visible {
 .orb-gadget-btn::before,
 .friction-action-btn:not(.kill):not(.keep)::before,
 .btn-ghost:not(.btn-danger)::before, .btn-secondary::before,
-.td-range-btn::before, .orr-btn::before,
+.td-range-btn::before, .orr-btn::before, .qcap-chip::before,
 .btn-primary::before, .ritual-start-btn::before,
 .sched-confirm-btn::before, .dash-btn-commit::before, .commit-action-btn.done::before,
 .friction-action-btn.keep::before {
@@ -7789,7 +7857,7 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary, .td-range-btn, .orr-btn,
+    .btn-secondary, .td-range-btn, .orr-btn, .qcap-chip,
 .td-range-btn):not(.active):is(:hover, :focus-visible)::before,
 :is(    .btn-primary, .ritual-start-btn, .sched-confirm-btn, .dash-btn-commit, .commit-action-btn.done, .friction-action-btn.keep):is(:hover, :focus-visible)::before {
   /* The animation plays the rise; the transform holds the resting value at 0
@@ -7804,7 +7872,7 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary, .td-range-btn, .orr-btn,
+    .btn-secondary, .td-range-btn, .orr-btn, .qcap-chip,
 .td-range-btn).active::before { transform:translateY(0); opacity:1; }
 @keyframes cdx-sweep-up { from { transform:translateY(74%); } to { transform:translateY(0); } }
 
@@ -7818,7 +7886,7 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary, .td-range-btn, .orr-btn,
+    .btn-secondary, .td-range-btn, .orr-btn, .qcap-chip,
 .td-range-btn):not(.active):is(:hover, :focus-visible),
 :is(    .plan-tab2, .hx-tab, .insx-tab, .insx2-tab, .insx2-rbtn, .cns-tab,
     .cns-pill, .ins-viz-tab, .view-tab, .pcal-vt, .calx-vtog, .cr-dur,
@@ -7827,7 +7895,7 @@ textarea:focus-visible {
     .ritual-energy-btn, .cr-begin, .ritual-skip-btn,
     .commit-action-btn:not(.done), .nav-footer-btn, .orb-gadget-btn,
     .friction-action-btn:not(.kill):not(.keep), .btn-ghost:not(.btn-danger),
-    .btn-secondary, .td-range-btn, .orr-btn,
+    .btn-secondary, .td-range-btn, .orr-btn, .qcap-chip,
 .td-range-btn).active {
   background:transparent; color:var(--ink); border-color:var(--gold); text-shadow:none;
   box-shadow:0 0 18px rgba(255,255,255,.34);

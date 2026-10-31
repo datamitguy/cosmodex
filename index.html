@@ -183,6 +183,7 @@
   </div>
 
   <div class="nav-footer">
+    <button class="nav-footer-btn" id="qcap-btn" title="Quick capture">＋</button>
     <button class="nav-footer-btn" id="theme-btn" title="Toggle theme">
       <span id="theme-icon">◑</span>
     </button>
@@ -1346,31 +1347,6 @@
 </div>
 
 <!-- Orb Petal Quick-Add Modal (z-index 520, inside orb backdrop) -->
-<div class="overlay" id="orb-add-task-modal" style="z-index:520">
-  <div class="overlay-panel" style="width:min(380px,92vw)">
-    <div class="overlay-header">
-      <span class="overlay-title" id="orb-add-task-title">Add task at 9am</span>
-      <button class="overlay-close" data-close="orb-add-task-modal">✕</button>
-    </div>
-    <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
-      <input id="orb-task-title-input" class="form-input" placeholder="Task name…" autocomplete="off">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="form-group">
-          <label class="form-label">Start time</label>
-          <input type="time" id="orb-task-time" class="form-input">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Duration (min)</label>
-          <input type="number" id="orb-task-duration" class="form-input" value="60" min="15" step="15">
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
-        <button data-close="orb-add-task-modal" class="btn-ghost">Cancel</button>
-        <button id="orb-add-task-confirm" class="btn-primary">Add to Calendar</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- Task Edit Modal -->
 <div class="overlay drawer-right" id="task-edit-modal" style="z-index:850">
@@ -1397,6 +1373,10 @@
             <option value="high">High</option>
           </select>
         </div>
+      </div>
+      <div>
+        <label class="sched-label" for="te-project">Commitment</label>
+        <select id="te-project" class="sched-input"></select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div>
@@ -1500,6 +1480,9 @@
           </div>
           <div class="settings-nav-item" data-settings-tab="people">
             <span class="settings-nav-icon">◎</span> People
+          </div>
+          <div class="settings-nav-item" data-settings-tab="capture">
+            <span class="settings-nav-icon">＋</span> Quick capture
           </div>
           <div class="settings-nav-item" data-settings-tab="orrery">
             <span class="settings-nav-icon">⊙</span> Orrery
@@ -1624,6 +1607,31 @@
                 <input id="people-name-input" type="text" class="sched-input" placeholder="Full name (e.g. Sarah Chen)" autocomplete="off" />
                 <button class="task-add-confirm" id="people-add-btn">Add</button>
               </div>
+            </div>
+          </div>
+
+          <!-- ── Quick capture ───────────────── -->
+          <!-- Filled by _qcapRenderSettings() in src/27-quick-capture.js. -->
+          <div class="settings-content-panel" id="st-pane-capture">
+            <div class="settings-section">
+              <div class="settings-section-title">Shortcut</div>
+              <div class="settings-desc">Press it on any page to capture a task without leaving the page. The ＋ at the bottom of the sidebar does the same.</div>
+              <div class="qcap-set-row">
+                <kbd class="qcap-set-key" id="qcap-set-key"></kbd>
+                <button class="btn-secondary" id="qcap-set-record" style="font-size:var(--fs-micro);padding:6px 12px">Change</button>
+                <button class="btn-secondary" id="qcap-set-reset" style="font-size:var(--fs-micro);padding:6px 12px">Reset</button>
+              </div>
+              <div class="qcap-set-msg" id="qcap-set-msg"></div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title">Default length</div>
+              <div class="settings-desc">A capture starts now and runs this long. You can change it in the panel each time.</div>
+              <div class="qcap-chips" id="qcap-set-mins"></div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title">On Stillwater</div>
+              <div class="settings-desc">A capture there becomes your focus task. Then:</div>
+              <div class="qcap-chips" id="qcap-set-still"></div>
             </div>
           </div>
 
@@ -1893,6 +1901,66 @@
 </div>
 
 <!-- ── Quick Calendar Event Modal ──────────────────────── -->
+<!-- Quick capture — src/27-quick-capture.js. Opened by the shortcut set in
+     Settings › Quick capture or the ＋ in the sidebar footer, on any page. -->
+<div class="overlay" id="qcap-modal" style="z-index:870">
+  <div class="overlay-panel qcap-panel">
+    <div class="overlay-header">
+      <span class="overlay-title" id="qcap-heading">Quick capture</span>
+      <span class="qcap-keyhint" id="qcap-keyhint"></span>
+      <button class="overlay-close" data-close="qcap-modal">✕</button>
+    </div>
+    <div class="overlay-body qcap-body" id="qcap-form">
+      <input id="qcap-title" type="text" class="sched-input qcap-title" placeholder="What are you about to do?" autocomplete="off" />
+      <div class="qcap-when">
+        <div>
+          <label class="sched-label" for="qcap-date">Date</label>
+          <input id="qcap-date" type="date" class="sched-input" />
+        </div>
+        <div>
+          <label class="sched-label" for="qcap-start">Start</label>
+          <input id="qcap-start" type="time" class="sched-input" />
+        </div>
+      </div>
+      <div>
+        <div class="qcap-len-head"><span class="sched-label">Length</span><span class="qcap-ends" id="qcap-ends"></span></div>
+        <div class="qcap-chips" id="qcap-lengths"></div>
+      </div>
+      <div>
+        <label class="sched-label" for="qcap-project">Commitment</label>
+        <select id="qcap-project" class="sched-input"></select>
+        <div class="qcap-orphan" id="qcap-orphan" hidden>Without a commitment this task counts toward no plan or goal.</div>
+      </div>
+      <div class="qcap-when">
+        <div>
+          <label class="sched-label" for="qcap-category">Category</label>
+          <select id="qcap-category" class="sched-input"></select>
+        </div>
+        <div>
+          <label class="sched-label" for="qcap-priority">Priority</label>
+          <select id="qcap-priority" class="sched-input">
+            <option value="high">High</option>
+            <option value="med">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+      </div>
+      <button class="sched-confirm-btn" id="qcap-go">Create</button>
+      <div class="qcap-foot">↵ creates · ⌘↵ from any field · esc closes</div>
+    </div>
+    <!-- Stillwater's second step: the capture is now the focus task. -->
+    <div class="overlay-body qcap-body" id="qcap-focus" hidden>
+      <div class="qcap-focus-eyebrow">◎ YOUR FOCUS TASK</div>
+      <div class="qcap-focus-title" id="qcap-focus-title"></div>
+      <div class="qcap-focus-q">Start a <span id="qcap-focus-len">30-minute</span> focus session on it now?</div>
+      <div class="qcap-focus-btns">
+        <button class="sched-confirm-btn" id="qcap-focus-go">Start focus</button>
+        <button class="btn-ghost" id="qcap-focus-later">Not now</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="quick-cal-modal" style="z-index:860">
   <div class="overlay-panel" style="width:min(380px,92vw)">
     <div class="overlay-header">

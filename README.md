@@ -41,6 +41,9 @@ generated files are committed.
 
 **On Windows** — double-click `start-cosmodex.bat` (see below).
 
+**On a Mac** — double-click `start-cosmodex.command`, or put it in the Dock
+(see below). The `.bat` file does nothing on a Mac.
+
 **By hand:**
 
 ```bash
@@ -83,6 +86,31 @@ To start it at login, press Win+R, run `shell:startup`, and drop the shortcut
 in that folder.
 
 Change `PORT` at the top of the .bat if 8765 is taken.
+
+## On a Mac
+
+**Simplest — works on any Mac, installs nothing.** Drag `start-cosmodex.command`
+onto the right-hand end of the Dock, beside the Bin (the left part of the Dock
+only takes apps). One click on it opens a Terminal window and the app. That
+window *is* Cosmodex: leave it open while you work, close it to stop.
+
+If double-clicking it does nothing, open Terminal once and run
+`chmod +x start-cosmodex.command` from this folder.
+
+**Nicer — a real app, if your Mac allows it.** Double-click
+`make-mac-launcher.command`. It builds **Cosmodex Office** from the source in
+`mac/` — on your Mac, nothing is downloaded — puts it in Applications and shows
+it in Finder. Drag it onto the Dock. Then:
+
+- click it — Cosmodex starts and opens in the browser; a dot appears under it
+- click it again — the page comes back, if you closed the tab
+- Quit (⌘Q) — Cosmodex stops
+
+It needs Apple's free developer tools (`xcode-select --install`) and says so
+if they are missing. A managed work laptop may refuse either the tools or the
+app — in that case use the Dock shortcut above, which needs neither. Run
+`make-mac-launcher.command` again if you move this folder; the app remembers
+where the folder was. Its log is `~/Library/Logs/Cosmodex Office.log`.
 
 ## Backing up
 

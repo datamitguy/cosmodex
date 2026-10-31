@@ -7640,6 +7640,80 @@ textarea:focus-visible {
 @media (max-height: 680px) { .orr-ladder { max-height:92px; } }
 @media (max-height: 520px) { .orr-ladder { display:none; } }
 
+/* ── Orrery: the page in two parts, and the ticker ─────────────────────────
+   #orr-main is everything renderOrrery() rebuilds; the ticker is its sibling so
+   a rebuild leaves the strip — and how far it has scrolled — alone. */
+.orr-main { flex:1; min-height:0; display:flex; flex-direction:column; }
+
+/* The strip reads like the ladder above it: a hairline lid, mono label,
+   plan names in tracked caps and the task itself in the body face. The plan's
+   colour is the dot and nothing else. The window's edges fade so items slide
+   in and out rather than being guillotined at the border. */
+.orr-ticker {
+  flex-shrink:0; height:38px; display:flex; align-items:stretch;
+  border-top:1px solid rgba(255,255,255,0.08); background:var(--bg); overflow:hidden;
+}
+.orr-ticker[hidden] { display:none; }
+.orr-tk-lbl {
+  flex-shrink:0; display:flex; align-items:center; padding:0 16px 0 28px;
+  border-right:1px solid rgba(255,255,255,0.08);
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.18em;
+  text-transform:uppercase; color:rgba(255,255,255,0.5); white-space:nowrap;
+}
+.orr-tk-win {
+  flex:1; min-width:0; overflow:hidden; position:relative;
+  -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 36px, #000 calc(100% - 36px), transparent 100%);
+          mask-image:linear-gradient(90deg, transparent 0, #000 36px, #000 calc(100% - 36px), transparent 100%);
+}
+/* Stopped — MOTION off, Reduce Motion on, or nothing to show — it becomes a
+   strip you scroll yourself, and the fade goes since nothing slides in. */
+.orr-ticker.static .orr-tk-win {
+  overflow-x:auto; -webkit-mask-image:none; mask-image:none; scrollbar-width:none;
+}
+.orr-ticker.static .orr-tk-win::-webkit-scrollbar { display:none; }
+.orr-tk-track { display:flex; height:100%; width:max-content; will-change:transform; }
+.orr-tk-set   { display:flex; align-items:stretch; flex-shrink:0; }
+.orr-tk-i {
+  display:inline-flex; align-items:center; gap:9px; padding:0 22px;
+  background:none; border:none; border-right:1px solid rgba(255,255,255,0.06);
+  cursor:pointer; white-space:nowrap; color:rgba(255,255,255,0.82);
+  font-family:var(--font-body); font-size:var(--fs-small);
+  transition:background .2s ease, color .2s ease;
+}
+.orr-tk-i:hover, .orr-tk-i:focus-visible { color:#fff; background:rgba(255,255,255,0.05); outline:none; }
+.orr-tk-i i { width:5px; height:5px; border-radius:50%; background:var(--bc); flex-shrink:0; }
+.orr-tk-p {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.12em;
+  text-transform:uppercase; color:rgba(255,255,255,0.45);
+}
+.orr-tk-d {
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.12em;
+  color:rgba(255,255,255,0.45);
+}
+.orr-tk-d.over { color:var(--ink); background:var(--gold); border-radius:var(--r-xs); padding:1px 6px; }
+.orr-tk-empty {
+  display:flex; align-items:center; padding:0 22px; white-space:nowrap;
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.08em;
+  color:rgba(255,255,255,0.4);
+}
+@media (max-width: 900px) { .orr-tk-lbl { padding:0 12px 0 18px; } }
+
+/* Settings › Orrery. The category pills these borrow from tint themselves in
+   the category colour; a commitment's colour is data, so here it is a dot and
+   the pill itself stays black and white. */
+.settings-cat-pill.orr-set-pill { background:transparent; border-color:var(--border); text-transform:none; letter-spacing:0.02em; }
+.settings-cat-pill.orr-set-pill.active { color:#fff; border-color:rgba(255,255,255,0.55); background:rgba(255,255,255,0.07); }
+.settings-cat-pill.orr-set-pill:focus-visible { outline:1px solid rgba(255,255,255,0.8); outline-offset:2px; }
+.orr-set-pill i { width:6px; height:6px; border-radius:50%; background:var(--bc); flex-shrink:0; }
+.orr-set-n { opacity:0.5; margin-left:2px; font-variant-numeric:tabular-nums; }
+/* Included by a chosen goal: on, but not this pill's to turn off. */
+.settings-cat-pill.orr-set-pill.via { border-style:dashed; cursor:default; opacity:0.78; }
+.orr-set-summary {
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.06em; color:var(--muted);
+}
+.orr-set-none { font-family:var(--font-body); font-size:var(--fs-small); color:var(--muted); }
+
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
    One motion for every button in the app: a circle of pure white, larger than
    the button and clipped by it, travels upward — in from below on hover, out

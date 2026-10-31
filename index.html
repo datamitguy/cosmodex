@@ -958,7 +958,13 @@
 
     <!-- Orrery Panel — every plan in one field, sized by weight, moving.
          Content is rendered by renderOrrery() in src/26-orrery.js. -->
-    <div id="panel-orrery" style="display:none"></div><!-- /panel-orrery -->
+    <!-- Two parts on purpose. renderOrrery() rebuilds #orr-main wholesale on
+         every data change; the ticker sits outside it so that a ticked-off task
+         elsewhere does not snap the scroll back to the start. -->
+    <div id="panel-orrery" style="display:none">
+      <div id="orr-main" class="orr-main"></div>
+      <div id="orr-ticker" class="orr-ticker" hidden></div>
+    </div><!-- /panel-orrery -->
 
     <!-- Mind Map Panel -->
     <div id="panel-mindmap" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:#000000;position:relative">
@@ -1495,6 +1501,9 @@
           <div class="settings-nav-item" data-settings-tab="people">
             <span class="settings-nav-icon">◎</span> People
           </div>
+          <div class="settings-nav-item" data-settings-tab="orrery">
+            <span class="settings-nav-icon">⊙</span> Orrery
+          </div>
         </div>
 
         <!-- Right content -->
@@ -1615,6 +1624,24 @@
                 <input id="people-name-input" type="text" class="sched-input" placeholder="Full name (e.g. Sarah Chen)" autocomplete="off" />
                 <button class="task-add-confirm" id="people-add-btn">Add</button>
               </div>
+            </div>
+          </div>
+
+          <!-- ── Orrery ───────────────────────── -->
+          <!-- Filled by _orrRenderTickerSettings() in src/26-orrery.js. -->
+          <div class="settings-content-panel" id="st-pane-orrery">
+            <div class="settings-section">
+              <div class="settings-section-title">Ticker</div>
+              <div class="settings-desc">Choose goals or commitments. Their open tasks scroll along the bottom of the Orrery, overdue first. A goal brings all of its commitments with it — including any you link to it later.</div>
+              <div class="orr-set-summary" id="orr-set-summary"></div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title">Goals</div>
+              <div class="settings-cat-grid" id="orr-set-goals"></div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title">Commitments</div>
+              <div class="settings-cat-grid" id="orr-set-plans"></div>
             </div>
           </div>
 

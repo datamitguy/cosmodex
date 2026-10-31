@@ -8995,6 +8995,7 @@ function initSettingsPanel() {
     renderSettingsDefaultCat();
     initNewCatColorPicker();
     renderSettingsPeople();
+    window._orrRenderTickerSettings?.();
     // Update UID display
     const uid = window.CDX_USER?.uid;
     const uidEl = document.getElementById('settings-uid-display');
@@ -18634,7 +18635,8 @@ function _orrLadderHtml(rows) {
 
 function renderOrrery() {
   const panel = document.getElementById('panel-orrery');
-  if (!panel) return;
+  const main  = document.getElementById('orr-main');
+  if (!panel || !main) return;
   const { rows } = _orrRows();
 
   const sizeBtn = (k, lbl, tip) =>
@@ -18659,7 +18661,7 @@ function renderOrrery() {
     </div>`;
 
   if (!rows.length) {
-    panel.innerHTML = head + `
+    main.innerHTML = head + `
       <div class="orr-field orr-empty">
         <div class="orr-empty-in">
           <div class="orr-empty-mark"><span></span><span></span><span></span></div>
@@ -18670,6 +18672,7 @@ function renderOrrery() {
         </div>
       </div>`;
     _orrStop();
+    _orrRenderTicker();
     _orrWireHead(panel);
     document.getElementById('orr-go-plan')?.addEventListener('click', () => {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -18682,7 +18685,7 @@ function renderOrrery() {
   // A plan can be archived or deleted while its drawer is open.
   if (_orrOpenId && !rows.some(r => r.p.id === _orrOpenId)) _orrOpenId = null;
   const openRow = _orrOpenId ? rows.find(r => r.p.id === _orrOpenId) : null;
-  panel.innerHTML = head +
+  main.innerHTML = head +
     `<div class="orr-stage">
        <div class="orr-field" id="orr-field">
          <svg class="orr-web" id="orr-web" aria-hidden="true"></svg>
@@ -18703,6 +18706,10 @@ function renderOrrery() {
      <span class="orr-v-name">${escHtml(top.p.title || 'Untitled')}</span>
      <span class="orr-v-why">${escHtml(top.s.reasons.slice(0, 3).join(' · ') || 'the heaviest thing you are carrying')}</span>`;
 
+  /* Before the layout, not after: the ticker takes height from the panel, so
+     the field has to be measured with it already in place or the orbits are
+     solved for a field 38px taller than the one they are drawn in. */
+  _orrRenderTicker();
   _orrLayout(rows);
   _orrWireSide();
   _orrWireHead(panel);
@@ -19143,6 +19150,7 @@ function _orrWireHead(panel) {
     try { localStorage.setItem(_ORR_MOTION_KEY, _orrMotionOn ? '1' : '0'); } catch (e) {}
     document.getElementById('orr-motion')?.classList.toggle('active', _orrMotionOn);
     _orrStart();
+    _orrRenderTicker(true);
   });
 }
 
@@ -19194,6 +19202,248 @@ function _orrObserve() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && _mainPanel === 'orrery' && _orrOpenId) { _orrClose(); }
 });
+
+/* ══ TICKER ═════════════════════════════════════════════════════════════════
+   A strip along the bottom of the page carrying the open tasks of whichever
+   goals and commitments were chosen in Settings › Orrery. The field says which
+   plan has today; the ticker is the work itself, going past.
+
+   Choosing a GOAL resolves to its commitments at render time rather than being
+   copied into the selection when it was ticked, so a commitment linked to the
+   goal next month turns up here without anyone revisiting Settings.
+
+   It is driven by its own rAF loop rather than a CSS keyframe for one reason:
+   the content changes. Every task snapshot re-renders the page, and a keyframe
+   restarts from zero whenever its element is rebuilt — so a task ticked off
+   anywhere in the app would throw the strip back to its first item. Here the
+   offset is a number that outlives the DOM, and a rebuild just carries on from
+   wherever the strip had got to.
+
+   The choice is stored per device, like the page's other two switches. ═════ */
+
+const _ORR_TICKER_KEY = 'cdx_orr_ticker';   // { goals: [id], plans: [id] }
+const _ORR_TK_SPEED   = 42;                 // px/s — slow enough to read one item as it passes
+
+let _orrTkX      = 0;      // how far the strip has scrolled, in px; survives rebuilds
+let _orrTkRaf    = null;
+let _orrTkLast   = 0;
+let _orrTkPaused = false;  // a pointer or keyboard focus is on it
+let _orrTkSig    = '';     // what the strip currently shows, so an unchanged render is free
+
+function _orrTickerSel() {
+  try {
+    const v = JSON.parse(localStorage.getItem(_ORR_TICKER_KEY) || '{}');
+    return { goals: Array.isArray(v.goals) ? v.goals : [], plans: Array.isArray(v.plans) ? v.plans : [] };
+  } catch (e) { return { goals: [], plans: [] }; }
+}
+function _orrTickerSave(sel) {
+  try { localStorage.setItem(_ORR_TICKER_KEY, JSON.stringify(sel)); } catch (e) {}
+}
+
+// Which commitments the selection actually covers today. Archived or deleted
+// ones fall out here quietly — the task map already ignores them.
+function _orrTickerPlanIds() {
+  const sel = _orrTickerSel();
+  const live = new Set((typeof MILESTONE_PROJECTS === 'undefined' ? [] : MILESTONE_PROJECTS)
+    .filter(p => !p.isArchived).map(p => p.id));
+  const ids = new Set(sel.plans.filter(id => live.has(id)));
+  (typeof GOALS === 'undefined' ? [] : GOALS).forEach(g => {
+    if (sel.goals.includes(g.id)) (g.commitmentIds || []).forEach(id => { if (live.has(id)) ids.add(id); });
+  });
+  return ids;
+}
+
+// Open tasks under the covered commitments: overdue first, then by date, and
+// undated last — the order you would want to see them come past.
+function _orrTickerItems() {
+  const ids = _orrTickerPlanIds();
+  if (!ids.size) return [];
+  const byPlan = _orrTasksByPlan();
+  const plans  = new Map((MILESTONE_PROJECTS || []).map(p => [p.id, p]));
+  const out = [];
+  ids.forEach(id => (byPlan[id] || []).forEach(t => { if (!t.done) out.push({ t, p: plans.get(id) }); }));
+  return out.sort((a, b) =>
+    String(a.t.dueDate || '9999').localeCompare(String(b.t.dueDate || '9999')) ||
+    String(a.t.title || '').localeCompare(String(b.t.title || '')));
+}
+
+function _orrTickerItemHtml({ t, p }, today) {
+  const over = t.dueDate && t.dueDate < today;
+  const due  = !t.dueDate ? ''
+    : over ? '<span class="orr-tk-d over">OVERDUE</span>'
+    : t.dueDate === today ? '<span class="orr-tk-d">TODAY</span>'
+    : `<span class="orr-tk-d">${escHtml(_orrFmtDate(t.dueDate).toUpperCase())}</span>`;
+  return `<button type="button" class="orr-tk-i" data-orr-tk="${escAttr(p.id)}"
+            style="--bc:${escAttr(p.color || '#8a8070')}"
+            title="${escAttr((t.title || 'Untitled') + ' — ' + (p.title || 'Untitled'))}">
+            <i></i><span class="orr-tk-p">${escHtml(p.title || 'Untitled')}</span>
+            <span class="orr-tk-t">${escHtml(t.title || 'Untitled')}</span>${due}
+          </button>`;
+}
+
+function _orrRenderTicker(force) {
+  const box = document.getElementById('orr-ticker');
+  if (!box) return;
+  const sel = _orrTickerSel();
+  if (!sel.goals.length && !sel.plans.length) {
+    box.hidden = true; box.innerHTML = ''; _orrTkSig = '';
+    return;
+  }
+  box.hidden = false;
+  if (!box._wired) {
+    box._wired = true;
+    // Wired once on the persistent element, so rebuilding its contents never
+    // stacks a second listener.
+    box.addEventListener('mouseenter', () => { _orrTkPaused = true; });
+    box.addEventListener('mouseleave', () => { _orrTkPaused = false; });
+    box.addEventListener('focusin',    () => { _orrTkPaused = true; });
+    box.addEventListener('focusout',   () => { _orrTkPaused = false; });
+    box.addEventListener('click', e => {
+      const b = e.target.closest('[data-orr-tk]');
+      if (b) _orrOpen(b.dataset.orrTk);
+    });
+  }
+
+  const items  = _orrTickerItems();
+  const today  = localDateStr(new Date());
+  const moving = items.length > 0 && _orrMotionOn && !(typeof mReduce === 'function' && mReduce());
+  const set = items.length
+    ? items.map(x => _orrTickerItemHtml(x, today)).join('')
+    : '<span class="orr-tk-empty">Nothing open under what is chosen in Settings › Orrery.</span>';
+  const sig = (moving ? 'm|' : 's|') + set;
+  if (!force && sig === _orrTkSig) { _orrTickerStart(); return; }
+  _orrTkSig = sig;
+
+  box.classList.toggle('static', !moving);
+  box.innerHTML =
+    `<span class="orr-tk-lbl">${items.length} OPEN</span>
+     <div class="orr-tk-win"><div class="orr-tk-track" id="orr-tk-track">
+       <div class="orr-tk-set">${set}</div>
+     </div></div>`;
+  _orrTickerStart();
+}
+
+/* A seamless loop needs the set repeated until it overruns the window by one
+   full copy; the strip then scrolls through exactly one copy's width and wraps,
+   and the wrap lands on an identical picture. Done lazily from the loop, not at
+   render, because a hidden panel measures zero and a copy count computed from
+   zero is infinite. Returns the width of one copy, or 0 if it is not measurable
+   yet. */
+function _orrTickerFill(track) {
+  const first = track.firstElementChild;
+  const w = first ? first.offsetWidth : 0;
+  const win = track.parentElement ? track.parentElement.clientWidth : 0;
+  if (w < 1 || win < 1) return 0;
+  const need = Math.ceil(win / w) + 1;
+  while (track.children.length < need) {
+    const c = first.cloneNode(true);
+    c.setAttribute('aria-hidden', 'true');
+    // Copies are scenery: one focus stop per task, not one per repetition.
+    c.querySelectorAll('button').forEach(b => b.tabIndex = -1);
+    track.appendChild(c);
+  }
+  return w;
+}
+
+function _orrTickerFrame(now) {
+  _orrTkRaf = null;
+  const box = document.getElementById('orr-ticker');
+  const track = document.getElementById('orr-tk-track');
+  if (!box || !track || box.hidden || box.classList.contains('static') || _mainPanel !== 'orrery') {
+    _orrTkLast = 0;
+    return;
+  }
+  const dt = _orrTkLast ? Math.min(0.1, (now - _orrTkLast) / 1000) : 0;
+  _orrTkLast = now;
+  const w = _orrTickerFill(track);
+  if (w > 0) {
+    if (!_orrTkPaused) _orrTkX += dt * _ORR_TK_SPEED;
+    _orrTkX %= w;   // also re-wraps an offset carried over from a wider set
+    track.style.transform = `translate3d(${(-_orrTkX).toFixed(2)}px,0,0)`;
+  }
+  _orrTkRaf = requestAnimationFrame(_orrTickerFrame);
+}
+
+function _orrTickerStart() {
+  if (_orrTkRaf) return;
+  _orrTkLast = 0;
+  _orrTkRaf = requestAnimationFrame(_orrTickerFrame);
+}
+
+/* ── Settings › Orrery ──────────────────────────────────────────────────────
+   Pills, like Visible Categories, so the two read as the same kind of choice.
+   A commitment already covered by a chosen goal shows as included but cannot be
+   toggled on its own: it would look selectable and do nothing, because the goal
+   would keep it in. The tooltip says where to remove it. */
+function _orrRenderTickerSettings() {
+  const gEl = document.getElementById('orr-set-goals');
+  const pEl = document.getElementById('orr-set-plans');
+  const sEl = document.getElementById('orr-set-summary');
+  if (!gEl || !pEl || !sEl) return;
+  const sel   = _orrTickerSel();
+  const plans = (typeof MILESTONE_PROJECTS === 'undefined' ? [] : MILESTONE_PROJECTS).filter(p => !p.isArchived);
+  const live  = new Set(plans.map(p => p.id));
+  // Active goals, plus any chosen goal that has since closed — otherwise it
+  // would keep feeding the ticker with no way left to untick it.
+  const goals = (typeof GOALS === 'undefined' ? [] : GOALS)
+    .filter(g => g.status === 'active' || sel.goals.includes(g.id));
+  const byPlan = _orrTasksByPlan();
+  const openN  = id => (byPlan[id] || []).filter(t => !t.done).length;
+  const viaGoal = new Map();
+  goals.forEach(g => {
+    if (!sel.goals.includes(g.id)) return;
+    (g.commitmentIds || []).forEach(id => { if (live.has(id) && !viaGoal.has(id)) viaGoal.set(id, g.title || 'a goal'); });
+  });
+
+  gEl.innerHTML = goals.length ? goals.map(g => {
+    const ids = (g.commitmentIds || []).filter(id => live.has(id));
+    const n = ids.reduce((t, id) => t + openN(id), 0);
+    const on = sel.goals.includes(g.id);
+    return `<div class="settings-cat-pill orr-set-pill${on ? ' active' : ''}" role="button" tabindex="0"
+              data-orr-set-goal="${escAttr(g.id)}"
+              title="${escAttr(ids.length + ' commitment' + (ids.length === 1 ? '' : 's') + ', ' + n + ' open')}">
+              ${escHtml(g.title || 'Untitled')}<span class="orr-set-n">${n}</span>
+            </div>`;
+  }).join('') : '<div class="orr-set-none">No active goals.</div>';
+
+  pEl.innerHTML = plans.length ? plans.map(p => {
+    const via = viaGoal.get(p.id);
+    const on  = !!via || sel.plans.includes(p.id);
+    return `<div class="settings-cat-pill orr-set-pill${on ? ' active' : ''}${via ? ' via' : ''}"
+              role="button" tabindex="${via ? -1 : 0}" ${via ? 'aria-disabled="true"' : ''}
+              data-orr-set-plan="${escAttr(p.id)}" style="--bc:${escAttr(p.color || '#8a8070')}"
+              title="${escAttr(via ? 'Included through the goal “' + via + '” — untick the goal to remove it' : openN(p.id) + ' open')}">
+              <i></i>${escHtml(p.title || 'Untitled')}<span class="orr-set-n">${openN(p.id)}</span>
+            </div>`;
+  }).join('') : '<div class="orr-set-none">No commitments yet.</div>';
+
+  const covered = _orrTickerPlanIds();
+  const n = _orrTickerItems().length;
+  sEl.innerHTML = covered.size
+    ? `<span>${n} open task${n === 1 ? '' : 's'} from ${covered.size} commitment${covered.size === 1 ? '' : 's'} will scroll on the Orrery.</span>
+       <button class="btn-secondary" id="orr-set-clear" style="font-size:var(--fs-micro);padding:6px 12px">Clear</button>`
+    : '<span>Nothing chosen — the ticker is hidden.</span>';
+
+  const apply = next => {
+    _orrTickerSave(next);
+    _orrRenderTickerSettings();
+    // Re-render the whole page, not just the strip: showing or hiding the
+    // ticker changes the field's height, and the orbits are solved from it.
+    if (_mainPanel === 'orrery') renderOrrery();
+  };
+  const toggle = (list, id) => list.includes(id) ? list.filter(x => x !== id) : list.concat(id);
+  const onKey = fn => e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
+  gEl.querySelectorAll('[data-orr-set-goal]').forEach(el => {
+    const go = () => { const s2 = _orrTickerSel(); apply({ goals: toggle(s2.goals, el.dataset.orrSetGoal), plans: s2.plans }); };
+    el.addEventListener('click', go); el.addEventListener('keydown', onKey(go));
+  });
+  pEl.querySelectorAll('[data-orr-set-plan]:not(.via)').forEach(el => {
+    const go = () => { const s2 = _orrTickerSel(); apply({ goals: s2.goals, plans: toggle(s2.plans, el.dataset.orrSetPlan) }); };
+    el.addEventListener('click', go); el.addEventListener('keydown', onKey(go));
+  });
+  document.getElementById('orr-set-clear')?.addEventListener('click', () => apply({ goals: [], plans: [] }));
+}
+window._orrRenderTickerSettings = _orrRenderTickerSettings;
 
 /* Called by the panel switch, and by the task / commitment snapshots so the
    field tracks the data without its own listener. */

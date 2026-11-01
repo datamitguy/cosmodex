@@ -7715,6 +7715,12 @@ textarea:focus-visible {
   min-width:64px; text-align:center;
 }
 .qcap-set-key.rec { border-color:#fff; box-shadow:0 0 14px rgba(255,255,255,0.25); }
+.qcap-set-scope {
+  margin-top:6px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.08em;
+  color:rgba(255,255,255,0.45);
+}
+.qcap-set-scope[hidden] { display:none; }
+.qcap-set-scope.warn { color:rgba(255,255,255,0.75); }
 .qcap-set-msg {
   margin-top:8px; min-height:1em; font-family:var(--font-body); font-size:var(--fs-small);
   color:var(--muted);
@@ -8001,6 +8007,44 @@ textarea:focus-visible {
 }
 .park-bar.saved .park-hint { color:#fff; }
 @media (prefers-reduced-motion: reduce) { .park-bar { transition:opacity .01s; } }
+
+/* ── Settings audit 2026-11-01 ─────────────────────────────
+   Rows, empty states and swatches that were inline styles, plus keyboard
+   focus for the section tabs and breathing room under the header rule. */
+.settings-right { padding-top:16px; }
+.settings-nav-item:focus-visible { outline:1px solid rgba(255,255,255,.5); outline-offset:-1px; }
+.settings-row { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+.settings-row:last-child { border-bottom:none; }
+.settings-row-name { flex:1; font-family:var(--font-body); font-size:var(--fs-small); color:var(--cream); }
+.settings-empty { font-family:var(--font-body); font-size:var(--fs-small); color:var(--muted); padding:8px 0; }
+.settings-more {
+  display:block; margin:8px 0 4px; padding:0; background:none; border:none; cursor:pointer;
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.12em;
+  text-transform:uppercase; color:var(--muted);
+}
+.settings-more:hover, .settings-more:focus-visible { color:var(--cream); }
+.settings-holiday-row.past { opacity:.5; }
+.settings-holiday-row .hol-days { font-family:var(--font-mono); font-size:var(--fs-micro); color:var(--muted); margin-left:6px; }
+.settings-swatch {
+  width:18px; height:18px; padding:0; border-radius:50%; cursor:pointer;
+  border:2px solid transparent; box-sizing:border-box; transition:transform .15s;
+}
+.settings-swatch:hover { transform:scale(1.12); }
+.settings-swatch.on { border-color:var(--cream); }
+.settings-swatch:focus-visible { outline:1px solid var(--cream); outline-offset:2px; }
+/* On a phone the side menu took 40% of the width; it becomes a row on top. */
+@media (max-width:600px) {
+  .settings-layout { flex-direction:column; min-height:0; }
+  .settings-nav { width:auto; display:flex; overflow-x:auto; border-right:none; border-bottom:1px solid var(--border); padding:0 0 8px; }
+  .settings-nav-item { white-space:nowrap; margin:0 4px 0 0; }
+  .settings-right { padding:16px 0 0; max-height:60vh; }
+  /* the add rows are laid out inline for desktop; on a phone they wrap */
+  .settings-add-cat { grid-template-columns:1fr auto !important; grid-auto-flow:dense; }
+  .settings-add-cat #new-cat-color-picker { grid-column:1 / -1; }
+  .settings-add-hol { grid-template-columns:auto 1fr !important; }
+  .settings-add-hol > span:empty { display:none; }
+  .settings-add-hol #holiday-type { grid-column:1 / -1; }
+}
 
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
    One motion for every button in the app: a circle of pure white, larger than

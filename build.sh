@@ -42,28 +42,18 @@ src = re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*/>',
   'https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; '
   'connect-src \'self\'; img-src \'self\' data:; object-src \'none\';" />', src)
 
-# The Firebase copy in this pane would otherwise claim a cloud sync that does
-# not exist in this build.
-src = src.replace('Your data is stored anonymously in Firebase Firestore under this user ID.',
-                  'This build has no account. Records are keyed to a single local user.')
-src = src.replace('Live connection to Firebase Firestore.',
-                  'There is no cloud sync in this build — the folder above is your durability.')
-src = src.replace('Connected — real-time sync active', 'Local only — no cloud sync')
-# The Appearance pane has its own Firebase copy, which the rules above missed —
-# this build has no Firebase, so it was reporting a connection it does not have.
-src = src.replace('<div class="settings-section-title">Firebase Status</div>',
-                  '<div class="settings-section-title">Storage</div>')
-src = src.replace('Real-time sync connection state.',
-                  'Where this build keeps your data.')
-src = src.replace('<span id="settings-fb-label">Connected</span>',
-                  '<span id="settings-fb-label">Local SQLite file</span>')
-src = src.replace('<div class="settings-section-title">Firebase Account</div>',
-                  '<div class="settings-section-title">Local Account</div>')
-src = src.replace('<div class="settings-section-title">Sync Status</div>',
-                  '<div class="settings-section-title">Sync</div>')
-# Neon is the exception colour; "local only" is a normal state, not a fault.
-src = src.replace('id="settings-fb-dot2" style="width:8px;height:8px;border-radius:50%;background:var(--neon)',
-                  'id="settings-fb-dot2" style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.55)')
+# The Data & Sync copy is written for the Firebase build; this build has no
+# account and no cloud. (The live online/offline line is skipped here too.)
+for old, new in [
+    ('Your records are stored in Firebase under this account.',
+     'This build has no account. Records are keyed to a single local user.'),
+    ('<span id="settings-fb-label2"></span>',
+     '<span id="settings-fb-label2">Local only — no cloud sync. The data folder is your durability.</span>'),
+    ('id="settings-fb-dot2" style="width:8px;height:8px;border-radius:50%;background:var(--gold)',
+     'id="settings-fb-dot2" style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.55)'),
+]:
+    assert src.count(old) == 1, 'lite copy rewrite missed: ' + old[:50]
+    src = src.replace(old, new)
 
 # The sign-in overlay is dismissed by 'cdx-auth-ready' (the shim fires it), but
 # hide it up front so there is no flash of a Google button that does nothing.

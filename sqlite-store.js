@@ -406,6 +406,13 @@
     var ex = document.getElementById('settings-json-export');
     var im = document.getElementById('settings-json-restore');
     if (!ex || !im) return;
+    // Both are hidden in the Firebase build, where neither applies: JSON
+    // restore is this build's, and "reset this device" would be undone here
+    // on the next load, since preferences come back from the database.
+    var block = document.getElementById('settings-json-block');
+    if (block) block.hidden = false;
+    var cache = document.getElementById('settings-cache-section');
+    if (cache) cache.hidden = true;
     ex.onclick = exportJson;
     var picker = document.createElement('input');
     picker.type = 'file'; picker.accept = 'application/json'; picker.style.display = 'none';
@@ -417,9 +424,14 @@
         // Categories, people and settings are read into memory at startup, so
         // reload rather than leave half the app on the old values.
         setTimeout(function () { location.reload(); }, 1200);
-      }).catch(function (e) { alert('Restore failed: ' + e.message); });
+      }).catch(function (e) { if (window.showToast) showToast('Restore failed: ' + e.message, 'error'); else alert('Restore failed: ' + e.message); });
     };
-    im.onclick = function () { picker.click(); };
+    im.onclick = function () {
+      var ask = window.cdxConfirm
+        ? cdxConfirm('Restore replaces every record and preference with the file you pick. Continue?', { okLabel: 'Choose file' })
+        : Promise.resolve(window.confirm('Restore replaces every record and preference. Continue?'));
+      ask.then(function (ok) { if (ok) picker.click(); });
+    };
     im.parentNode.appendChild(picker);
   }
 

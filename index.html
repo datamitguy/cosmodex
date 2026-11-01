@@ -184,9 +184,6 @@
 
   <div class="nav-footer">
     <button class="nav-footer-btn" id="qcap-btn" title="Quick capture">＋</button>
-    <button class="nav-footer-btn" id="theme-btn" title="Toggle theme">
-      <span id="theme-icon">◑</span>
-    </button>
     <button class="nav-footer-btn" id="settings-btn" title="Settings">
       <span>⚙</span>
     </button>
@@ -1463,32 +1460,29 @@
   <div class="overlay-panel" style="width:min(780px,96vw)">
     <div class="overlay-header">
       <span class="overlay-title">Settings</span>
-      <button class="overlay-close" data-close="settings-overlay">✕</button>
+      <button class="overlay-close" data-close="settings-overlay" aria-label="Close settings">✕</button>
     </div>
     <div class="overlay-body" style="padding:0">
       <div class="settings-layout">
 
         <!-- Left nav -->
-        <div class="settings-nav">
-          <div class="settings-nav-item active" data-settings-tab="appearance">
-            <span class="settings-nav-icon">◐</span> Appearance
-          </div>
-          <div class="settings-nav-item" data-settings-tab="categories">
+        <div class="settings-nav" role="tablist" aria-label="Settings sections">
+          <div class="settings-nav-item active" role="tab" tabindex="0" aria-selected="true" data-settings-tab="categories">
             <span class="settings-nav-icon">◈</span> Categories
           </div>
-          <div class="settings-nav-item" data-settings-tab="calendar">
+          <div class="settings-nav-item" role="tab" tabindex="-1" aria-selected="false" data-settings-tab="calendar">
             <span class="settings-nav-icon">◻</span> Calendar
           </div>
-          <div class="settings-nav-item" data-settings-tab="data">
+          <div class="settings-nav-item" role="tab" tabindex="-1" aria-selected="false" data-settings-tab="data">
             <span class="settings-nav-icon">◇</span> Data & Sync
           </div>
-          <div class="settings-nav-item" data-settings-tab="people">
+          <div class="settings-nav-item" role="tab" tabindex="-1" aria-selected="false" data-settings-tab="people">
             <span class="settings-nav-icon">◎</span> People
           </div>
-          <div class="settings-nav-item" data-settings-tab="capture">
+          <div class="settings-nav-item" role="tab" tabindex="-1" aria-selected="false" data-settings-tab="capture">
             <span class="settings-nav-icon">＋</span> Quick capture
           </div>
-          <div class="settings-nav-item" data-settings-tab="orrery">
+          <div class="settings-nav-item" role="tab" tabindex="-1" aria-selected="false" data-settings-tab="orrery">
             <span class="settings-nav-icon">⊙</span> Orrery
           </div>
         </div>
@@ -1496,30 +1490,13 @@
         <!-- Right content -->
         <div class="settings-right">
 
-          <!-- ── Appearance ───────────────────── -->
-          <div class="settings-content-panel active" id="st-pane-appearance">
-            <div class="settings-section">
-              <div class="settings-section-title">Theme</div>
-              <div class="settings-desc">Toggle between dark and light mode.</div>
-              <button id="settings-theme-btn" class="btn-secondary" style="font-size:var(--fs-small);padding:8px 18px;" onclick="document.getElementById('theme-btn')?.click(); this.textContent = document.documentElement.dataset.theme === 'light' ? '☀ Light mode active' : '◐ Dark mode active';">◐ Dark mode active</button>
-            </div>
-            <div class="settings-section">
-              <div class="settings-section-title">Storage</div>
-              <div class="settings-desc">Where this build keeps your data.</div>
-              <div id="settings-firebase-status" style="display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-small);color:var(--muted);">
-                <span id="settings-fb-dot" style="width:8px;height:8px;border-radius:50%;background:var(--gold);display:inline-block;"></span>
-                <span id="settings-fb-label">Local SQLite file</span>
-              </div>
-            </div>
-          </div>
-
           <!-- ── Categories ──────────────────── -->
-          <div class="settings-content-panel" id="st-pane-categories">
+          <div class="settings-content-panel active" id="st-pane-categories">
             <div class="settings-section" id="settings-manage-cats-section">
               <div class="settings-section-title">Manage Categories</div>
-              <div class="settings-desc">Add or remove task and planning categories.</div>
+              <div class="settings-desc">Categories colour tasks and commitments. Removing one clears it from everything that used it.</div>
               <div id="settings-cat-list" style="margin-bottom:14px"></div>
-              <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center">
+              <div class="settings-add-cat" style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center">
                 <input id="new-cat-label" class="sched-input" placeholder="Category name" autocomplete="off">
                 <div id="new-cat-color-picker" style="display:flex;gap:5px;flex-wrap:wrap"></div>
                 <button class="task-add-confirm" id="new-cat-add-btn">Add</button>
@@ -1530,20 +1507,15 @@
               <div class="settings-desc">Pre-selected category when creating new tasks anywhere in the app.</div>
               <select id="settings-default-category" class="form-input" style="width:100%;cursor:pointer"></select>
             </div>
-            <div class="settings-section">
-              <div class="settings-section-title">Visible Categories</div>
-              <div class="settings-desc">Toggle which categories appear in your task list. To change a task's category, click its coloured badge directly on the task row — it cycles through all categories.</div>
-              <div class="settings-cat-grid" id="settings-cat-filters"></div>
-            </div>
           </div>
 
           <!-- ── Calendar ────────────────────── -->
           <div class="settings-content-panel" id="st-pane-calendar">
             <div class="settings-section">
               <div class="settings-section-title">Holidays</div>
-              <div class="settings-desc">HK public holidays are pre-loaded. Add your own personal holidays below — they appear highlighted on the calendar.</div>
+              <div class="settings-desc">Hong Kong public holidays for 2025–2026 came pre-loaded. Add your own days off below — every holiday is marked on the calendar. A range adds one entry per day, up to 60 days.</div>
               <div id="settings-holidays-list" style="max-height:260px;overflow-y:auto;margin-bottom:14px"></div>
-              <div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto auto;gap:6px;align-items:center">
+              <div class="settings-add-hol" style="display:grid;grid-template-columns:auto 1fr auto 1fr auto auto;gap:6px;align-items:center">
                 <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">From</span>
                 <input id="holiday-date" type="date" class="sched-input" />
                 <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">To</span>
@@ -1564,19 +1536,18 @@
           <!-- ── Data & Sync ─────────────────── -->
           <div class="settings-content-panel" id="st-pane-data">
             <div class="settings-section">
-              <div class="settings-section-title">Local Account</div>
-              <div class="settings-desc">This build has no account. Records are keyed to a single local user.</div>
+              <div class="settings-section-title">Account</div>
+              <div class="settings-desc" id="settings-account-desc">This build has no account. Records are keyed to a single local user.</div>
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
                 <code id="settings-uid-display" style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);background:var(--bg);padding:6px 10px;border-radius:var(--r-sm);flex:1;overflow:hidden;text-overflow:ellipsis;">—</code>
-                <button class="btn-secondary" style="font-size:var(--fs-micro);padding:6px 12px;flex-shrink:0" onclick="navigator.clipboard.writeText(window.CDX_USER?.uid||'').then(()=>showToast('UID copied'))">Copy</button>
+                <button class="btn-secondary" style="font-size:var(--fs-micro);padding:6px 12px;flex-shrink:0" id="settings-uid-copy">Copy ID</button>
               </div>
             </div>
             <div class="settings-section">
               <div class="settings-section-title">Sync</div>
-              <div class="settings-desc">There is no cloud sync in this build — the folder above is your durability.</div>
-              <div style="display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-small);color:var(--muted);">
-                <span id="settings-fb-dot2" style="width:8px;height:8px;border-radius:50%;background:var(--gold);display:inline-block;"></span>
-                <span id="settings-fb-label2">Local only — no cloud sync</span>
+                            <div style="display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-small);color:var(--muted);">
+                <span id="settings-fb-dot2" style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.55);display:inline-block;"></span>
+                <span id="settings-fb-label2">Local only — no cloud sync. The data folder is your durability.</span>
               </div>
             </div>
             <div class="settings-section">
@@ -1588,16 +1559,18 @@
                    outlined. Inline styles beat the stylesheet, so this had to come
                    out of the markup rather than be overridden in CSS. -->
               <button class="btn-primary" id="settings-backup-btn" style="font-size:var(--fs-micro);padding:8px 16px">◆ Export backup (.md)</button>
+              <div id="settings-json-block" hidden>
               <div class="settings-desc" style="margin-top:14px">Records live in <code style="font-family:var(--font-mono);font-size:var(--fs-micro)">data/cosmodex.db</code> and the server copies it to <code style="font-family:var(--font-mono);font-size:var(--fs-micro)">backups/</code> on every start, so this is for moving between machines rather than for safety. Restore replaces every record and preference, then reloads.</div>
               <div style="display:flex;gap:8px;margin-top:8px">
                 <button class="btn-secondary" id="settings-json-export" style="font-size:var(--fs-micro);padding:8px 16px">⤓ Export data (.json)</button>
                 <button class="btn-secondary" id="settings-json-restore" style="font-size:var(--fs-micro);padding:8px 16px">⤒ Restore from .json</button>
               </div>
+              </div>
             </div>
-            <div class="settings-section">
-              <div class="settings-section-title">Local Cache</div>
-              <div class="settings-desc">Clear locally cached settings and preferences (does not affect Firebase data).</div>
-              <button class="btn-secondary" style="font-size:var(--fs-micro);padding:8px 16px;color:var(--gold);" onclick="cdxConfirm('Clear local cache? Firebase data is untouched.',{okLabel:'Clear',okColor:'#e05555',okBg:'rgba(224,85,85,0.18)',okBorder:'rgba(224,85,85,0.4)'}).then(ok=>{if(ok){localStorage.clear();showToast('Local cache cleared');}})">Clear Local Cache</button>
+            <div class="settings-section" id="settings-cache-section">
+              <div class="settings-section-title">Reset this device</div>
+              <div class="settings-desc">Puts this browser back to defaults — shortcuts, default category, dashboard and Orrery choices, open panels. Tasks, commitments, categories and people are untouched. The app reloads.</div>
+              <button class="btn-secondary" id="settings-cache-reset" style="font-size:var(--fs-micro);padding:8px 16px">Reset this device…</button>
             </div>
           </div>
 
@@ -1605,7 +1578,7 @@
           <div class="settings-content-panel" id="st-pane-people">
             <div class="settings-section">
               <div class="settings-section-title">People</div>
-              <div class="settings-desc">Add teammates, collaborators, or contacts. Type <code style="font-family:var(--font-mono);font-size:var(--fs-micro);background:var(--elevated);padding:1px 5px;border-radius:var(--r-xs)">@</code> in the task input to link them to tasks.</div>
+              <div class="settings-desc">Teammates and contacts. To see everything linked to someone, open the command palette (⌘K) and type their name.</div>
               <div id="settings-people-list" style="margin-bottom:14px"></div>
               <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
                 <input id="people-name-input" type="text" class="sched-input" placeholder="Full name (e.g. Sarah Chen)" autocomplete="off" />
@@ -1626,6 +1599,7 @@
                 <button class="btn-secondary" id="qcap-set-reset" style="font-size:var(--fs-micro);padding:6px 12px">Reset</button>
               </div>
               <div class="qcap-set-msg" id="qcap-set-msg"></div>
+              <div class="qcap-set-scope" id="qcap-set-scope" hidden></div>
             </div>
             <div class="settings-section">
               <div class="settings-section-title">Park a thought</div>
@@ -1636,6 +1610,7 @@
                 <button class="btn-secondary" id="park-set-reset" style="font-size:var(--fs-micro);padding:6px 12px">Reset</button>
               </div>
               <div class="qcap-set-msg" id="park-set-msg"></div>
+              <div class="qcap-set-scope" id="park-set-scope" hidden></div>
             </div>
             <div class="settings-section">
               <div class="settings-section-title">Default length</div>
@@ -1781,10 +1756,6 @@
     <div class="drawer-item" data-mob-panel="lists">
       <span class="drawer-item-icon">▤</span>
       Lists
-    </div>
-    <div class="drawer-item" id="mob-theme-btn">
-      <span class="drawer-item-icon">◑</span>
-      Theme
     </div>
   </div>
 </div>

@@ -216,27 +216,11 @@ function saveSettings() { localStorage.setItem('cdx_v2_settings', JSON.stringify
 function taskEffortSecs(t) { return (t && t.timeSpentMinutes ? t.timeSpentMinutes * 60 : 0); }
 
 /* ── Theme ─────────────────────────────────────────────── */
-(function initTheme() {
-  const saved = localStorage.getItem('cdx_theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', saved);
-  updateThemeIcon(saved);
-})();
-
-function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme');
-  const next = current === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('cdx_theme', next);
-  updateThemeIcon(next);
-}
-
-function updateThemeIcon(theme) {
-  const el = document.getElementById('theme-icon');
-  if (el) el.textContent = theme === 'dark' ? '◑' : '◐';
-}
-
-document.getElementById('theme-btn')?.addEventListener('click', toggleTheme);
-document.getElementById('mob-theme-btn')?.addEventListener('click', toggleTheme);
+// There is one theme. The old toggle flipped data-theme to "light", for which
+// no styles exist, so it changed a label and nothing else — it is gone, and a
+// "light" left in storage by it is cleared.
+document.documentElement.setAttribute('data-theme', 'dark');
+localStorage.removeItem('cdx_theme');
 
 /* ── Nav collapse ──────────────────────────────────────── */
 document.getElementById('nav-expand-btn')?.addEventListener('click', () => {
@@ -8808,29 +8792,50 @@ async function saveCategories() {
   } catch(e) { console.warn('Categories Firestore save failed:', e); }
 }
 
+// Returns a reason when the category was not added, so the caller can say so
+// instead of the click doing nothing.
 function addCategory(label, color) {
   const key = label.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,20) || `cat${Date.now()}`;
-  if (CATEGORIES[key]) return; // already exists
+  const same = Object.values(CATEGORIES).find(c => c.label.toLowerCase() === label.toLowerCase());
+  if (same || CATEGORIES[key]) return `There is already a category called ${(same || CATEGORIES[key]).label}`;
   CATEGORIES[key] = { label, color };
+  _settings.visibleCategories.push(key);
+  saveSettings();
   saveCategories();
   renderSettingsCatList();
-  renderSettingsCats();
   renderTasks();
   rebuildCategorySelects();
+  return '';
 }
 
+// Clears the category from every task and commitment that used it, which no
+// undo can put back — so it asks first, and says how much it will touch.
 async function deleteCategory(key) {
+  const cat = CATEGORIES[key];
+  if (!cat) return;
+  const tasks = TASKS.filter(t => t.category === key);
+  const plans = MILESTONE_PROJECTS.filter(p => p.category === key);
+  const used = [tasks.length && `${tasks.length} task${tasks.length === 1 ? '' : 's'}`,
+                plans.length && `${plans.length} commitment${plans.length === 1 ? '' : 's'}`].filter(Boolean);
+  const ok = await cdxConfirm(used.length
+    ? `Delete “${cat.label}”? ${used.join(' and ')} will lose this category.`
+    : `Delete “${cat.label}”? Nothing uses it yet.`);
+  if (!ok) return;
   delete CATEGORIES[key];
   saveCategories();
-  // Clear dangling category refs on tasks and milestone projects
+  // A default or a filter pointing at a category that no longer exists would
+  // quietly stamp new tasks with nothing.
+  _settings.visibleCategories = _settings.visibleCategories.filter(k => k !== key);
+  if (_settings.defaultCategory === key) _settings.defaultCategory = Object.keys(CATEGORIES)[0] || '';
+  saveSettings();
   await Promise.all([
-    ...TASKS.filter(t => t.category === key).map(t => updateTask(t.id, { category: '' })),
-    ...MILESTONE_PROJECTS.filter(p => p.category === key).map(p => updateMilestoneProject(p.id, { category: '' })),
+    ...tasks.map(t => updateTask(t.id, { category: '' })),
+    ...plans.map(p => updateMilestoneProject(p.id, { category: '' })),
   ]);
   renderSettingsCatList();
-  renderSettingsCats();
   renderTasks();
   rebuildCategorySelects();
+  showToast(`Deleted ${cat.label}`);
 }
 
 function rebuildCategorySelects() {
@@ -8859,12 +8864,16 @@ function rebuildCategorySelects() {
 function renderSettingsCatList() {
   const list = document.getElementById('settings-cat-list');
   if (!list) return;
-  list.innerHTML = Object.entries(CATEGORIES).map(([key, cat]) => `
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+  const cats = Object.entries(CATEGORIES);
+  if (!cats.length) {
+    list.innerHTML = `<div class="settings-empty">No categories yet.</div>`;
+    return;
+  }
+  list.innerHTML = cats.map(([key, cat]) => `
+    <div class="settings-row">
       <div style="width:14px;height:14px;border-radius:50%;background:${cat.color};flex-shrink:0"></div>
-      <span style="flex:1;font-family:var(--font-body);font-size:var(--fs-small);color:var(--cream)">${escHtml(cat.label)}</span>
-      <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);background:var(--elevated);border:1px solid var(--border);border-radius:var(--r-xs);padding:1px 5px">${escHtml(key)}</span>
-      <button class="task-action-btn danger" data-del-cat="${escAttr(key)}" title="Delete">✕</button>
+      <span class="settings-row-name">${escHtml(cat.label)}</span>
+      <button class="task-action-btn danger" data-del-cat="${escAttr(key)}" title="Delete ${escAttr(cat.label)}" aria-label="Delete ${escAttr(cat.label)}">✕</button>
     </div>`).join('');
   list.querySelectorAll('[data-del-cat]').forEach(btn => {
     btn.addEventListener('click', () => deleteCategory(btn.dataset.delCat));
@@ -8875,35 +8884,13 @@ function initNewCatColorPicker() {
   const picker = document.getElementById('new-cat-color-picker');
   if (!picker) return;
   picker.innerHTML = CAT_COLOR_PALETTE.map(c => `
-    <div style="width:18px;height:18px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${c===_newCatColor?'var(--cream)':'transparent'};transition:transform 0.15s;box-sizing:border-box"
-         data-newcatcolor="${c}"></div>`).join('');
+    <button type="button" class="settings-swatch${c===_newCatColor?' on':''}" style="background:${c}"
+         data-newcatcolor="${c}" aria-label="Colour ${c}" aria-pressed="${c===_newCatColor}"></button>`).join('');
   picker.querySelectorAll('[data-newcatcolor]').forEach(sw => {
     sw.addEventListener('click', () => {
       _newCatColor = sw.dataset.newcatcolor;
       initNewCatColorPicker();
-    });
-  });
-}
-
-function renderSettingsCats() {
-  const grid = document.getElementById('settings-cat-filters');
-  if (!grid) return;
-  grid.innerHTML = Object.entries(CATEGORIES).map(([key, cat]) => {
-    const active = _settings.visibleCategories.includes(key);
-    return `<div class="settings-cat-pill${active ? ' active' : ''}" data-cat="${key}"
-      style="border-color:${cat.color}44;${active ? `background:${cat.color}18` : ''}">
-      <div class="cat-dot" style="background:${cat.color}"></div>${escHtml(cat.label)}
-    </div>`;
-  }).join('');
-  grid.querySelectorAll('.settings-cat-pill').forEach(pill => {
-    pill.addEventListener('click', () => {
-      const cat = pill.dataset.cat;
-      const idx = _settings.visibleCategories.indexOf(cat);
-      if (idx >= 0) _settings.visibleCategories.splice(idx, 1);
-      else _settings.visibleCategories.push(cat);
-      localStorage.setItem('cdx_v2_settings', JSON.stringify(_settings));
-      renderSettingsCats();
-      renderTasks();
+      picker.querySelector(`[data-newcatcolor="${_newCatColor}"]`)?.focus();
     });
   });
 }
@@ -8911,38 +8898,97 @@ function renderSettingsCats() {
 function renderSettingsDefaultCat() {
   const sel = document.getElementById('settings-default-category');
   if (!sel) return;
-  const cur = _settings.defaultCategory;
-  sel.innerHTML = Object.entries(CATEGORIES).map(([k,v]) =>
-    `<option value="${k}"${k===cur?' selected':''}>${escHtml(v.label)}</option>`
-  ).join('');
+  const cur = CATEGORIES[_settings.defaultCategory] ? _settings.defaultCategory : '';
+  sel.innerHTML = `<option value=""${cur ? '' : ' selected'}>No category</option>` +
+    Object.entries(CATEGORIES).map(([k,v]) =>
+      `<option value="${k}"${k===cur?' selected':''}>${escHtml(v.label)}</option>`
+    ).join('');
 }
 
+let _holShowPast = false;
+
+// A range is stored as one entry per day; shown that way, a two-week break is
+// fourteen rows. Consecutive days with the same name and type read as one.
+function _holGroups(list) {
+  const out = [];
+  list.forEach(h => {
+    const g = out[out.length - 1];
+    const next = g && (() => { const d = new Date(g.end + 'T00:00'); d.setDate(d.getDate() + 1); return localDateStr(d); })();
+    if (g && g.name === h.name && g.type === h.type && h.date === next) { g.end = h.date; g.items.push(h); }
+    else out.push({ name: h.name, type: h.type || 'personal', start: h.date, end: h.date, items: [h] });
+  });
+  return out;
+}
+
+// Upcoming first, by date. Past ones are a record, not something to scroll
+// through every time, so they fold away.
 function renderSettingsHolidays() {
   const list = document.getElementById('settings-holidays-list');
   if (!list) return;
-  // Filter out sentinel docs, sort: public first then personal, each by date (Jan→Dec)
-  const entries = Object.values(HOLIDAYS)
-    .filter(h => h.name && h.date)
-    .sort((a, b) => {
-      const aPublic = a.type === 'public' ? 0 : 1;
-      const bPublic = b.type === 'public' ? 0 : 1;
-      if (aPublic !== bPublic) return aPublic - bPublic;
-      return a.date.localeCompare(b.date);
-    });
-  if (!entries.length) {
-    list.innerHTML = `<div style="color:var(--muted);font-size:var(--fs-small);padding:8px 0">Loading holidays…</div>`;
-    return;
-  }
-  list.innerHTML = entries.map(h => `
-    <div class="settings-holiday-row">
-      <span style="flex:1">${escHtml(h.name)}</span>
-      <span class="hol-type${h.type === 'public' ? ' public' : ''}">${h.type || 'personal'}</span>
-      <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);white-space:nowrap">${fmtDate(h.date)}</span>
-      ${h.type !== 'public' ? `<button class="task-action-btn danger" data-delhol="${escAttr(h.docId)}" title="Delete">✕</button>` : '<span style="width:22px"></span>'}
-    </div>`).join('');
-  list.querySelectorAll('[data-delhol]').forEach(btn => {
-    btn.addEventListener('click', () => deleteHoliday(btn.dataset.delhol));
+  const today = localDateStr(new Date());
+  const all = Object.values(HOLIDAYS).filter(h => h.name && h.date)   // drop the seed sentinel
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const upcoming = _holGroups(all.filter(h => h.date >= today));
+  const past = _holGroups(all.filter(h => h.date < today)).reverse();
+  const groups = [...upcoming, ...past];
+  const when = d => fmtDate(d) + (d.slice(0,4) !== today.slice(0,4) ? ' ' + d.slice(0,4) : '');
+  const row = (g, i) => `
+    <div class="settings-holiday-row${g.end < today ? ' past' : ''}">
+      <span style="flex:1">${escHtml(g.name)}${g.items.length > 1 ? ` <span class="hol-days">${g.items.length} days</span>` : ''}</span>
+      <span class="hol-type${g.type === 'public' ? ' public' : ''}">${g.type}</span>
+      <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted);white-space:nowrap">${g.items.length > 1 ? `${when(g.start)} – ${when(g.end)}` : when(g.start)}</span>
+      <button class="task-action-btn danger" data-delhol="${i}" title="Remove" aria-label="Remove ${escAttr(g.name)}">✕</button>
+    </div>`;
+  list.innerHTML =
+    (upcoming.length ? upcoming.map(row).join('')
+                     : `<div class="settings-empty">No holidays ahead.${all.length ? '' : ' Add one below.'}</div>`) +
+    (past.length ? `<button type="button" class="settings-more" id="hol-past-toggle">${_holShowPast ? 'Hide' : 'Show'} ${past.length} past</button>` +
+                   (_holShowPast ? past.map((g, i) => row(g, upcoming.length + i)).join('') : '') : '');
+  document.getElementById('hol-past-toggle')?.addEventListener('click', () => {
+    _holShowPast = !_holShowPast; renderSettingsHolidays();
   });
+  list.querySelectorAll('[data-delhol]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const g = groups[+btn.dataset.delhol];
+      if (!g) return;
+      await Promise.all(g.items.map(h => deleteHoliday(h.docId)));
+      showUndoToast(`Removed ${g.name}${g.items.length > 1 ? ` · ${g.items.length} days` : ''}`,
+        () => Promise.all(g.items.map(h => addHoliday(h.date, h.name, h.type))));
+    });
+  });
+}
+
+async function addHolidayFromInputs() {
+  const dateEl = document.getElementById('holiday-date');
+  const dateEndEl = document.getElementById('holiday-date-end');
+  const nameEl = document.getElementById('holiday-name');
+  const startDate = dateEl?.value;
+  const endDate = dateEndEl?.value;
+  const name = nameEl?.value.trim();
+  const type = document.getElementById('holiday-type')?.value;
+  if (!startDate || !name) { showToast('Pick a date and give it a name', 'error'); return; }
+  if (endDate && endDate < startDate) { showToast('The end date is before the start', 'error'); return; }
+  const days = [];
+  for (const d = new Date(startDate + 'T00:00'), end = new Date((endDate || startDate) + 'T00:00'); d <= end; d.setDate(d.getDate() + 1))
+    days.push(localDateStr(d));
+  if (days.length > 60) { showToast(`That is ${days.length} days — 60 is the most in one go`, 'error'); return; }
+  // One holiday per date: the date is its key, so adding on a taken date
+  // replaces what was there. Say so rather than overwrite silently.
+  const taken = days.filter(d => HOLIDAYS[d]?.name);
+  if (taken.length) {
+    const what = taken.length === 1 ? `${HOLIDAYS[taken[0]].name} on ${fmtDate(taken[0])}` : `${taken.length} holidays already in that range`;
+    if (!await cdxConfirm(`Replace ${what}?`, { okLabel: 'Replace' })) return;
+  }
+  try {
+    for (const d of days) await addHoliday(d, name, type);
+    showToast(days.length === 1 ? 'Holiday added' : `${days.length} days added`, 'success');
+    if (dateEl) dateEl.value = '';
+    if (dateEndEl) dateEndEl.value = '';
+    if (nameEl) nameEl.value = '';
+  } catch (err) {
+    console.error('addHoliday error:', err);
+    showToast('Failed to add holiday', 'error');
+  }
 }
 
 /* ── People Management ────────────────────────────────── */
@@ -8950,24 +8996,31 @@ function renderSettingsPeople() {
   const list = document.getElementById('settings-people-list');
   if (!list) return;
   if (!PEOPLE.length) {
-    list.innerHTML = `<div style="font-size:var(--fs-small);color:var(--muted);padding:8px 0">No people added yet.</div>`;
+    list.innerHTML = `<div class="settings-empty">No people added yet.</div>`;
     return;
   }
   list.innerHTML = PEOPLE.map(p => `
-    <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+    <div class="settings-row">
       <div style="width:26px;height:26px;border-radius:50%;background:${p.color};display:flex;align-items:center;justify-content:center;font-size:var(--fs-micro);font-weight:600;color:#0d0c0a;flex-shrink:0">${escHtml(p.initials)}</div>
-      <span style="flex:1;font-family:var(--font-body);font-size:var(--fs-small);color:var(--cream)">${escHtml(p.name)}</span>
-      <button class="task-action-btn danger" data-del-person="${escAttr(p.id)}" title="Remove">✕</button>
+      <span class="settings-row-name">${escHtml(p.name)}</span>
+      <button class="task-action-btn danger" data-del-person="${escAttr(p.id)}" title="Remove ${escAttr(p.name)}" aria-label="Remove ${escAttr(p.name)}">✕</button>
     </div>`).join('');
   list.querySelectorAll('[data-del-person]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const pid = btn.dataset.delPerson;
+      const person = PEOPLE.find(p => p.id === pid);
+      const linked = TASKS.filter(t => Array.isArray(t.people) && t.people.includes(pid));
+      if (linked.length && !await cdxConfirm(
+        `Remove ${person.name}? ${linked.length} task${linked.length === 1 ? '' : 's'} will no longer be linked to them.`,
+        { okLabel: 'Remove' })) return;
       PEOPLE = PEOPLE.filter(p => p.id !== pid);
       savePeople();
       renderSettingsPeople();
       // Clear dangling person id from any tasks that referenced them
-      await Promise.all(TASKS.filter(t => Array.isArray(t.people) && t.people.includes(pid))
-        .map(t => updateTask(t.id, { people: t.people.filter(id => id !== pid) })));
+      await Promise.all(linked.map(t => updateTask(t.id, { people: t.people.filter(id => id !== pid) })));
+      if (!linked.length) showUndoToast(`Removed ${person.name}`, () => {
+        PEOPLE.push(person); savePeople(); renderSettingsPeople();
+      });
     });
   });
 }
@@ -8983,6 +9036,9 @@ function addPersonFromInput() {
   const input = document.getElementById('people-name-input');
   const name = input?.value.trim();
   if (!name) return;
+  if (PEOPLE.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+    showToast(`${name} is already in the list`, 'error'); return;
+  }
   const initials = name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
   const color = PEOPLE_COLORS[PEOPLE.length % PEOPLE_COLORS.length];
   PEOPLE.push({ id: crypto.randomUUID(), name, initials, color });
@@ -8991,24 +9047,54 @@ function addPersonFromInput() {
   if (input) { input.value = ''; input.focus(); }
 }
 
+function _settingsSelectTab(item, focus) {
+  document.querySelectorAll('.settings-nav-item').forEach(i => {
+    const on = i === item;
+    i.classList.toggle('active', on);
+    i.setAttribute('aria-selected', on);
+    i.tabIndex = on ? 0 : -1;
+  });
+  document.querySelectorAll('.settings-content-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('st-pane-' + item.dataset.settingsTab)?.classList.add('active');
+  if (focus) item.focus();
+}
+
 function initSettingsNav() {
-  document.querySelectorAll('.settings-nav-item').forEach(item => {
-    item.addEventListener('click', () => {
-      document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
-      document.querySelectorAll('.settings-content-panel').forEach(p => p.classList.remove('active'));
-      item.classList.add('active');
-      const pane = document.getElementById('st-pane-' + item.dataset.settingsTab);
-      if (pane) pane.classList.add('active');
+  const items = [...document.querySelectorAll('.settings-nav-item')];
+  items.forEach((item, i) => {
+    item.addEventListener('click', () => _settingsSelectTab(item));
+    // Arrow keys move between sections, Enter/Space picks — the usual tab list.
+    item.addEventListener('keydown', e => {
+      const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+      if (step) { e.preventDefault(); _settingsSelectTab(items[(i + step + items.length) % items.length], true); }
+      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _settingsSelectTab(item); }
     });
   });
 }
+
+// What the Sync line says is what is true right now, not a fixed "Connected".
+// The lite build has no cloud; its own copy stays as it is.
+function _settingsPaintSync() {
+  if (window.cosmodexLiteExport) return;
+  const label = document.getElementById('settings-fb-label2');
+  const dot = document.getElementById('settings-fb-dot2');
+  if (!label) return;
+  const on = navigator.onLine;
+  label.textContent = on ? 'Online — changes sync as you make them'
+                         : 'Offline — changes are held here and sync when the connection returns';
+  if (dot) dot.style.background = on ? 'var(--gold)' : 'var(--neon)';
+  const who = window.CDX_USER?.email;
+  const desc = document.getElementById('settings-account-desc');
+  if (desc && who) desc.textContent = `Signed in as ${who}. Your records are stored in Firebase under this account ID.`;
+}
+window.addEventListener('online', _settingsPaintSync);
+window.addEventListener('offline', _settingsPaintSync);
 
 function initSettingsPanel() {
   initSettingsNav();
   initPeopleSettings();
 
   document.getElementById('settings-btn')?.addEventListener('click', () => {
-    renderSettingsCats();
     renderSettingsHolidays();
     renderSettingsCatList();
     renderSettingsDefaultCat();
@@ -9020,56 +9106,43 @@ function initSettingsPanel() {
     const uid = window.CDX_USER?.uid;
     const uidEl = document.getElementById('settings-uid-display');
     if (uidEl && uid) uidEl.textContent = uid;
-    // Sync theme button label
-    const themeBtn = document.getElementById('settings-theme-btn');
-    if (themeBtn) themeBtn.textContent = document.documentElement.dataset.theme === 'light' ? '☀ Light mode active' : '◐ Dark mode active';
+    _settingsPaintSync();
     document.getElementById('settings-overlay').classList.add('open');
   });
   document.getElementById('settings-default-category')?.addEventListener('change', e => {
     _settings.defaultCategory = e.target.value;
     saveSettings();
     rebuildCategorySelects();
+    showToast(e.target.value ? `New tasks start in ${CATEGORIES[e.target.value].label}` : 'New tasks start with no category');
   });
-  document.getElementById('holiday-add-btn')?.addEventListener('click', async () => {
-    const dateEl = document.getElementById('holiday-date');
-    const dateEndEl = document.getElementById('holiday-date-end');
-    const nameEl = document.getElementById('holiday-name');
-    const startDate = dateEl?.value;
-    const endDate = dateEndEl?.value;
-    const name = nameEl?.value.trim();
-    const type = document.getElementById('holiday-type')?.value;
-    if (!startDate || !name) { showToast('Please enter both date and name', 'error'); return; }
-    try {
-      if (endDate && endDate > startDate) {
-        // Date range — create a holiday for each day
-        const d = new Date(startDate + 'T00:00');
-        const end = new Date(endDate + 'T00:00');
-        let count = 0;
-        while (d <= end && count < 60) { // cap at 60 days
-          const ds = localDateStr(d);
-          await addHoliday(ds, name, type);
-          d.setDate(d.getDate() + 1);
-          count++;
-        }
-        showToast(`${count} holiday days added`, 'success');
-      } else {
-        await addHoliday(startDate, name, type);
-        showToast('Holiday added', 'success');
-      }
-      if (dateEl) dateEl.value = '';
-      if (dateEndEl) dateEndEl.value = '';
-      if (nameEl) nameEl.value = '';
-    } catch (err) {
-      console.error('addHoliday error:', err);
-      showToast('Failed to add holiday', 'error');
-    }
+  document.getElementById('holiday-add-btn')?.addEventListener('click', addHolidayFromInputs);
+  document.getElementById('holiday-name')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') addHolidayFromInputs();
+  });
+  document.getElementById('settings-uid-copy')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(window.CDX_USER?.uid || '')
+      .then(() => showToast('Account ID copied'), () => showToast('Could not copy', 'error'));
+  });
+  document.getElementById('settings-cache-reset')?.addEventListener('click', async () => {
+    if (!await cdxConfirm('Reset this device to defaults? Your records are not touched. The app reloads.', { okLabel: 'Reset' })) return;
+    localStorage.clear();
+    location.reload();
   });
   // Initialize manage categories section
   renderSettingsCatList();
   initNewCatColorPicker();
-  document.getElementById('new-cat-add-btn')?.addEventListener('click', () => {
-    const label = document.getElementById('new-cat-label').value.trim();
-    if (label) { addCategory(label, _newCatColor); document.getElementById('new-cat-label').value = ''; }
+  const addCat = () => {
+    const input = document.getElementById('new-cat-label');
+    const label = input.value.trim();
+    if (!label) { input.focus(); return; }
+    const why = addCategory(label, _newCatColor);
+    if (why) { showToast(why, 'error'); return; }
+    input.value = '';
+    input.focus();
+  };
+  document.getElementById('new-cat-add-btn')?.addEventListener('click', addCat);
+  document.getElementById('new-cat-label')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') addCat();
   });
 }
 
@@ -9814,7 +9887,6 @@ const CMD_COMMANDS_BASE = [
   { label: 'Habits',           icon: '◎', action: () => showMainPanel('habits'), keys: '' },
   { label: 'Lists',            icon: '▤', action: () => showMainPanel('lists'), keys: '' },
   { label: 'Planning',         icon: '◉', action: () => showMainPanel('milestones'), keys: '' },
-  { label: 'Toggle Theme',     icon: '◑', action: toggleTheme, keys: '' },
   { label: 'Zen Mode',         icon: '◎', action: () => document.getElementById('left-nav').classList.toggle('collapsed'), keys: '' },
   { label: 'Add Shallow Task', icon: '💬', action: async () => {
     const title = await cdxPrompt('Add a shallow task', { okLabel: 'Add', placeholder: 'e.g. reply to the vendor email' });
@@ -10840,7 +10912,6 @@ window.addEventListener('cdx-auth-ready', () => {
             CATEGORIES = data.categories;
             saveCategoriesLocal();
             renderSettingsCatList?.();
-            renderSettingsCats?.();
             rebuildCategorySelects?.();
           }
         }
@@ -19947,6 +20018,7 @@ function _qcapToFocus(task, mins) {
 }
 
 function _qcapStartFocus(task, mins) {
+  _gsStay();   // a session started from the panel is a reason to stay, not to hide
   // 'focus' is Stillwater with the session armed. Arming re-paints the page
   // through a view transition, so the task is chosen and the timer started
   // after that lands, not before — selecting first would be painted over.
@@ -19966,6 +20038,12 @@ function _qcapPaintSettings() {
   if (keyEl) keyEl.textContent = _qcapKeyLabel(p);
   const parkEl = document.getElementById('park-set-key');
   if (parkEl) parkEl.textContent = _qcapKeyLabel(_parkKey());
+  [['qcap-set-scope', 'capture'], ['park-set-scope', 'park']].forEach(([id, which]) => {
+    const el = document.getElementById(id); if (!el) return;
+    const txt = _gsScopeText(which);
+    el.textContent = txt; el.hidden = !txt;
+    el.classList.toggle('warn', !!_gsState[which] && _gsState[which] !== 'ok');
+  });
   const minsEl = document.getElementById('qcap-set-mins');
   if (minsEl) minsEl.innerHTML = _QCAP_LENGTHS.map(m =>
     `<button type="button" class="qcap-chip${m === p.mins ? ' active' : ''}" data-qcap-set-mins="${m}">${m < 60 ? m + 'M' : (m / 60) + 'H'}</button>`).join('');
@@ -20016,6 +20094,7 @@ function _qcapStartRecording(which) {
   const does  = which === 'park' ? 'parks a thought' : 'opens quick capture';
   const other = which === 'park' ? _qcapPrefs() : _parkKey();
   _qcapRecording = true;
+  _gsRelease();
   keyEl.textContent = 'Press keys…';
   keyEl.classList.add('rec');
   if (msg) msg.textContent = 'Hold ⌥, ⌃ or ⌘ and press a key. Esc to cancel.';
@@ -20025,6 +20104,7 @@ function _qcapStartRecording(which) {
     window.removeEventListener('keydown', onKey, true);
     if (msg) msg.textContent = text || '';
     _qcapPaintSettings();
+    _gsSync();
   };
   const onKey = e => {
     e.preventDefault(); e.stopPropagation();
@@ -20045,6 +20125,96 @@ function _qcapStartRecording(which) {
   window.addEventListener('keydown', onKey, true);
 }
 
+
+/* ══ SYSTEM-WIDE — the desktop app only ════════════════════════════════════
+   In the desktop app both shortcuts are also registered with the OS (Tauri's
+   global-shortcut plugin), so they work from any app — that is when a thought
+   most needs somewhere to go. The keys are the ones in Settings: registration
+   happens here, from the page, so changing a key in Settings moves the
+   system-wide one too, with no rebuild.
+
+   Pressed from another app, Cosmodex comes forward, opens the panel, and —
+   once you finish with it (Enter, Esc, ✕) — hides itself, which on macOS
+   hands focus straight back to the app you were in. If instead you click on
+   into Cosmodex, or start a focus session, you evidently meant to stay, so it
+   does not hide.
+
+   A key another app already holds system-wide cannot be claimed; Settings says
+   so under that shortcut, and the shortcut still works inside Cosmodex. In the
+   browser and the office build none of this exists and nothing changes. */
+const _gsApi = () => window.__TAURI__?.globalShortcut || null;
+let _gsHeld = {};          // which → accelerator currently registered
+let _gsState = {};         // which → 'ok' | the reason it could not be claimed
+let _gsFromOutside = false;
+let _gsLastFire = 0;
+
+function _gsAccel(k) {
+  return [k.ctrl && 'Control', k.alt && 'Alt', k.shift && 'Shift', k.meta && 'Super', k.code]
+    .filter(Boolean).join('+');
+}
+
+// Make the OS registrations match Settings. Idempotent: only what changed moves.
+async function _gsSync() {
+  const gs = _gsApi(); if (!gs) return;
+  const want = { capture: _gsAccel(_qcapPrefs()), park: _gsAccel(_parkKey()) };
+  for (const which of ['capture', 'park']) {
+    if (_gsHeld[which] === want[which] && _gsState[which] === 'ok') continue;
+    if (_gsHeld[which]) { try { await gs.unregister(_gsHeld[which]); } catch (e) {} delete _gsHeld[which]; }
+    try {
+      await gs.register(want[which], ev => { if (!ev || ev.state !== 'Released') _gsFire(which); });
+      _gsHeld[which] = want[which]; _gsState[which] = 'ok';
+    } catch (err) {
+      _gsState[which] = String((err && err.message) || err || 'unavailable');
+    }
+  }
+  if (document.getElementById('settings-overlay')?.classList.contains('open')) _qcapPaintSettings();
+}
+
+// Let go of both — while a new key is being recorded, the old one must reach
+// the recorder instead of opening the panel.
+async function _gsRelease() {
+  const gs = _gsApi(); if (!gs) return;
+  for (const which of Object.keys(_gsHeld)) { try { await gs.unregister(_gsHeld[which]); } catch (e) {} }
+  _gsHeld = {};
+}
+
+async function _gsFire(which) {
+  const t = Date.now();
+  if (t - _gsLastFire < 250 || _qcapRecording || !window.CDX_USER?.uid) return;
+  _gsLastFire = t;
+  const win = window.__TAURI__?.window?.getCurrentWindow?.();
+  let focused = document.hasFocus();
+  try { if (win) focused = await win.isFocused(); } catch (e) {}
+  _gsFromOutside = !focused;
+  if (!focused && win) {
+    try { await win.unminimize(); } catch (e) {}
+    try { await win.show(); await win.setFocus(); } catch (e) {}
+  }
+  if (which === 'park') { window.openParkBar?.(); return; }
+  if (document.getElementById('qcap-modal')?.classList.contains('open')) document.getElementById('qcap-title')?.focus();
+  else openQuickCapture();
+}
+
+// Finished with a panel that was summoned from another app: step back.
+function _gsDone() {
+  if (!_gsFromOutside) return;
+  _gsFromOutside = false;
+  try { window.__TAURI__?.app?.hide?.(); } catch (e) {}
+}
+function _gsStay() { _gsFromOutside = false; }
+window._gsDone = _gsDone;
+window._gsStay = _gsStay;
+
+// What Settings says under each shortcut about where it works.
+function _gsScopeText(which) {
+  if (!_gsApi()) return which === 'capture'
+    ? 'Works inside Cosmodex. In the desktop app it also works from any other app.' : '';
+  const st = _gsState[which];
+  if (st === 'ok') return 'SYSTEM-WIDE · works from any app, then hands you back to it';
+  if (st) return 'Inside Cosmodex only — another app already holds this key system-wide. Pick another to use it everywhere.';
+  return '';
+}
+
 /* ── Wiring ────────────────────────────────────────────────────────────── */
 
 // Capture phase on window, so the shortcut wins over the page's own handlers
@@ -20053,6 +20223,10 @@ function _qcapStartRecording(which) {
 window.addEventListener('keydown', e => {
   if (_qcapRecording || e.repeat) return;
   const pressed = { code: e.code, alt: e.altKey, shift: e.shiftKey, ctrl: e.ctrlKey, meta: e.metaKey };
+  // Registered system-wide: the OS delivers it to _gsFire, so handling it
+  // here as well would open the panel twice.
+  const accel = _gsAccel(pressed);
+  if (_gsHeld.park === accel || _gsHeld.capture === accel) return;
   if (_sameKey(pressed, _parkKey())) {
     if (!window.CDX_USER?.uid) return;
     e.preventDefault(); e.stopPropagation();
@@ -20074,6 +20248,14 @@ window.addEventListener('keydown', e => {
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('qcap-btn')?.addEventListener('click', () => openQuickCapture());
   _qcapSyncButtonTitle();
+  _gsSync();
+
+  // Every way the panel closes — Create, Esc, ✕ — ends in the class going, so
+  // that is the one place to notice it and step back if it came from outside.
+  const qm = document.getElementById('qcap-modal');
+  if (qm && window.MutationObserver) new MutationObserver(() => {
+    if (!qm.classList.contains('open')) setTimeout(_gsDone, 0);
+  }).observe(qm, { attributes: true, attributeFilter: ['class'] });
 
   const modal = document.getElementById('qcap-modal');
   if (!modal) return;
@@ -20114,6 +20296,7 @@ document.addEventListener('DOMContentLoaded', () => {
     _qcapSave({ park: { ..._PARK_DEFAULT } });
     if (msg) msg.textContent = 'Back to ' + _qcapKeyLabel(_PARK_DEFAULT) + '.';
     _qcapPaintSettings();
+    _gsSync();
   });
   document.getElementById('qcap-set-reset')?.addEventListener('click', () => {
     const d = _QCAP_DEFAULTS;
@@ -20126,6 +20309,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const msg = document.getElementById('qcap-set-msg');
     if (msg) msg.textContent = 'Back to ' + _qcapKeyLabel(d) + '.';
     _qcapPaintSettings();
+    _gsSync();
   });
   document.getElementById('qcap-set-mins')?.addEventListener('click', e => {
     const b = e.target.closest('[data-qcap-set-mins]'); if (!b) return;
@@ -20399,6 +20583,9 @@ window.openParkBar = openParkBar;
 function _parkClose(keepFocus) {
   const bar = document.getElementById('park-bar');
   if (!bar || !bar.classList.contains('open')) return;
+  // Summoned from another app (desktop): Enter or Esc hands you back to it; a
+  // click into Cosmodex means you have chosen to be here.
+  if (keepFocus) window._gsStay?.(); else window._gsDone?.();
   clearTimeout(_parkTimer);
   bar.classList.remove('open');
   const prev = _parkPrev; _parkPrev = null;

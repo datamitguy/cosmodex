@@ -11549,6 +11549,11 @@ function renderTasksPage() {
     });
     // Filter pills (delegated)
     document.getElementById('atk-filters').addEventListener('click', e => {
+      if (e.target.closest('[data-atk-orphan]')) {
+        _atkCommit = _atkCommit === 'none' ? 'all' : 'none';
+        renderAllTasksList();
+        return;
+      }
       const b = e.target.closest('[data-atk-filter]'); if (!b) return;
       _atkFilter = b.dataset.atkFilter; renderAllTasksList();
     });
@@ -11593,10 +11598,22 @@ function _renderAllTasksListPaint() {
   const counts = {};
   _ATK_FILTERS.forEach(f => { counts[f.id] = TASKS.filter(t => _atkMatch(f.id, t, today, wk)).length; });
 
-  // Filter pills
+  const projMap = _buildTaskToProjectMap();
+
+  /* Filter pills, then "No commitment" — set a little apart because it is a
+     different kind of filter: the others choose WHEN, this one chooses WHAT
+     BELONGS TO NOTHING, and the two combine (Overdue + No commitment). It is
+     the same filter as the "No commitment" option in the commitment dropdown,
+     which was the only way in and sat among the commitment names where nobody
+     would look for it. Its count is open orphans: the number to bring to zero
+     — a task with no commitment counts toward no plan, goal or Orrery. */
+  const orphans = TASKS.filter(t => !t.done && !projMap[t.id]).length;
   const filtersEl = document.getElementById('atk-filters');
   if (filtersEl) filtersEl.innerHTML = _ATK_FILTERS.map(f =>
-    `<button class="atk-pill${_atkFilter === f.id ? ' active' : ''}" data-atk-filter="${f.id}">${f.label}<span class="atk-pill-n">${counts[f.id]}</span></button>`).join('');
+    `<button class="atk-pill${_atkFilter === f.id ? ' active' : ''}" data-atk-filter="${f.id}">${f.label}<span class="atk-pill-n">${counts[f.id]}</span></button>`).join('') +
+    `<span class="atk-pill-sep" aria-hidden="true"></span>` +
+    `<button class="atk-pill atk-pill-orphan${_atkCommit === 'none' ? ' active' : ''}" data-atk-orphan
+       aria-pressed="${_atkCommit === 'none'}" title="Open tasks that are not linked to any commitment">No commitment<span class="atk-pill-n">${orphans}</span></button>`;
   // Sort active state
   document.querySelectorAll('#atk-sort .atk-sort-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.atkSort === _atkSort));
@@ -11604,7 +11621,6 @@ function _renderAllTasksListPaint() {
   // Commitment dropdown. Filtering goes through the same task→project map that
   // fills the List column, so it catches milestone-activity links too, not just
   // a direct projectId.
-  const projMap = _buildTaskToProjectMap();
   const commitSel = document.getElementById('atk-commit-sel');
   if (commitSel) {
     const live = (typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : [])
@@ -11648,7 +11664,9 @@ function _renderAllTasksListPaint() {
   // Render design-kit tabular rows (checkbox · dot · title · list · due · cat · prio)
   body.innerHTML = '';
   if (!rows.length) {
-    body.innerHTML = `<div class="atk-empty">— None —<br><span>Nothing matches this filter</span></div>`;
+    body.innerHTML = _atkCommit === 'none' && !q
+      ? `<div class="atk-empty">— None —<br><span>Every task here belongs to a commitment</span></div>`
+      : `<div class="atk-empty">— None —<br><span>Nothing matches this filter</span></div>`;
     return;
   }
 

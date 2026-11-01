@@ -5228,6 +5228,9 @@ select.sched-input { background: #181818; }
 .atk-pill:hover { background:rgba(255,255,255,.06); color:rgba(255,255,255,.85); }
 .atk-pill.active { background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.35); color:#fff; text-shadow:0 0 10px rgba(255,255,255,.4); }
 .atk-pill-n { color:rgba(255,255,255,.35); }
+/* The divider before "No commitment": a different kind of filter — it narrows
+   by what a task belongs to, and combines with the time filters before it. */
+.atk-pill-sep { width:1px; height:18px; margin:0 8px; background:rgba(255,255,255,.14); flex-shrink:0; }
 .atk-pill.active .atk-pill-n { color:rgba(255,255,255,.8); }
 .atk-searchsort { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
 .atk-search { flex:1; min-width:220px; display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:var(--r-sm); padding:8px 14px; }

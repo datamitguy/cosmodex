@@ -9806,6 +9806,7 @@ const CMD_COMMANDS_BASE = [
   { label: 'Open Calendar',    icon: '◻', action: () => {}, keys: '' },
   { label: 'New Task',         icon: '+', action: () => {}, keys: 'N' },
   { label: 'Quick capture',    icon: '＋', action: () => openQuickCapture(), keys: '' },
+  { label: 'Park a thought',   icon: '◌', action: () => openParkBar(), keys: '' },
   { label: 'Focus — Stillwater', icon: '◎', action: () => { showMainPanel('focus'); document.getElementById('left-nav')?.classList.add('collapsed'); }, keys: 'F' },
   { label: 'Open Notes',       icon: '✎', action: () => openNotesPage(), keys: '' },
   { label: 'Ask Cosmos',       icon: '✦', action: () => openOverlay('claude-panel'), keys: '' },
@@ -17095,16 +17096,41 @@ function initConsolidation() {
    both, so this reads from that rather than re-deriving it.
 ───────────────────────────────────────────────────────────── */
 
-const _DASH_C_KEY = 'cdx_dash_commit_open';   // which commitments are expanded
+/* ── The band, redesigned ─────────────────────────────────────────────────
+   It used to group commitments by cadence — big rocks, then quarterly,
+   monthly, weekly — with every one drawn as the same closed card. That
+   answered "what kind of promise is this", which is not the question anyone
+   brings to a dashboard. A commitment three days past its end with two tasks
+   overdue sat in the third group looking exactly like one with nothing to do;
+   and because the cards shared grid rows, opening one stretched its closed
+   neighbour to the same height, so size said nothing either.
+
+   Now it is three tiers, with a clear break between them, each sorted by the
+   same "pull" the Orrery uses — so "pressing" means one thing across the app:
+
+     NEEDS YOU NOW   something overdue or due today, or the commitment ends
+                     within a week (or already has). Drawn OPEN, as cards,
+                     with a line saying why, and the work inside visible.
+     IN MOTION       open work, nothing pressing. One line each; open on click.
+     QUIET           nothing open. Folded away at the foot.
+
+   Cadence is demoted to a small tag. Each item sizes to itself. Opening and
+   closing is a class change, not a re-render, so it animates — and so does
+   the band's first appearance, once, when it actually scrolls into view. */
+
+const _DASH_C_KEY = 'cdx_dash_commit_open';   // id → true/false; absent means "the tier's default"
+const _DC_NOW_TASKS = 5;                      // tasks shown on a pressing card before "+N more"
+
+let _dcIntroDone = false;
+let _dcIO = null;
 
 function _dashCommitOpen() {
   try { return JSON.parse(localStorage.getItem(_DASH_C_KEY) || '{}'); } catch (e) { return {}; }
 }
-function _dashCommitToggle(id) {
+function _dashCommitSet(id, open) {
   const s = _dashCommitOpen();
-  s[id] = !s[id];
-  localStorage.setItem(_DASH_C_KEY, JSON.stringify(s));
-  _dashRenderCommitments();
+  s[id] = open;
+  try { localStorage.setItem(_DASH_C_KEY, JSON.stringify(s)); } catch (e) {}
 }
 
 // Every task attached to a commitment, open and done, so progress is honest.
@@ -17134,14 +17160,144 @@ async function _dashAddCommitTask(projId, title) {
   }
 }
 
+/* Which tier. Kept to facts a person can check against the card — overdue,
+   due today, ending soon — rather than to a score threshold nobody can see. */
+function _dcTier(p, s) {
+  if (!s.open) return 'quiet';
+  const ending = !p.bigRock && s.days != null && s.days <= 7;   // includes already past
+  return (s.pressing > 0 || ending) ? 'now' : 'motion';
+}
+
+// The reason a card is in NEEDS YOU NOW, in words.
+function _dcWhy(p, s) {
+  const bits = [];
+  if (s.overdue) bits.push(`${s.overdue} overdue`);
+  const today = s.pressing - s.overdue;
+  if (today > 0) bits.push(`${today} due today`);
+  if (!p.bigRock && s.days != null) {
+    if (s.days < 0) bits.push(`${-s.days} day${s.days === -1 ? '' : 's'} past its end`);
+    else if (s.days === 0) bits.push('ends today');
+    else if (s.days <= 7) bits.push(`ends in ${s.days} day${s.days === 1 ? '' : 's'}`);
+  }
+  return bits.join(' · ');
+}
+
+function _dcFmt(iso) {
+  return new Date(iso + 'T00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase();
+}
+
+function _dcWhen(p, s) {
+  if (p.bigRock) return 'ONGOING';
+  if (!p.endDate) return '';
+  return (s.days < 0 ? 'ENDED ' : 'TO ') + _dcFmt(p.endDate);
+}
+
+// Open tasks in the order they matter: overdue, then by date, undated last.
+function _dcOpenTasks(tasks) {
+  return tasks.filter(t => !t.done)
+    .sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')));
+}
+
+function _dcDue(t, today) {
+  if (!t.dueDate) return '';
+  if (t.dueDate < today)  return '<span class="dc-due over">OVERDUE</span>';
+  if (t.dueDate === today) return '<span class="dc-due today">TODAY</span>';
+  return `<span class="dc-due">${_dcFmt(t.dueDate)}</span>`;
+}
+
+function _dcTaskRows(list, today) {
+  return list.map(t => `
+    <div class="dc-task" data-dash-task="${escAttr(t.id)}">
+      <span class="dash-task-check" data-dash-done="${escAttr(t.id)}" title="Mark complete"></span>
+      <span class="dc-task-name" title="${escAttr(t.title)}">${escHtml(t.title)}</span>
+      ${_dcDue(t, today)}
+      <span class="dash-task-del" data-dash-del="${escAttr(t.id)}" title="Delete task">✕</span>
+    </div>`).join('');
+}
+
+function _dcAddRow(p) {
+  return `<div class="dc-add">
+      <span class="dc-add-plus">＋</span>
+      <input class="dc-add-input" data-dc-add="${escAttr(p.id)}" autocomplete="off"
+             placeholder="Add a task to ${escAttr(p.title || 'this commitment')}…" />
+    </div>`;
+}
+
+function _dcProgress(s) {
+  const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
+  return `<span class="dc-prog" title="${s.done} of ${s.total} done"><span class="dc-prog-fill" style="width:${pct}%"></span></span>`;
+}
+
+function _dcTags(p, s) {
+  return [p.bigRock ? 'BIG ROCK' : null, (s.cad || '').toUpperCase()].filter(Boolean)
+    .map(t => `<span class="dc-tag">${escHtml(t)}</span>`).join('');
+}
+
+// NEEDS YOU NOW — a card, open unless you have closed it.
+function _dcCard(r, open, today) {
+  const { p, s, tasks } = r;
+  const list = _dcOpenTasks(tasks);
+  const shown = list.slice(0, _DC_NOW_TASKS);
+  const more = list.length - shown.length;
+  return `
+    <article class="dc-item dc-card${open ? ' open' : ''}${s.overdue ? ' late' : ''}" data-dc="${escAttr(p.id)}" style="--cc:${escAttr(p.color || '#8a8070')}">
+      <div class="dc-head" data-dc-toggle role="button" tabindex="0" aria-expanded="${open}">
+        <span class="dc-dot"></span>
+        <div class="dc-titles">
+          <div class="dc-title" title="${escAttr(p.title || 'Untitled')}">${escHtml(p.title || 'Untitled')}</div>
+          ${s.goal ? `<div class="dc-goal">${escHtml(s.goal.title || 'Goal')}</div>` : ''}
+        </div>
+        <button class="dc-edit" data-dc-edit="${escAttr(p.id)}" title="Edit commitment">✎</button>
+        <span class="dc-chev" aria-hidden="true">›</span>
+      </div>
+      <div class="dc-why">${escHtml(_dcWhy(p, s).toUpperCase())}</div>
+      <div class="dc-sub">
+        ${_dcProgress(s)}
+        <span class="dc-count">${s.open} OPEN${s.done ? ` · ${s.done} DONE` : ''}</span>
+        <span class="dc-when">${escHtml(_dcWhen(p, s))}</span>
+        ${_dcTags(p, s)}
+      </div>
+      <div class="dc-body"><div class="dc-body-in">
+        ${_dcTaskRows(shown, today)}
+        ${more > 0 ? `<button class="dc-more" data-dc-plan="${escAttr(p.id)}">+${more} more in Planning ›</button>` : ''}
+        ${_dcAddRow(p)}
+      </div></div>
+    </article>`;
+}
+
+// IN MOTION / QUIET — one line, open on click.
+function _dcRow(r, open, today) {
+  const { p, s, tasks } = r;
+  const list = _dcOpenTasks(tasks);
+  const next = list[0];
+  return `
+    <div class="dc-item dc-row${open ? ' open' : ''}" data-dc="${escAttr(p.id)}" style="--cc:${escAttr(p.color || '#8a8070')}">
+      <div class="dc-head" data-dc-toggle role="button" tabindex="0" aria-expanded="${open}">
+        <span class="dc-chev" aria-hidden="true">›</span>
+        <span class="dc-dot"></span>
+        <span class="dc-title" title="${escAttr(p.title || 'Untitled')}">${escHtml(p.title || 'Untitled')}</span>
+        ${s.goal ? `<span class="dc-goal">${escHtml(s.goal.title || 'Goal')}</span>` : '<span class="dc-goal"></span>'}
+        <span class="dc-next">${next ? `NEXT · <b>${escHtml(next.title)}</b>${next.dueDate ? ' · ' + _dcFmt(next.dueDate) : ''}` : 'NOTHING OPEN'}</span>
+        <span class="dc-count">${s.open} OPEN</span>
+        <span class="dc-when">${escHtml(_dcWhen(p, s))}</span>
+        ${_dcProgress(s)}
+        <button class="dc-edit" data-dc-edit="${escAttr(p.id)}" title="Edit commitment">✎</button>
+      </div>
+      <div class="dc-body"><div class="dc-body-in">
+        ${list.length ? _dcTaskRows(list, today) : '<div class="dc-empty">Nothing open. Add the next step below, or let it rest.</div>'}
+        ${_dcAddRow(p)}
+      </div></div>
+    </div>`;
+}
+
 function _dashRenderCommitments() {
   const el = document.getElementById('dash-commitments');
   if (!el) return;
   if (_mainPanel !== 'default') return;
 
-  /* The quarter's goals, one line above the commitment bands. A goal you never
-     see is a goal you do not have, and this band is where you already look. It
-     is a count and a click — the detail belongs on Horizons. Built before the
+  /* The quarter's goals, one line above the tiers. A goal you never see is a
+     goal you do not have, and this band is where you already look. It is a
+     count and a click — the detail belongs on Horizons. Built before the
      empty-state return, because having goals and no commitments yet is exactly
      the moment this line is most worth showing. */
   const q = (typeof goalsQuarterSummary === 'function') ? goalsQuarterSummary() : null;
@@ -17178,140 +17334,151 @@ function _dashRenderCommitments() {
     return;
   }
 
+  // Keep a half-typed task across the redraw a task snapshot triggers — the
+  // snapshot of the task just added lands while the next is being typed.
+  const ae = document.activeElement;
+  const keep = ae && ae.dataset && ae.dataset.dcAdd
+    ? { pid: ae.dataset.dcAdd, v: ae.value, at: ae.selectionStart } : null;
+
   const tasksBy = _dashCommitTasks();
-  const openState = _dashCommitOpen();
   const today = localDateStr(new Date());
+  const state = _dashCommitOpen();
+  const score = (p, tasks) => (typeof _orrScore === 'function')
+    ? _orrScore(p, tasks, today)
+    : { score: 0, open: tasks.filter(t => !t.done).length, done: tasks.filter(t => t.done).length,
+        total: tasks.length, overdue: 0, pressing: 0, days: null, cad: commitmentCadence(p), goal: null };
+  const rows = active.map(p => { const tasks = tasksBy[p.id] || []; const s = score(p, tasks); return { p, tasks, s, tier: _dcTier(p, s) }; })
+    .sort((a, b) => b.s.score - a.s.score);
 
-  // Nearest end date first — what's most at stake, first.
-  const byEnd = (a, b) =>
-    String(a.endDate || '9999').localeCompare(String(b.endDate || '9999'));
-  const sorted = [...active].sort(byEnd);
+  const now    = rows.filter(r => r.tier === 'now');
+  const motion = rows.filter(r => r.tier === 'motion');
+  const quiet  = rows.filter(r => r.tier === 'quiet');
+  const openOf = (r, dflt) => state[r.p.id] === undefined ? dflt : !!state[r.p.id];
+  const openN  = list => list.reduce((n, r) => n + r.s.open, 0);
+  const totalOpen = openN(rows);
 
-  const card = p => {
-    const all = tasksBy[p.id] || [];
-    const open = all.filter(t => !t.done);
-    const done = all.length - open.length;
-    const pct = all.length ? Math.round(done / all.length * 100) : 0;
-    const color = p.color || '#8a8070';
-    const isOpen = !!openState[p.id];
-    const overdue = p.endDate && p.endDate < today;
-    const window_ = p.bigRock ? 'Ongoing · BAU'
-      : p.endDate ? `to ${new Date(p.endDate + 'T00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
-      : '';
+  const tierHead = (name, note, list) => `
+    <div class="dc-tier-head">
+      <span class="dc-tier-name">${name}</span>
+      <span class="dc-tier-note">${note}</span>
+      <span class="dc-tier-rule"></span>
+      <span class="dc-tier-count">${list.length} · ${openN(list)} open</span>
+    </div>`;
 
-    const rows = open.length
-      ? open.slice(0, 8).map(t => `
-          <div class="dash-c-task" data-dash-task="${escAttr(t.id)}">
-            <span class="dash-task-check" data-dash-done="${escAttr(t.id)}" title="Mark complete"></span>
-            <span class="dash-c-task-name">${escHtml(t.title)}</span>
-            ${t.dueDate && t.dueDate < today ? '<span class="dash-task-over">OVERDUE</span>' : ''}
-            <span class="dash-task-del" data-dash-del="${escAttr(t.id)}" title="Delete task">✕</span>
-          </div>`).join('')
-      : '<div class="dash-c-empty">No open tasks under this commitment.</div>';
+  const nowHtml = now.length
+    ? `<section class="dc-tier dc-tier-now">
+         ${tierHead('NEEDS YOU NOW', 'overdue, due today, or ending this week', now)}
+         <div class="dc-now-grid">${now.map(r => _dcCard(r, openOf(r, true), today)).join('')}</div>
+       </section>`
+    : `<section class="dc-tier dc-tier-now dc-calm">
+         <div class="dc-calm-line">Nothing pressing. Nothing is overdue or due today, and no commitment ends this week.</div>
+       </section>`;
 
-    return `
-      <div class="dash-c-card${isOpen ? ' open' : ''}" style="--cc:${escAttr(color)}">
-        <div class="dash-c-head" data-dash-c-toggle="${escAttr(p.id)}">
-          <span class="dash-c-chevron">›</span>
-          <span class="dash-c-dot"></span>
-          <span class="dash-c-title" title="${escAttr(p.title || 'Untitled')}">${escHtml(p.title || 'Untitled')}</span>
-          <button class="dash-c-edit" data-dash-c-edit="${escAttr(p.id)}" title="Edit commitment">✎</button>
-        </div>
-        <div class="dash-c-meta" data-dash-c-toggle="${escAttr(p.id)}">
-          <span class="dash-c-bau">${escHtml(commitmentCadence(p).toUpperCase())}</span>
-          <span class="dash-c-count">${open.length} open${done ? ` · ${done} done` : ''}</span>
-          <span class="dash-c-when${overdue ? ' over' : ''}">${escHtml(window_)}</span>
-        </div>
-        <div class="dash-c-bar"><span class="dash-c-fill" style="width:${pct}%"></span></div>
-        <div class="dash-c-body">
-          ${rows}
-          <div class="dash-c-add">
-            <span class="dash-c-add-plus">＋</span>
-            <input class="dash-c-add-input" data-dash-c-add="${escAttr(p.id)}"
-                   placeholder="Add a task to ${escAttr(p.title || 'this commitment')}…" autocomplete="off" />
-          </div>
-        </div>
-      </div>`;
-  };
+  const motionHtml = motion.length
+    ? `<section class="dc-tier dc-tier-motion">
+         ${tierHead('IN MOTION', 'open work, nothing urgent', motion)}
+         <div class="dc-rows">${motion.map(r => _dcRow(r, openOf(r, false), today)).join('')}</div>
+       </section>` : '';
 
-  /* Cadence is what makes a commitment readable at a glance — a big rock is a
-     different kind of promise from a weekly one, so they get their own bands
-     rather than one flat grid. A big rock is its own band whatever its cadence. */
-  const BANDS = [
-    { key: 'bigrock',   label: '⛰ BIG ROCKS',  note: 'ongoing · BAU',
-      test: p => !!p.bigRock },
-    { key: 'quarterly', label: '◆ QUARTERLY',  note: 'the quarter',
-      test: p => commitmentCadence(p) === 'quarterly' },
-    { key: 'monthly',   label: '◈ MONTHLY',    note: 'the month',
-      test: p => commitmentCadence(p) === 'monthly' },
-    { key: 'weekly',    label: '◇ WEEKLY',     note: 'the week',
-      test: p => commitmentCadence(p) === 'weekly' },
-  ];
-
-  const claimed = new Set();
-  const groups = BANDS.map(b => {
-    const members = sorted.filter(p => !claimed.has(p.id) && b.test(p));
-    members.forEach(p => claimed.add(p.id));
-    return { ...b, members };
-  }).filter(g => g.members.length);
-
-  const openIn = ps => ps.reduce((n, p) => n + (tasksBy[p.id] || []).filter(t => !t.done).length, 0);
-
-  const bandsHtml = groups.map(g => `
-      <div class="dash-c-band">
-        <div class="dash-c-band-head">
-          <span class="dash-c-band-label">${g.label}</span>
-          <span class="dash-c-band-note">${escHtml(g.note)}</span>
-          <span class="dash-c-band-count">${g.members.length} · ${openIn(g.members)} open</span>
-        </div>
-        <div class="dash-c-grid">${g.members.map(card).join('')}</div>
-      </div>`).join('');
-
-  const totalOpen = Object.values(tasksBy).reduce((s, ts) => s + ts.filter(t => !t.done).length, 0);
+  const quietOpen = state.__quiet === true;
+  const quietHtml = quiet.length
+    ? `<section class="dc-tier dc-tier-quiet dc-item${quietOpen ? ' open' : ''}" data-dc="__quiet">
+         <div class="dc-tier-head dc-head" data-dc-toggle role="button" tabindex="0" aria-expanded="${quietOpen}">
+           <span class="dc-chev" aria-hidden="true">›</span>
+           <span class="dc-tier-name">QUIET</span>
+           <span class="dc-tier-note">nothing open · ${quiet.map(r => escHtml(r.p.title || 'Untitled')).join(' · ')}</span>
+           <span class="dc-tier-rule"></span>
+           <span class="dc-tier-count">${quiet.length}</span>
+         </div>
+         <div class="dc-body"><div class="dc-body-in"><div class="dc-rows">
+           ${quiet.map(r => _dcRow(r, openOf(r, false), today)).join('')}
+         </div></div></div>
+       </section>` : '';
 
   el.innerHTML =
     `<div class="dash-c-head-row">
-       <div class="dash-eyebrow">COMMITMENTS · ${sorted.length} ACTIVE · ${totalOpen} OPEN TASKS</div>
+       <div class="dash-eyebrow">COMMITMENTS · ${rows.length} ACTIVE · ${totalOpen} OPEN TASKS</div>
        <button class="dash-btn" id="dash-c-plan" title="Open the Planning page">◉ Planning</button>
      </div>
      ${goalsLine}
-     ${bandsHtml}`;
+     ${nowHtml}${motionHtml}${quietHtml}`;
 
   wireGoalsLine();
+  _dcWire(el);
 
-  el.querySelectorAll('[data-dash-c-toggle]').forEach(h => h.addEventListener('click', e => {
-    if (e.target.closest('[data-dash-c-edit]')) return;
-    _dashCommitToggle(h.dataset.dashCToggle);
-  }));
-  el.querySelectorAll('[data-dash-c-edit]').forEach(b => b.addEventListener('click', e => {
+  if (keep) {
+    const inp = el.querySelector(`[data-dc-add="${CSS.escape(keep.pid)}"]`);
+    if (inp) { inp.value = keep.v; inp.focus(); try { inp.setSelectionRange(keep.at, keep.at); } catch (e) {} }
+  }
+  _dcIntro(el);
+}
+window._dashRenderCommitments = _dashRenderCommitments;
+
+function _dcWire(el) {
+  // Open and close by class, not by re-rendering — that is what lets it
+  // animate, and it keeps the rest of the band exactly where it was.
+  const toggle = head => {
+    const item = head.closest('.dc-item');
+    const open = !item.classList.contains('open');
+    item.classList.toggle('open', open);
+    head.setAttribute('aria-expanded', String(open));
+    _dashCommitSet(item.dataset.dc, open);
+  };
+  el.querySelectorAll('[data-dc-toggle]').forEach(h => {
+    h.addEventListener('click', e => { if (!e.target.closest('[data-dc-edit]')) toggle(h); });
+    h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(h); } });
+  });
+  el.querySelectorAll('[data-dc-edit]').forEach(b => b.addEventListener('click', e => {
     e.stopPropagation();
     showMainPanel('milestones');
-    openMsProjectModal(b.dataset.dashCEdit);
+    openMsProjectModal(b.dataset.dcEdit);
   }));
-  // These rows are open tasks, so this always completes — through the time
-  // popover, like the rest of the dashboard, not around it.
+  // Completing goes through the time popover, like everywhere else.
   el.querySelectorAll('[data-dash-done]').forEach(c => c.addEventListener('click', e => {
     e.stopPropagation(); handleCheckClick(c.dataset.dashDone, e);
   }));
   el.querySelectorAll('[data-dash-del]').forEach(d => d.addEventListener('click', e => {
     e.stopPropagation(); deleteTask(d.dataset.dashDel);
   }));
-  el.querySelectorAll('[data-dash-c-add]').forEach(inp => {
+  el.querySelectorAll('[data-dc-add]').forEach(inp => {
     inp.addEventListener('keydown', e => {
       if (e.key !== 'Enter') return;
       const v = inp.value; inp.value = '';
-      _dashAddCommitTask(inp.dataset.dashCAdd, v);
+      _dashAddCommitTask(inp.dataset.dcAdd, v);
     });
-    // Typing in the row must not fold the card shut.
     inp.addEventListener('click', e => e.stopPropagation());
   });
-  document.getElementById('dash-c-plan')?.addEventListener('click', () => {
+  const toPlanning = id => {
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
     document.getElementById('nav-planning')?.classList.add('active');
     showMainPanel('milestones');
-  });
+    // Planning's own entry point: it sets the focus and switches tab together.
+    // Calling showPlanningTimeline directly got overwritten by Planning's
+    // render, which resets the focus when it is not already in timeline view.
+    if (id) setTimeout(() => window._planOpenCommitment?.(id), 60);
+  };
+  el.querySelectorAll('[data-dc-plan]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); toPlanning(b.dataset.dcPlan); }));
+  document.getElementById('dash-c-plan')?.addEventListener('click', () => toPlanning(null));
 }
-window._dashRenderCommitments = _dashRenderCommitments;
+
+/* The first appearance cascades in — once per visit, and only when the band
+   is actually on screen. It sits below the fold, so playing it on render
+   would spend the motion where nobody can see it. Every later render (each
+   task snapshot) is still; motion that repeats on data changes reads as
+   flicker, not as information. */
+function _dcIntro(el) {
+  if (_dcIntroDone || (typeof mReduce === 'function' && mReduce())) { _dcIntroDone = true; return; }
+  if (_dcIO || !window.IntersectionObserver) return;
+  _dcIO = new IntersectionObserver(entries => {
+    if (!entries.some(e => e.isIntersecting)) return;
+    _dcIO.disconnect(); _dcIO = null; _dcIntroDone = true;
+    el.querySelectorAll('.dc-tier-head, .dc-card, .dc-row, .dc-calm-line').forEach((n, i) => {
+      n.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 380, delay: Math.min(i, 12) * 40, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' });
+    });
+  }, { threshold: 0.15 });
+  _dcIO.observe(el);
+}
 
 /* ══ FIRST RUN ═══════════════════════════════════════════════════════════
    Not a wizard — a card that names the chain and takes you to the first step
@@ -19514,6 +19681,15 @@ const _QCAP_DEFAULTS = {
   lastProject: '',
 };
 const _QCAP_LENGTHS = [15, 30, 45, 60, 90];
+// The second shortcut: park a thought in Distractions (src/28-distractions.js).
+// Stored beside quick capture's, under prefs.park, so one recorder and one
+// clash check cover both.
+const _PARK_DEFAULT = { code: 'KeyP', alt: true, shift: true, ctrl: false, meta: false };   // ⌥⇧P
+function _parkKey() { return { ..._PARK_DEFAULT, ...(_qcapPrefs().park || {}) }; }
+function _sameKey(a, b) {
+  return a.code === b.code && !!a.alt === !!b.alt && !!a.shift === !!b.shift &&
+         !!a.ctrl === !!b.ctrl && !!a.meta === !!b.meta;
+}
 const _QCAP_IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
 
 let _qcapBusy      = false;
@@ -19766,10 +19942,12 @@ function _qcapStartFocus(task, mins) {
 
 /* ── Settings › Quick capture ──────────────────────────────────────────── */
 
-function _qcapRenderSettings() {
+function _qcapPaintSettings() {
   const p = _qcapPrefs();
   const keyEl = document.getElementById('qcap-set-key');
   if (keyEl) keyEl.textContent = _qcapKeyLabel(p);
+  const parkEl = document.getElementById('park-set-key');
+  if (parkEl) parkEl.textContent = _qcapKeyLabel(_parkKey());
   const minsEl = document.getElementById('qcap-set-mins');
   if (minsEl) minsEl.innerHTML = _QCAP_LENGTHS.map(m =>
     `<button type="button" class="qcap-chip${m === p.mins ? ' active' : ''}" data-qcap-set-mins="${m}">${m < 60 ? m + 'M' : (m / 60) + 'H'}</button>`).join('');
@@ -19780,10 +19958,19 @@ function _qcapRenderSettings() {
 }
 // Opening Settings starts clean: a "Saved —" line from last time would read
 // as if something had just happened.
+//
+// This MUST be a different name from the function it calls. All of app.js is
+// one classic script, where a top-level function declaration is a property of
+// window — so `window._qcapRenderSettings = function () { _qcapRenderSettings() }`
+// does not wrap the old function, it replaces it, and the wrapper calls itself
+// until the stack overflows. That shipped once: the overflow was thrown inside
+// the Settings button's handler before the line that opens the overlay, so
+// Settings stopped opening at all.
 window._qcapRenderSettings = function () {
-  const msg = document.getElementById('qcap-set-msg');
-  if (msg && !_qcapRecording) msg.textContent = '';
-  _qcapRenderSettings();
+  if (!_qcapRecording) ['qcap-set-msg', 'park-set-msg'].forEach(id => {
+    const m = document.getElementById(id); if (m) m.textContent = '';
+  });
+  _qcapPaintSettings();
 };
 
 function _qcapSyncButtonTitle() {
@@ -19803,9 +19990,13 @@ function _qcapReserved(k) {
   return '';
 }
 
-function _qcapStartRecording() {
-  const keyEl = document.getElementById('qcap-set-key');
-  const msg = document.getElementById('qcap-set-msg');
+// One recorder for both shortcuts. `which` is 'capture' or 'park'.
+function _qcapStartRecording(which) {
+  which = which === 'park' ? 'park' : 'capture';
+  const keyEl = document.getElementById(which === 'park' ? 'park-set-key' : 'qcap-set-key');
+  const msg   = document.getElementById(which === 'park' ? 'park-set-msg' : 'qcap-set-msg');
+  const does  = which === 'park' ? 'parks a thought' : 'opens quick capture';
+  const other = which === 'park' ? _qcapPrefs() : _parkKey();
   _qcapRecording = true;
   keyEl.textContent = 'Press keys…';
   keyEl.classList.add('rec');
@@ -19815,7 +20006,7 @@ function _qcapStartRecording() {
     keyEl.classList.remove('rec');
     window.removeEventListener('keydown', onKey, true);
     if (msg) msg.textContent = text || '';
-    _qcapRenderSettings();
+    _qcapPaintSettings();
   };
   const onKey = e => {
     e.preventDefault(); e.stopPropagation();
@@ -19827,10 +20018,11 @@ function _qcapStartRecording() {
       return;
     }
     const k = { code: e.code, alt: e.altKey, shift: e.shiftKey, ctrl: e.ctrlKey, meta: e.metaKey };
-    const clash = _qcapReserved(k);
+    const clash = _qcapReserved(k) ||
+      (_sameKey(k, other) ? (which === 'park' ? 'already opens quick capture' : 'already parks a thought') : '');
     if (clash) { if (msg) msg.textContent = `${_qcapKeyLabel(k)} ${clash}. Try another.`; return; }
-    _qcapSave(k);
-    done(`Saved — ${_qcapKeyLabel(k)} opens quick capture.`);
+    _qcapSave(which === 'park' ? { park: k } : k);
+    done(`Saved — ${_qcapKeyLabel(k)} ${does}.`);
   };
   window.addEventListener('keydown', onKey, true);
 }
@@ -19842,6 +20034,13 @@ function _qcapStartRecording() {
 // cannot collide with typing.
 window.addEventListener('keydown', e => {
   if (_qcapRecording || e.repeat) return;
+  const pressed = { code: e.code, alt: e.altKey, shift: e.shiftKey, ctrl: e.ctrlKey, meta: e.metaKey };
+  if (_sameKey(pressed, _parkKey())) {
+    if (!window.CDX_USER?.uid) return;
+    e.preventDefault(); e.stopPropagation();
+    window.openParkBar?.();
+    return;
+  }
   const p = _qcapPrefs();
   if (e.code !== p.code || e.altKey !== !!p.alt || e.shiftKey !== !!p.shift ||
       e.ctrlKey !== !!p.ctrl || e.metaKey !== !!p.meta) return;
@@ -19886,21 +20085,37 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Settings › Quick capture
-  document.getElementById('qcap-set-record')?.addEventListener('click', _qcapStartRecording);
+  document.getElementById('qcap-set-record')?.addEventListener('click', () => _qcapStartRecording('capture'));
+  document.getElementById('park-set-record')?.addEventListener('click', () => _qcapStartRecording('park'));
+  document.getElementById('park-set-reset')?.addEventListener('click', () => {
+    const msg = document.getElementById('park-set-msg');
+    if (_sameKey(_PARK_DEFAULT, _qcapPrefs())) {
+      if (msg) msg.textContent = `${_qcapKeyLabel(_PARK_DEFAULT)} is quick capture's now — change that one first.`;
+      return;
+    }
+    _qcapSave({ park: { ..._PARK_DEFAULT } });
+    if (msg) msg.textContent = 'Back to ' + _qcapKeyLabel(_PARK_DEFAULT) + '.';
+    _qcapPaintSettings();
+  });
   document.getElementById('qcap-set-reset')?.addEventListener('click', () => {
     const d = _QCAP_DEFAULTS;
+    if (_sameKey(d, _parkKey())) {
+      const m = document.getElementById('qcap-set-msg');
+      if (m) m.textContent = `${_qcapKeyLabel(d)} parks a thought now — change that one first.`;
+      return;
+    }
     _qcapSave({ code: d.code, alt: d.alt, shift: d.shift, ctrl: d.ctrl, meta: d.meta });
     const msg = document.getElementById('qcap-set-msg');
     if (msg) msg.textContent = 'Back to ' + _qcapKeyLabel(d) + '.';
-    _qcapRenderSettings();
+    _qcapPaintSettings();
   });
   document.getElementById('qcap-set-mins')?.addEventListener('click', e => {
     const b = e.target.closest('[data-qcap-set-mins]'); if (!b) return;
-    _qcapSave({ mins: +b.dataset.qcapSetMins }); _qcapRenderSettings();
+    _qcapSave({ mins: +b.dataset.qcapSetMins }); _qcapPaintSettings();
   });
   document.getElementById('qcap-set-still')?.addEventListener('click', e => {
     const b = e.target.closest('[data-qcap-set-still]'); if (!b) return;
-    _qcapSave({ still: b.dataset.qcapSetStill }); _qcapRenderSettings();
+    _qcapSave({ still: b.dataset.qcapSetStill }); _qcapPaintSettings();
   });
 });
 /* ══════════════════════════════════════════════════════════════════════════
@@ -20038,6 +20253,10 @@ function _dashRenderDistractions() {
   _dlShell(el);
   _dlObserve(el);
 
+  const add = el.querySelector('#dash-dl-add');
+  if (add && typeof _parkKey === 'function')
+    add.placeholder = `Park a thought — ↵ saves it · ${_qcapKeyLabel(_parkKey())} from any page`;
+
   const grid = el.querySelector('#dash-dl-grid');
   const list = _dlList();
   const open = list ? (list.items || []).filter(i => !i.done).slice().reverse() : [];   // newest first
@@ -20088,4 +20307,86 @@ function _dlObserve(el) {
     _dashRenderDistractions();
   });
   _dlRO.observe(el);
+}
+
+/* ══ PARK A THOUGHT — from any page ══════════════════════════════════════════
+   The band above only helps if the dashboard is on screen, and mid-work it
+   usually is not: you are on Stillwater, in a note, in a session. So the same
+   list has a shortcut (⌥⇧P unless changed in Settings › Quick capture) that
+   opens one line at the top of whatever page you are on.
+
+   It is deliberately smaller than quick capture: no backdrop, no fields, no
+   decisions. Enter parks it and puts you back exactly where you were — the
+   field you were typing in gets its focus back — because the whole point is
+   not to have left. Esc or a click elsewhere drops it without saving. */
+
+let _parkPrev = null;     // what had focus before, to hand it back
+let _parkTimer = null;
+
+function _parkEl() {
+  let bar = document.getElementById('park-bar');
+  if (bar) return bar;
+  bar = document.createElement('div');
+  bar.id = 'park-bar';
+  bar.className = 'park-bar';
+  bar.setAttribute('role', 'dialog');
+  bar.setAttribute('aria-label', 'Park a thought');
+  bar.innerHTML = `
+    <span class="park-ico" aria-hidden="true">◌</span>
+    <input id="park-input" class="park-input" type="text" autocomplete="off"
+           placeholder="Park a thought — it goes to Distractions" />
+    <span class="park-hint" id="park-hint">↵ PARK · ESC</span>`;
+  document.body.appendChild(bar);
+
+  const inp = bar.querySelector('#park-input');
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); _parkClose(); return; }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const v = inp.value.trim();
+    if (!v) { _parkClose(); return; }
+    _dlAdd(v);
+    // Say it landed, briefly, then get out of the way.
+    bar.classList.add('saved');
+    inp.value = ''; inp.readOnly = true;
+    document.getElementById('park-hint').textContent = '✓ PARKED IN DISTRACTIONS';
+    clearTimeout(_parkTimer);
+    _parkTimer = setTimeout(_parkClose, 650);
+  });
+  // A click anywhere else drops it, unsaved — the same as Esc.
+  document.addEventListener('mousedown', e => {
+    if (bar.classList.contains('open') && !bar.contains(e.target)) _parkClose(true);
+  }, true);
+  return bar;
+}
+
+function openParkBar() {
+  if (!window.CDX_USER?.uid) return;
+  const bar = _parkEl();
+  const inp = bar.querySelector('#park-input');
+  if (bar.classList.contains('open')) { inp.focus(); return; }
+  const ae = document.activeElement;
+  _parkPrev = ae && ae !== document.body && ae !== bar && !bar.contains(ae) ? ae : null;
+  clearTimeout(_parkTimer);
+  bar.classList.remove('saved');
+  inp.readOnly = false; inp.value = '';
+  document.getElementById('park-hint').textContent = '↵ PARK · ESC';
+  bar.classList.add('open');
+  setTimeout(() => inp.focus(), 0);
+}
+window.openParkBar = openParkBar;
+
+// `keepFocus`: a click elsewhere already moved focus where the person wanted
+// it — taking it back to the old field would undo their click.
+function _parkClose(keepFocus) {
+  const bar = document.getElementById('park-bar');
+  if (!bar || !bar.classList.contains('open')) return;
+  clearTimeout(_parkTimer);
+  bar.classList.remove('open');
+  const prev = _parkPrev; _parkPrev = null;
+  if (!keepFocus && prev && prev.isConnected) {
+    try { prev.focus({ preventScroll: true }); } catch (e) {}
+  } else if (!keepFocus) {
+    document.getElementById('park-input')?.blur();
+  }
 }

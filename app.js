@@ -6397,6 +6397,7 @@ function initData() {
       renderLists();
       if (_listView) renderListDetail(_listView);
     }
+    window._dashRenderDistractions?.();   // the dashboard's distraction band is a list too
   });
 
   _msProjUnsub = onSnapshot(query(_uc('milestoneProjects'), orderBy('startDate', 'asc')), snap => {
@@ -12467,6 +12468,7 @@ function renderDashboardBoard() {
   _dashRenderRituals();
   _dashRenderTasks();
   window._dashRenderCommitments?.();
+  window._dashRenderDistractions?.();
   window._dashRenderWelcome?.();
   window._dashRenderNote?.(); // Valerie daily note (desktop → iCloud vault)
   if (navDir) mStagger(document.querySelectorAll('#dash-board .dash-side .dash-card'), navDir);
@@ -19518,6 +19520,7 @@ let _qcapBusy      = false;
 let _qcapRecording = false;
 let _qcapCatTouched = false;   // the user picked a category, so a commitment change must not overwrite it
 let _qcapLen       = 30;
+let _qcapAfter     = null;     // a caller's "once it exists" — e.g. clearing the thought it was made from
 
 // Read fresh each time rather than cached: the office build restores
 // preferences from its database after the page has loaded, and a cached copy
@@ -19582,6 +19585,7 @@ function _qcapDefaultProject() {
 function openQuickCapture(opts) {
   opts = opts || {};
   if (!window.CDX_USER?.uid) return;
+  _qcapAfter = typeof opts.onCreated === 'function' ? opts.onCreated : null;
   const modal = document.getElementById('qcap-modal');
   if (!modal) return;
   const prefs = _qcapPrefs();
@@ -19701,6 +19705,9 @@ async function _qcapSubmit() {
     });
     await updateTask(taskRef.id, { calEventId: evRef.id });
     _qcapSave({ lastProject: projectId || '' });
+    // Only once the task really exists — closing the panel without creating
+    // must leave whatever it was made from untouched.
+    if (_qcapAfter) { const f = _qcapAfter; _qcapAfter = null; try { f(taskRef.id); } catch (e) { console.error(e); } }
 
     // The session gets the length that was asked for, not the block's: only
     // the calendar block has to stop at midnight, and a focus session started
@@ -19896,3 +19903,189 @@ document.addEventListener('DOMContentLoaded', () => {
     _qcapSave({ still: b.dataset.qcapSetStill }); _qcapRenderSettings();
   });
 });
+/* ══════════════════════════════════════════════════════════════════════════
+   DISTRACTIONS — a place to park a thought and get back to work
+   ──────────────────────────────────────────────────────────────────────────
+   Mid-task, something surfaces — a call to return, an idea, a thing to buy.
+   With nowhere to put it, it either breaks the task or nags until it is
+   written down. This band sits under the dashboard's calendar: type it, press
+   Enter, carry on. The field keeps focus, so a second thought is one more line.
+
+   It is an ordinary list, and it shows in the Lists tab like any other. It is
+   found by a marker (kind: 'distractions') rather than by its title, so it can
+   be renamed there without the dashboard losing it. It is created with the
+   first thought parked, not on load — an empty list nobody asked for would
+   appear in the Lists tab otherwise.
+
+   The grid is fixed cells, never more than six across and five down, newest
+   first. A long thought is cut to one line in its cell and shown whole on
+   hover or focus, so the band stays the same calm size whatever is in it.
+   Done ones leave the dashboard and stay in the list as a record.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const _DL_KIND     = 'distractions';
+const _DL_MAX_COLS = 6;
+const _DL_MAX_ROWS = 5;
+const _DL_MIN_CELL = 200;    // px — below this a cell holds too few words to be worth a column
+const _DL_GAP      = 8;
+
+let _dlCreating = null;      // the in-flight creation, so a fast second thought joins it
+let _dlRO       = null;
+let _dlSeenW    = 0;
+
+function _dlList() {
+  return (typeof LISTS === 'undefined' ? [] : LISTS).find(l => l.kind === _DL_KIND) || null;
+}
+
+/* Park a thought. The first one creates the list with the item already in it —
+   one write, not two, so there is no moment where the list exists empty and a
+   second fast Enter could create another. Anything typed while that write is
+   in flight waits for it and joins the same list. */
+async function _dlAdd(text) {
+  text = String(text || '').trim();
+  if (!text) return;
+  const item = { id: crypto.randomUUID(), text, done: false, createdAt: new Date().toISOString() };
+  const existing = _dlList();
+  if (existing) { await addListItem(existing.id, text); return; }
+  if (_dlCreating) {
+    const id = await _dlCreating;
+    if (id) await addListItem(id, text);
+    return;
+  }
+  const { addDoc, serverTimestamp } = window.CDX_FB;
+  _dlCreating = addDoc(_uc('lists'), {
+    title: 'Distractions', type: 'simple', kind: _DL_KIND,
+    color: LIST_COLORS[0], items: [item],
+    why: 'Thoughts that turned up mid-work, parked from the dashboard so the work could carry on.',
+    notes: '', createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  }).then(ref => ref.id).catch(err => {
+    console.error('distractions:', err);
+    showToast('Could not save that thought', 'error');
+    return null;
+  });
+  try { await _dlCreating; } finally { _dlCreating = null; }
+}
+
+/* ── Render ──────────────────────────────────────────────────────────────── */
+
+// Columns that fit at a readable width, capped at six. Measured from the band
+// itself, so it follows the dashboard's own width steps on a wide monitor.
+function _dlCols(box) {
+  const w = box.clientWidth;
+  return Math.max(1, Math.min(_DL_MAX_COLS, Math.floor((w + _DL_GAP) / (_DL_MIN_CELL + _DL_GAP))));
+}
+
+// The shell — heading and the input — is built once. Every later render
+// touches only the grid: rebuilding the field would throw away whatever was
+// being typed whenever a snapshot landed, and the snapshot of your own last
+// thought lands while you are typing the next.
+function _dlShell(el) {
+  if (el.querySelector('#dash-dl-add')) return;
+  el.innerHTML = `
+    <div class="dash-c-head-row">
+      <div class="dash-eyebrow" id="dash-dl-eyebrow">DISTRACTIONS</div>
+      <button class="dash-btn" id="dash-dl-open" title="Open this list in Lists">▤ In Lists</button>
+    </div>
+    <input id="dash-dl-add" class="dash-dl-add" type="text" autocomplete="off"
+           placeholder="Park a thought — ↵ saves it, then back to work" />
+    <div class="dash-dl-grid" id="dash-dl-grid"></div>
+    <div class="dash-dl-more" id="dash-dl-more" hidden></div>`;
+
+  const inp = el.querySelector('#dash-dl-add');
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const v = inp.value; inp.value = '';
+      _dlAdd(v);
+    } else if (e.key === 'Escape') { inp.value = ''; inp.blur(); }
+  });
+  el.querySelector('#dash-dl-open').addEventListener('click', _dlOpenInLists);
+
+  // Delegated, so the grid can be rebuilt without re-wiring every cell.
+  el.querySelector('#dash-dl-grid').addEventListener('click', e => {
+    const cell = e.target.closest('[data-dl-id]');
+    if (!cell) return;
+    const list = _dlList(); if (!list) return;
+    const id = cell.dataset.dlId;
+    const it = (list.items || []).find(i => i.id === id);
+    if (!it) return;
+    if (e.target.closest('[data-dl-done]')) {
+      toggleListItem(list.id, id);
+      const short = it.text.length > 30 ? it.text.slice(0, 30) + '…' : it.text;
+      showUndoToast(`Cleared · ${short}`, () => toggleListItem(list.id, id));
+      return;
+    }
+    if (e.target.closest('[data-dl-task]')) {
+      // Promote it: quick capture, prefilled, with the commitment picker —
+      // and once the task exists the thought has been dealt with.
+      openQuickCapture({ title: it.text, onCreated: () => toggleListItem(list.id, id) });
+    }
+  });
+  el.querySelector('#dash-dl-more').addEventListener('click', _dlOpenInLists);
+}
+
+function _dlOpenInLists() {
+  const list = _dlList();
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  document.getElementById('nav-lists')?.classList.add('active');
+  showMainPanel('lists');
+  if (list) setTimeout(() => openListDetail(list.id), 60);
+}
+
+function _dashRenderDistractions() {
+  const el = document.getElementById('dash-distractions');
+  if (!el || _mainPanel !== 'default') return;
+  _dlShell(el);
+  _dlObserve(el);
+
+  const grid = el.querySelector('#dash-dl-grid');
+  const list = _dlList();
+  const open = list ? (list.items || []).filter(i => !i.done).slice().reverse() : [];   // newest first
+  el.querySelector('#dash-dl-eyebrow').textContent =
+    open.length ? `DISTRACTIONS · ${open.length} PARKED` : 'DISTRACTIONS';
+
+  const more = el.querySelector('#dash-dl-more');
+  if (!open.length) {
+    grid.style.removeProperty('--dl-cols');
+    grid.innerHTML = `<div class="dash-dl-empty">Nothing parked. When something pulls at you mid-task, write it above and carry on.</div>`;
+    more.hidden = true;
+    return;
+  }
+
+  const cols = _dlCols(grid);
+  const cap = cols * _DL_MAX_ROWS;
+  const shown = open.slice(0, cap);
+  grid.style.setProperty('--dl-cols', cols);
+  grid.innerHTML = shown.map(it => {
+    return `<div class="dash-dl-i" data-dl-id="${escAttr(it.id)}" tabindex="0">
+      <span class="dash-dl-check" data-dl-done role="button" title="Done — clear it"></span>
+      <span class="dash-dl-t">${escHtml(it.text)}</span>
+      <button type="button" class="dash-dl-task" data-dl-task title="Make it a task">→</button>
+    </div>`;
+  }).join('');
+
+  // Only a thought that was actually cut short gets the hover expansion — a
+  // short one would just flicker a box the same size as itself.
+  grid.querySelectorAll('.dash-dl-t').forEach(t => {
+    if (t.scrollWidth > t.clientWidth + 1) t.parentElement.classList.add('trunc');
+  });
+
+  const hidden = open.length - shown.length;
+  more.hidden = hidden <= 0;
+  if (hidden > 0) more.textContent = `+${hidden} more in Lists ›`;
+}
+window._dashRenderDistractions = _dashRenderDistractions;
+
+// The column count depends on the band's width, which changes with the window
+// and with the dashboard's own width steps. Re-render only when it actually
+// changes; observing triggers a first callback, which this ignores.
+function _dlObserve(el) {
+  if (_dlRO || !window.ResizeObserver) return;
+  _dlSeenW = el.clientWidth;
+  _dlRO = new ResizeObserver(() => {
+    if (Math.abs(el.clientWidth - _dlSeenW) < 2) return;
+    _dlSeenW = el.clientWidth;
+    _dashRenderDistractions();
+  });
+  _dlRO.observe(el);
+}

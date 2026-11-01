@@ -7782,6 +7782,75 @@ textarea:focus-visible {
 
 @media (prefers-reduced-motion: reduce) { .qcap-shake { animation:none; } }
 
+/* ══ DASHBOARD · DISTRACTIONS ═══════════════════════════════════════════════
+   Sized and placed like the Commitments band beneath it. Cells are a fixed
+   size — one line each — so the band is the same calm shape however much is
+   parked in it; a thought that does not fit opens in full on hover or focus.
+   It opens DOWNWARD at its cell's own width rather than sideways: wider, it
+   would slide under the done-circle and the → beside it, and in the last
+   column run off the band. */
+.dash-dl { box-sizing:border-box; width:calc(100% - 64px); max-width:var(--dash-inner);
+  margin:0 auto 18px; padding:20px 24px; }
+.dash-dl-add {
+  display:block; width:100%; box-sizing:border-box; margin:2px 0 14px; padding:8px 2px 10px;
+  background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,0.12); outline:none;
+  font-family:var(--font-body); font-size:var(--fs-body); color:#fff;
+  transition:border-color .2s ease;
+}
+.dash-dl-add:focus { border-bottom-color:rgba(255,255,255,0.55); }
+.dash-dl-add::placeholder { color:rgba(255,255,255,0.32); }
+
+.dash-dl-grid { display:grid; grid-template-columns:repeat(var(--dl-cols, 1), minmax(0, 1fr)); gap:8px; }
+.dash-dl-i {
+  position:relative; display:flex; align-items:center; gap:8px; min-width:0;
+  height:34px; box-sizing:border-box; padding:0 6px 0 10px;
+  border:1px solid rgba(255,255,255,0.08); border-radius:var(--r-sm);
+  background:rgba(255,255,255,0.02); outline:none;
+  transition:border-color .2s ease, background .2s ease;
+}
+.dash-dl-i:hover, .dash-dl-i:focus, .dash-dl-i:focus-within {
+  border-color:rgba(255,255,255,0.3); background:rgba(255,255,255,0.05);
+}
+/* The controls sit above the expanded text, so they stay clickable while a
+   long thought is open over them. */
+.dash-dl-check, .dash-dl-task { position:relative; z-index:2; flex-shrink:0; }
+.dash-dl-check {
+  width:12px; height:12px; border-radius:50%; cursor:pointer;
+  border:1px solid rgba(255,255,255,0.35); transition:background .18s ease, border-color .18s ease;
+}
+.dash-dl-check:hover { background:rgba(255,255,255,0.3); border-color:#fff; }
+.dash-dl-t {
+  flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-family:var(--font-body); font-size:var(--fs-small); color:rgba(255,255,255,0.82);
+}
+.dash-dl-task {
+  opacity:0; background:none; border:none; cursor:pointer; padding:2px 6px;
+  border-radius:var(--r-xs); color:rgba(255,255,255,0.6); font-size:var(--fs-small);
+  transition:opacity .18s ease, color .18s ease, background .18s ease;
+}
+.dash-dl-i:hover .dash-dl-task, .dash-dl-i:focus-within .dash-dl-task { opacity:1; }
+.dash-dl-task:hover, .dash-dl-task:focus-visible { color:#fff; background:rgba(255,255,255,0.1); outline:none; }
+
+.dash-dl-i.trunc:hover, .dash-dl-i.trunc:focus, .dash-dl-i.trunc:focus-within { z-index:5; }
+.dash-dl-i.trunc:hover .dash-dl-t, .dash-dl-i.trunc:focus .dash-dl-t, .dash-dl-i.trunc:focus-within .dash-dl-t {
+  position:absolute; z-index:1; left:-1px; right:-1px; top:-1px;
+  padding:8px 34px 9px 30px; white-space:normal; overflow:visible; line-height:1.45;
+  color:#fff; background:#0b0b0b; border:1px solid rgba(255,255,255,0.45);
+  border-radius:var(--r-sm); box-shadow:0 14px 32px rgba(0,0,0,0.85);
+}
+
+.dash-dl-empty {
+  grid-column:1 / -1; padding:4px 2px;
+  font-family:var(--font-body); font-size:var(--fs-small); color:rgba(255,255,255,0.4);
+}
+.dash-dl-more {
+  margin-top:10px; cursor:pointer; display:inline-block;
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:0.12em;
+  color:rgba(255,255,255,0.45); transition:color .18s ease;
+}
+.dash-dl-more:hover { color:#fff; }
+.dash-dl-more[hidden] { display:none; }
+
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
    One motion for every button in the app: a circle of pure white, larger than
    the button and clipped by it, travels upward — in from below on hover, out

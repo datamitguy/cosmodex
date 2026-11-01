@@ -97,17 +97,35 @@ const HK_HOLIDAYS = [
   { date:'2026-02-19', name:'Lunar New Year',           type:'public' },
   { date:'2026-04-03', name:'Good Friday',              type:'public' },
   { date:'2026-04-04', name:'Day after Good Friday',    type:'public' },
-  { date:'2026-04-05', name:'Ching Ming Festival',      type:'public' },
-  { date:'2026-04-06', name:'Easter Monday',            type:'public' },
+  { date:'2026-04-06', name:'Day after Ching Ming',     type:'public' },
+  { date:'2026-04-07', name:'Day after Easter Monday',  type:'public' },
   { date:'2026-05-01', name:'Labour Day',               type:'public' },
   { date:'2026-05-25', name:"Buddha's Birthday",        type:'public' },
   { date:'2026-06-19', name:'Tuen Ng Festival',         type:'public' },
   { date:'2026-07-01', name:'HKSAR Establishment Day',  type:'public' },
   { date:'2026-09-26', name:'Day after Mid-Autumn',     type:'public' },
   { date:'2026-10-01', name:'National Day',             type:'public' },
-  { date:'2026-10-25', name:'Chung Yeung Festival',     type:'public' },
+  { date:'2026-10-19', name:'Day after Chung Yeung',    type:'public' },
   { date:'2026-12-25', name:'Christmas Day',            type:'public' },
   { date:'2026-12-26', name:'Boxing Day',               type:'public' },
+  // 2027 — from the HKSAR government's calendar (1823.gov.hk/common/ical/en.ics)
+  { date:'2027-01-01', name:"New Year's Day",           type:'public' },
+  { date:'2027-02-06', name:'Lunar New Year',           type:'public' },
+  { date:'2027-02-08', name:'Lunar New Year',           type:'public' },
+  { date:'2027-02-09', name:'Lunar New Year',           type:'public' },
+  { date:'2027-03-26', name:'Good Friday',              type:'public' },
+  { date:'2027-03-27', name:'Day after Good Friday',    type:'public' },
+  { date:'2027-03-29', name:'Easter Monday',            type:'public' },
+  { date:'2027-04-05', name:'Ching Ming Festival',      type:'public' },
+  { date:'2027-05-01', name:'Labour Day',               type:'public' },
+  { date:'2027-05-13', name:"Buddha's Birthday",        type:'public' },
+  { date:'2027-06-09', name:'Tuen Ng Festival',         type:'public' },
+  { date:'2027-07-01', name:'HKSAR Establishment Day',  type:'public' },
+  { date:'2027-09-16', name:'Day after Mid-Autumn',     type:'public' },
+  { date:'2027-10-01', name:'National Day',             type:'public' },
+  { date:'2027-10-08', name:'Chung Yeung Festival',     type:'public' },
+  { date:'2027-12-25', name:'Christmas Day',            type:'public' },
+  { date:'2027-12-27', name:'First weekday after Christmas', type:'public' },
 ];
 
 /* ══ STATE ══ */
@@ -6429,15 +6447,28 @@ function initData() {
 }
 
 /* ══ HOLIDAYS ══ */
+/* Public holidays are loaded once per year, each year with its own marker, so
+   a year added to HK_HOLIDAYS later still reaches accounts that already have
+   the earlier ones. The original marker (_seeded_hk) stands for 2025–2026.
+   A date that already has a holiday — yours, or one you imported — is left
+   alone. Other countries, or later years before an app update, come in from
+   a calendar file: Settings › Calendar › Import (.ics). */
 async function seedHolidays() {
-  const { getDoc, writeBatch } = window.CDX_FB;
+  const { getDoc, getDocs, writeBatch } = window.CDX_FB;
   const db = window.CDX_DB;
-  const sentinel = _ud('holidays', '_seeded_hk');
-  const snap = await getDoc(sentinel);
-  if (snap.exists()) return;
+  const years = [...new Set(HK_HOLIDAYS.map(h => h.date.slice(0, 4)))];
+  const legacy = (await getDoc(_ud('holidays', '_seeded_hk'))).exists();
+  const due = [];
+  for (const y of years) {
+    if (legacy && y <= '2026') continue;
+    if (!(await getDoc(_ud('holidays', '_seeded_hk_' + y))).exists()) due.push(y);
+  }
+  if (!due.length) return;
+  const have = new Set((await getDocs(_uc('holidays'))).docs.map(d => d.id));
   const batch = writeBatch(db);
-  HK_HOLIDAYS.forEach(h => batch.set(_ud('holidays', h.date), { name: h.name, type: h.type, date: h.date }));
-  batch.set(sentinel, { seeded: true });
+  HK_HOLIDAYS.filter(h => due.includes(h.date.slice(0, 4)) && !have.has(h.date))
+    .forEach(h => batch.set(_ud('holidays', h.date), { name: h.name, type: h.type, date: h.date }));
+  due.forEach(y => batch.set(_ud('holidays', '_seeded_hk_' + y), { seeded: true }));
   await batch.commit();
 }
 
@@ -8861,6 +8892,60 @@ function rebuildCategorySelects() {
   renderSettingsDefaultCat();
 }
 
+let _catEditing = null;   // key whose colour row is open
+
+function _catSwatches(current, attr) {
+  const custom = !CAT_COLOR_PALETTE.includes(current);
+  return CAT_COLOR_PALETTE.map(c => `
+    <button type="button" class="settings-swatch${c === current ? ' on' : ''}" style="background:${c}"
+         ${attr}="${c}" aria-label="Colour ${c}" aria-pressed="${c === current}"></button>`).join('') +
+    `<label class="settings-swatch settings-swatch-custom${custom ? ' on' : ''}" title="Your own colour"
+            style="${custom ? `background:${current}` : ''}">
+       <input type="color" value="${current}" ${attr}-custom aria-label="Pick your own colour"></label>`;
+}
+
+// Rename in place; the key stays, so tasks keep pointing at it.
+function renameCategory(key, label) {
+  label = String(label || '').trim();
+  const cat = CATEGORIES[key];
+  if (!cat || !label || label === cat.label) return '';
+  if (Object.entries(CATEGORIES).some(([k, c]) => k !== key && c.label.toLowerCase() === label.toLowerCase()))
+    return `There is already a category called ${label}`;
+  cat.label = label;
+  saveCategories();
+  renderSettingsCatList(); renderTasks(); rebuildCategorySelects();
+  if (_mainPanel === 'alltasks') { renderAllTasksList(); renderAtkDetail(); }
+  return '';
+}
+
+// Calendar blocks carry their own copy of the colour they were made with.
+// The ones still wearing this category's old colour follow it; a block given
+// a different colour by hand keeps it.
+async function recolorCategory(key, color) {
+  const cat = CATEGORIES[key];
+  if (!cat || cat.color === color) return;
+  const old = cat.color;
+  cat.color = color;
+  saveCategories();
+  renderSettingsCatList(); renderTasks(); renderCalendar(); rebuildCategorySelects();
+  if (_mainPanel === 'alltasks') { renderAllTasksList(); renderAtkDetail(); }
+  const catOf = id => TASKS.find(t => t.id === id)?.category;
+  const blocks = CAL_EVENTS.filter(e => (e.color || '').toLowerCase() === old.toLowerCase() &&
+    (e.category === key || (e.taskId && catOf(e.taskId) === key)));
+  if (!blocks.length) return;
+  try {
+    const { writeBatch } = window.CDX_FB;
+    for (let i = 0; i < blocks.length; i += 400) {
+      const batch = writeBatch(window.CDX_DB);
+      blocks.slice(i, i + 400).forEach(e => batch.update(_ud('calEvents', e.id), { color }));
+      await batch.commit();
+    }
+  } catch (err) {
+    console.error('recolour blocks:', err);
+    showToast('Category recoloured, but some calendar blocks kept the old colour', 'error');
+  }
+}
+
 function renderSettingsCatList() {
   const list = document.getElementById('settings-cat-list');
   if (!list) return;
@@ -8871,27 +8956,54 @@ function renderSettingsCatList() {
   }
   list.innerHTML = cats.map(([key, cat]) => `
     <div class="settings-row">
-      <div style="width:14px;height:14px;border-radius:50%;background:${cat.color};flex-shrink:0"></div>
-      <span class="settings-row-name">${escHtml(cat.label)}</span>
+      <button type="button" class="settings-catdot" data-cat-color="${escAttr(key)}" style="background:${cat.color}"
+              title="Change colour" aria-label="Change colour of ${escAttr(cat.label)}" aria-expanded="${_catEditing === key}"></button>
+      <input class="settings-row-name settings-cat-name" data-cat-name="${escAttr(key)}" value="${escAttr(cat.label)}"
+             aria-label="Rename ${escAttr(cat.label)}" title="Click to rename" spellcheck="false">
       <button class="task-action-btn danger" data-del-cat="${escAttr(key)}" title="Delete ${escAttr(cat.label)}" aria-label="Delete ${escAttr(cat.label)}">✕</button>
-    </div>`).join('');
+    </div>
+    ${_catEditing === key ? `<div class="settings-cat-colors">${_catSwatches(cat.color, 'data-set-color')}</div>` : ''}`).join('');
   list.querySelectorAll('[data-del-cat]').forEach(btn => {
     btn.addEventListener('click', () => deleteCategory(btn.dataset.delCat));
+  });
+  list.querySelectorAll('[data-cat-color]').forEach(btn => btn.addEventListener('click', () => {
+    _catEditing = _catEditing === btn.dataset.catColor ? null : btn.dataset.catColor;
+    renderSettingsCatList();
+  }));
+  list.querySelectorAll('[data-set-color]').forEach(sw => sw.addEventListener('click', () =>
+    recolorCategory(_catEditing, sw.dataset.setColor)));
+  // `change` fires once the native picker closes — not on every drag step,
+  // which would write the calendar blocks dozens of times.
+  list.querySelector('[data-set-color-custom]')?.addEventListener('change', e =>
+    recolorCategory(_catEditing, e.target.value));
+  list.querySelectorAll('[data-cat-name]').forEach(inp => {
+    const save = () => {
+      const why = renameCategory(inp.dataset.catName, inp.value);
+      if (why) { showToast(why, 'error'); inp.value = CATEGORIES[inp.dataset.catName]?.label || ''; }
+      else if (!inp.value.trim()) inp.value = CATEGORIES[inp.dataset.catName]?.label || '';
+    };
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); inp.value = CATEGORIES[inp.dataset.catName]?.label || ''; inp.blur(); }
+    });
+    inp.addEventListener('blur', save);
   });
 }
 
 function initNewCatColorPicker() {
   const picker = document.getElementById('new-cat-color-picker');
   if (!picker) return;
-  picker.innerHTML = CAT_COLOR_PALETTE.map(c => `
-    <button type="button" class="settings-swatch${c===_newCatColor?' on':''}" style="background:${c}"
-         data-newcatcolor="${c}" aria-label="Colour ${c}" aria-pressed="${c===_newCatColor}"></button>`).join('');
+  picker.innerHTML = _catSwatches(_newCatColor, 'data-newcatcolor');
   picker.querySelectorAll('[data-newcatcolor]').forEach(sw => {
     sw.addEventListener('click', () => {
       _newCatColor = sw.dataset.newcatcolor;
       initNewCatColorPicker();
       picker.querySelector(`[data-newcatcolor="${_newCatColor}"]`)?.focus();
     });
+  });
+  picker.querySelector('[data-newcatcolor-custom]')?.addEventListener('change', e => {
+    _newCatColor = e.target.value;
+    initNewCatColorPicker();
   });
 }
 
@@ -8991,6 +9103,62 @@ async function addHolidayFromInputs() {
   }
 }
 
+// Reads the all-day events of an iCalendar file as { date, name } per day.
+// DTEND is exclusive for all-day events, so a one-day holiday has end = next day.
+function parseHolidayIcs(text) {
+  const lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
+  const out = [];
+  let ev = null;
+  const ymd = v => { const m = String(v || '').match(/(\d{4})(\d{2})(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : ''; };
+  for (const line of lines) {
+    if (line === 'BEGIN:VEVENT') { ev = {}; continue; }
+    if (line === 'END:VEVENT') {
+      if (ev && ev.start && ev.name) {
+        const d = new Date(ev.start + 'T00:00');
+        const end = ev.end && ev.end > ev.start ? ev.end : null;
+        for (let n = 0; n < 31; n++) {
+          const ds = localDateStr(d);
+          if (end ? ds >= end : n > 0) break;
+          out.push({ date: ds, name: ev.name });
+          d.setDate(d.getDate() + 1);
+        }
+      }
+      ev = null; continue;
+    }
+    if (!ev) continue;
+    const i = line.indexOf(':'); if (i < 0) continue;
+    const key = line.slice(0, i).split(';')[0].toUpperCase(), val = line.slice(i + 1);
+    if (key === 'DTSTART') ev.start = ymd(val);
+    else if (key === 'DTEND') ev.end = ymd(val);
+    else if (key === 'SUMMARY') ev.name = val.replace(/\\([,;\\])/g, '$1').replace(/\\n/gi, ' ').trim();
+  }
+  return out;
+}
+
+async function importHolidayFile(file) {
+  let found;
+  try { found = parseHolidayIcs(await file.text()); }
+  catch (e) { showToast('Could not read that file', 'error'); return; }
+  if (!found.length) { showToast('No holidays found in that file', 'error'); return; }
+  const fresh = found.filter(h => !HOLIDAYS[h.date]?.name);
+  const years = [...new Set(found.map(h => h.date.slice(0, 4)))].sort();
+  const span = years.length > 1 ? `${years[0]}–${years[years.length - 1]}` : years[0];
+  if (!fresh.length) { showToast(`All ${found.length} holidays in it (${span}) are already here`); return; }
+  const kept = found.length - fresh.length;
+  if (!await cdxConfirm(`Import ${fresh.length} public holiday${fresh.length === 1 ? '' : 's'} (${span})?` +
+      (kept ? ` ${kept} date${kept === 1 ? '' : 's'} you already have stay as they are.` : ''), { okLabel: 'Import' })) return;
+  try {
+    const { writeBatch } = window.CDX_FB;
+    const batch = writeBatch(window.CDX_DB);
+    fresh.forEach(h => batch.set(_ud('holidays', h.date), { name: h.name, type: 'public', date: h.date }));
+    await batch.commit();
+    showToast(`${fresh.length} holidays imported`, 'success');
+  } catch (err) {
+    console.error('holiday import:', err);
+    showToast('Import failed', 'error');
+  }
+}
+
 /* ── People Management ────────────────────────────────── */
 function renderSettingsPeople() {
   const list = document.getElementById('settings-people-list');
@@ -9032,18 +9200,25 @@ function initPeopleSettings() {
   });
 }
 
+// Shared by Settings and the @ picker (29-mentions.js), which offers to add a
+// name nobody has yet. Returns null for a name already in the list.
+function createPerson(name) {
+  name = String(name || '').trim();
+  if (!name || PEOPLE.some(p => p.name.toLowerCase() === name.toLowerCase())) return null;
+  const initials = name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  const color = PEOPLE_COLORS[PEOPLE.length % PEOPLE_COLORS.length];
+  const person = { id: crypto.randomUUID(), name, initials, color };
+  PEOPLE.push(person);
+  savePeople();
+  renderSettingsPeople();
+  return person;
+}
+
 function addPersonFromInput() {
   const input = document.getElementById('people-name-input');
   const name = input?.value.trim();
   if (!name) return;
-  if (PEOPLE.some(p => p.name.toLowerCase() === name.toLowerCase())) {
-    showToast(`${name} is already in the list`, 'error'); return;
-  }
-  const initials = name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
-  const color = PEOPLE_COLORS[PEOPLE.length % PEOPLE_COLORS.length];
-  PEOPLE.push({ id: crypto.randomUUID(), name, initials, color });
-  savePeople();
-  renderSettingsPeople();
+  if (!createPerson(name)) { showToast(`${name} is already in the list`, 'error'); return; }
   if (input) { input.value = ''; input.focus(); }
 }
 
@@ -9116,6 +9291,13 @@ function initSettingsPanel() {
     showToast(e.target.value ? `New tasks start in ${CATEGORIES[e.target.value].label}` : 'New tasks start with no category');
   });
   document.getElementById('holiday-add-btn')?.addEventListener('click', addHolidayFromInputs);
+  const icsInput = document.getElementById('holiday-import-file');
+  document.getElementById('holiday-import-btn')?.addEventListener('click', () => icsInput?.click());
+  icsInput?.addEventListener('change', () => {
+    const f = icsInput.files[0];
+    icsInput.value = '';   // so the same file can be picked again
+    if (f) importHolidayFile(f);
+  });
   document.getElementById('holiday-name')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') addHolidayFromInputs();
   });
@@ -11592,7 +11774,8 @@ function renderTasksPage() {
             </div>
             <div class="atk-add">
               <span class="atk-add-plus">+</span>
-              <input id="atk-add-input" placeholder="Capture a task… press Enter to add" autocomplete="off">
+              <input id="atk-add-input" placeholder="Capture a task… @ to add a person, Enter to save" autocomplete="off">
+              <div class="mn-chips" id="atk-add-people" hidden></div>
               <span class="atk-eyebrow">ENTER ↵</span>
             </div>
             <div class="atk-colhead">
@@ -11639,10 +11822,15 @@ function renderTasksPage() {
     });
     // Inline add — reuse the app's addTask()
     const addInput = document.getElementById('atk-add-input');
+    let addPeople = [];
+    const paintAddPeople = () => renderMentionChips(document.getElementById('atk-add-people'), addPeople,
+      id => { addPeople = addPeople.filter(x => x !== id); paintAddPeople(); });
+    attachMentions(addInput, { taken: () => addPeople, onPick: p => { addPeople.push(p.id); paintAddPeople(); } });
     addInput.addEventListener('keydown', e => {
       if (e.key === 'Enter' && addInput.value.trim()) {
-        addTask(addInput.value.trim());
+        addTask(addInput.value.trim(), 'med', '', '', '', '', addPeople);
         addInput.value = '';
+        addPeople = []; paintAddPeople();
       }
     });
   }
@@ -11715,7 +11903,8 @@ function _renderAllTasksListPaint() {
   else if (_atkCommit !== 'all') rows = rows.filter(t => projMap[t.id]?.projectId === _atkCommit);
   if (q) rows = rows.filter(t =>
     (t.title || '').toLowerCase().includes(q) ||
-    (t.category ? (CATEGORIES[t.category]?.label || t.category) : '').toLowerCase().includes(q));
+    (t.category ? (CATEGORIES[t.category]?.label || t.category) : '').toLowerCase().includes(q) ||
+    (t.people || []).some(id => (PEOPLE.find(p => p.id === id)?.name || '').toLowerCase().includes(q.replace(/^@/, ''))));
 
   // Sort
   const dueKey = t => t.dueDate || '9999-99-99';
@@ -11816,6 +12005,8 @@ function buildAtkRow(task, projMap, today) {
   const recur   = task.recurrence
     ? `<span class="atk-tel">↻ ${escHtml(_recurLabel(task.recurrence).toUpperCase())}${logged ? ` · ${logged}×` : ''}</span>` : '';
   const note    = task.notes ? `<span class="atk-tel">✎ NOTE</span>` : '';
+  const who     = (task.people || []).map(id => PEOPLE.find(p => p.id === id)).filter(Boolean)
+    .map(p => `<span class="atk-tel">@${escHtml(p.name.toUpperCase())}</span>`).join('');
   const created = _atkCreatedMs(task) ? `<span class="atk-tel dim">${escHtml(_atkRelTime(task).toUpperCase())}</span>` : '';
 
   const dueCell = task.dueDate
@@ -11827,7 +12018,7 @@ function buildAtkRow(task, projMap, today) {
     <span class="atk-catdot" style="${cat ? `background:${catClr};box-shadow:0 0 6px ${catClr}88` : 'background:transparent;border:1px solid rgba(255,255,255,.15)'}"></span>
     <div class="atk-titlecell">
       <div class="atk-rtitle${task.done ? ' done' : ''}">${escHtml(task.title)}</div>
-      <div class="atk-rmeta">${recur}${note}${created}</div>
+      <div class="atk-rmeta">${who}${recur}${note}${created}</div>
     </div>
     <span class="atk-tel list"${proj ? ` style="color:${proj.projectColor}"` : ''}>${proj ? escHtml(proj.projectTitle) : '<span class="atk-dash">—</span>'}</span>
     <div class="atk-duecell">${dueCell}</div>
@@ -11930,6 +12121,11 @@ function renderAtkDetail() {
         <select class="atk-inline" data-atk-commit>${commitOptions}</select>
       </div>
       <div>
+        <div class="atk-eyebrow" style="margin-bottom:8px">PEOPLE</div>
+        <div class="mn-chips" data-atk-people></div>
+        <input class="atk-subadd" data-atk-person placeholder="Link a person — type a name" autocomplete="off">
+      </div>
+      <div>
         <div class="atk-eyebrow" style="margin-bottom:8px">NOTES</div>
         <textarea class="atk-notes" data-atk-notes placeholder="No notes yet…">${escHtml(task.notes || '')}</textarea>
       </div>
@@ -11967,6 +12163,13 @@ function renderAtkDetail() {
   el.querySelector('[data-atk-due]').addEventListener('change', e => updateTask(task.id, { dueDate: e.target.value || null }));
   el.querySelector('[data-atk-cat]').addEventListener('change', e => updateTask(task.id, { category: e.target.value || null }));
   el.querySelector('[data-atk-commit]').addEventListener('change', e => updateTask(task.id, { projectId: e.target.value || null }));
+  const linked = task.people || [];
+  renderMentionChips(el.querySelector('[data-atk-people]'), linked,
+    id => updateTask(task.id, { people: linked.filter(x => x !== id).length ? linked.filter(x => x !== id) : null }));
+  attachMentions(el.querySelector('[data-atk-person]'), {
+    any: true, taken: () => linked,
+    onPick: p => updateTask(task.id, { people: [...linked, p.id] }),
+  });
   el.querySelector('[data-atk-recur]').addEventListener('change', e => updateTask(task.id, { recurrence: e.target.value || null }));
   el.querySelector('[data-atk-until]')?.addEventListener('change', e => updateTask(task.id, { recurUntil: e.target.value || null }));
   el.querySelector('[data-atk-energy]').addEventListener('change', e => updateTask(task.id, { energyType: e.target.value || null }));
@@ -12594,17 +12797,21 @@ document.querySelectorAll('#dash-daynav [data-dash-day]').forEach(b =>
 (function _wireDashQuickAdd() {
   const qa = document.getElementById('dash-quick-add');
   const inp = document.getElementById('dash-quick-add-input');
-  const hide = () => { if (qa) qa.style.display = 'none'; if (inp) inp.value = ''; };
+  let people = [];
+  const chips = document.getElementById('dash-quick-add-people');
+  const paint = () => renderMentionChips(chips, people, id => { people = people.filter(x => x !== id); paint(); });
+  const hide = () => { if (qa) qa.style.display = 'none'; if (inp) inp.value = ''; people = []; paint(); };
   document.getElementById('dash-add-task')?.addEventListener('click', () => {
     if (!qa) return;
     const showing = qa.style.display !== 'none';
     qa.style.display = showing ? 'none' : '';
     if (!showing) setTimeout(() => inp?.focus(), 20);
   });
+  if (inp) attachMentions(inp, { taken: () => people, onPick: p => { people.push(p.id); paint(); } });
   inp?.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       const v = inp.value.trim();
-      if (v) addTask(v, 'med', localDateStr(_dashCalDate));
+      if (v) addTask(v, 'med', localDateStr(_dashCalDate), '', '', '', people);
       hide();
     } else if (e.key === 'Escape') { hide(); }
   });
@@ -19864,6 +20071,8 @@ function openQuickCapture(opts) {
   document.getElementById('qcap-focus').hidden = true;
   const title = document.getElementById('qcap-title');
   title.value = opts.title || '';
+  _qcapPeople = [];
+  _qcapPaintPeople();
   document.getElementById('qcap-date').value  = opts.date || localDateStr(now);
   document.getElementById('qcap-start').value = opts.start || hhmm(rounded);
 
@@ -19892,6 +20101,12 @@ function openQuickCapture(opts) {
   setTimeout(() => title.focus(), 60);
 }
 window.openQuickCapture = openQuickCapture;
+
+let _qcapPeople = [];
+function _qcapPaintPeople() {
+  renderMentionChips(document.getElementById('qcap-people'), _qcapPeople,
+    id => { _qcapPeople = _qcapPeople.filter(x => x !== id); _qcapPaintPeople(); });
+}
 
 function _qcapRenderLengths() {
   const wrap = document.getElementById('qcap-lengths');
@@ -19963,7 +20178,8 @@ async function _qcapSubmit() {
     // The same task + block pair the calendar's New Event modal makes, in the
     // same order, so everything that reads one reads the other — and the task
     // keeps a pointer to its block, which the calendar's unschedule path uses.
-    const taskRef = await addDoc(_uc('tasks'), newTaskDoc({ title, dueDate: date, category, priority, projectId }));
+    const people = _qcapPeople.length ? [..._qcapPeople] : null;
+    const taskRef = await addDoc(_uc('tasks'), newTaskDoc({ title, dueDate: date, category, priority, projectId, people }));
     const evRef = await addDoc(_uc('calEvents'), {
       title, date, startTime: start, endTime: fit.end, duration: mins,
       taskId: taskRef.id, projectId, color: getCatColor(category), createdAt: serverTimestamp(),
@@ -20260,6 +20476,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const modal = document.getElementById('qcap-modal');
   if (!modal) return;
   document.getElementById('qcap-go')?.addEventListener('click', _qcapSubmit);
+  attachMentions(document.getElementById('qcap-title'), {
+    taken: () => _qcapPeople, onPick: p => { _qcapPeople.push(p.id); _qcapPaintPeople(); },
+  });
   modal.addEventListener('keydown', e => {
     if (e.key === 'Escape') { e.preventDefault(); closeOverlay('qcap-modal'); return; }
     if (e.key !== 'Enter' || document.getElementById('qcap-form').hidden) return;
@@ -20595,3 +20814,153 @@ function _parkClose(keepFocus) {
     document.getElementById('park-input')?.blur();
   }
 }
+/* ══════════════════════════════════════════════════════════════════════════
+   @ PEOPLE — link a person to a task from wherever the task is typed
+   ──────────────────────────────────────────────────────────────────────────
+   The only "@" used to live in the old task list, which no longer shows, so
+   People could be added in Settings and then linked to nothing. This is the
+   same idea as one small piece every input can share: quick capture, the
+   Tasks page, the dashboard's + Task, and the task's own panel.
+
+   Type @ and a few letters: a list of matching people opens under the field.
+   ↑↓ move, Enter or Tab picks, Esc closes just the list. Picking takes the
+   "@sar" out of the title and turns it into a chip beside the field. A name
+   nobody has yet is offered as "Add … to People", so the first mention of
+   someone is also how they get into the list.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let _mnEl = null;            // the one dropdown, shared — only one field types at a time
+let _mnState = null;         // { input, opts, items, sel, start }
+
+function _mnDrop() {
+  if (_mnEl) return _mnEl;
+  _mnEl = document.createElement('div');
+  _mnEl.className = 'mn-drop';
+  _mnEl.setAttribute('role', 'listbox');
+  _mnEl.hidden = true;
+  document.body.appendChild(_mnEl);
+  // mousedown, not click: a click would blur the field first, and some fields
+  // (the dashboard's + Task) close themselves on blur.
+  _mnEl.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const it = e.target.closest('[data-mn-i]');
+    if (it && _mnState) _mnPick(+it.dataset.mnI);
+  });
+  return _mnEl;
+}
+
+function _mnClose() {
+  if (_mnEl) _mnEl.hidden = true;
+  _mnState = null;
+}
+
+// The query is what follows the last "@" before the caret, as long as the @
+// starts a word. In `any` mode (a field that only picks people) it is the
+// whole value.
+function _mnQuery(input, any) {
+  const upto = input.value.slice(0, input.selectionStart ?? input.value.length);
+  if (any) return { q: upto.trim(), start: 0 };
+  const m = upto.match(/(^|\s)@([^@\n]{0,40})$/);
+  return m ? { q: m[2], start: upto.length - m[2].length - 1 } : null;
+}
+
+function _mnUpdate(input, opts) {
+  const found = _mnQuery(input, opts.any);
+  if (!found || (opts.any && !found.q)) { _mnClose(); return; }
+  const q = found.q.toLowerCase();
+  const taken = new Set(opts.taken ? opts.taken() : []);
+  const people = PEOPLE.filter(p => !taken.has(p.id) && p.name.toLowerCase().includes(q))
+    .sort((a, b) => a.name.toLowerCase().indexOf(q) - b.name.toLowerCase().indexOf(q))
+    .slice(0, 6);
+  const items = people.map(p => ({ person: p }));
+  const name = found.q.trim();
+  // Offered only when nobody matches — beside a real match it is noise.
+  if (name && !people.length && !PEOPLE.some(p => p.name.toLowerCase() === name.toLowerCase())) items.push({ create: name });
+  // A space after a name that matches nobody means the @ was just an @.
+  if (!items.length || (!people.length && /\s$/.test(found.q))) { _mnClose(); return; }
+
+  _mnState = { input, opts, items, sel: 0, start: found.start };
+  const el = _mnDrop();
+  el.innerHTML = items.map((it, i) => it.person
+    ? `<div class="mn-item${i === 0 ? ' on' : ''}" data-mn-i="${i}" role="option">
+         <span class="mn-av" style="background:${it.person.color}">${escHtml(it.person.initials)}</span>${escHtml(it.person.name)}</div>`
+    : `<div class="mn-item mn-new${i === 0 ? ' on' : ''}" data-mn-i="${i}" role="option">
+         <span class="mn-av mn-av-new">＋</span>Add “${escHtml(it.create)}” to People</div>`).join('');
+  const r = input.getBoundingClientRect();
+  el.style.left = Math.round(r.left) + 'px';
+  el.style.top = Math.round(r.bottom + 4) + 'px';
+  el.style.minWidth = Math.round(Math.min(Math.max(r.width * 0.6, 220), 320)) + 'px';
+  el.hidden = false;
+}
+
+function _mnMove(step) {
+  const s = _mnState; if (!s) return;
+  s.sel = (s.sel + step + s.items.length) % s.items.length;
+  _mnEl.querySelectorAll('.mn-item').forEach((n, i) => n.classList.toggle('on', i === s.sel));
+}
+
+function _mnPick(i) {
+  const s = _mnState; if (!s) return;
+  const it = s.items[i];
+  const person = it.person || createPerson(it.create);
+  if (!person) return;
+  const { input, opts } = s;
+  if (opts.any) input.value = '';
+  else {
+    // Take "@sar" out of the title; the chip says it now.
+    const caret = input.selectionStart ?? input.value.length;
+    const before = input.value.slice(0, s.start).replace(/\s+$/, '');
+    const after = input.value.slice(caret).replace(/^\s+/, '');
+    input.value = before ? before + ' ' + after : after;
+    const at = before ? before.length + 1 : 0;
+    input.setSelectionRange(at, at);
+  }
+  _mnClose();
+  opts.onPick(person);
+  input.focus();
+}
+
+/* Attach to a text field. opts:
+     onPick(person)  — called with the chosen (or newly created) person
+     taken()         — ids already linked, left out of the list
+     any             — every keystroke searches; no @ needed */
+function attachMentions(input, opts) {
+  if (!input || input._mn) return;
+  input._mn = true;
+  input.addEventListener('input', () => _mnUpdate(input, opts));
+  // Capture phase, so these keys reach the list before the field's own
+  // Enter-to-save or the panel's Esc-to-close.
+  input.addEventListener('keydown', e => {
+    if (!_mnState || _mnState.input !== input) return;
+    const k = e.key;
+    if (k === 'ArrowDown' || k === 'ArrowUp') _mnMove(k === 'ArrowDown' ? 1 : -1);
+    else if (k === 'Enter' || k === 'Tab') _mnPick(_mnState.sel);
+    else if (k === 'Escape') _mnClose();
+    else return;
+    e.preventDefault(); e.stopImmediatePropagation();
+  }, true);
+  input.addEventListener('blur', () => setTimeout(() => { if (_mnState?.input === input) _mnClose(); }, 100));
+}
+window.attachMentions = attachMentions;
+
+// Chips for linked people, each with ✕. `ids` is the current list.
+function renderMentionChips(el, ids, onRemove) {
+  if (!el) return;
+  const people = (ids || []).map(id => PEOPLE.find(p => p.id === id)).filter(Boolean);
+  el.hidden = !people.length;
+  el.innerHTML = people.map(p => `
+    <span class="mn-chip" style="border-color:${p.color}55">
+      <span class="mn-av" style="background:${p.color}">${escHtml(p.initials)}</span>${escHtml(p.name)}
+      <button type="button" class="mn-chip-x" data-mn-rm="${escAttr(p.id)}" aria-label="Unlink ${escAttr(p.name)}">✕</button>
+    </span>`).join('');
+  // mousedown kept from moving focus: the field stays where you were typing,
+  // and fields that close on blur stay open.
+  el.querySelectorAll('[data-mn-rm]').forEach(b => b.addEventListener('mousedown', e => e.preventDefault()));
+  el.querySelectorAll('[data-mn-rm]').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation(); onRemove(b.dataset.mnRm);
+  }));
+}
+window.renderMentionChips = renderMentionChips;
+
+window.addEventListener('resize', _mnClose);
+document.addEventListener('scroll', e => { if (_mnState && !_mnEl.contains(e.target)) _mnClose(); }, true);

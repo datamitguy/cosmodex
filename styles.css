@@ -8032,6 +8032,20 @@ textarea:focus-visible {
 .settings-swatch:hover { transform:scale(1.12); }
 .settings-swatch.on { border-color:var(--cream); }
 .settings-swatch:focus-visible { outline:1px solid var(--cream); outline-offset:2px; }
+/* "any colour": a ring with a + until a custom colour fills it */
+.settings-swatch-custom { position:relative; display:inline-block; overflow:hidden;
+  background:conic-gradient(#f55,#fd5,#5f8,#5df,#86f,#f5d,#f55); }
+.settings-swatch-custom input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; border:0; padding:0; }
+.settings-swatch-custom:focus-within { outline:1px solid var(--cream); outline-offset:2px; }
+.settings-catdot { width:14px; height:14px; padding:0; border-radius:50%; border:none; cursor:pointer; flex-shrink:0;
+  transition:transform .15s; }
+.settings-catdot:hover, .settings-catdot[aria-expanded="true"] { transform:scale(1.25); box-shadow:0 0 0 2px rgba(255,255,255,.25); }
+.settings-catdot:focus-visible { outline:1px solid var(--cream); outline-offset:3px; }
+.settings-cat-name { background:transparent; border:1px solid transparent; border-radius:var(--r-xs);
+  padding:3px 6px; margin-left:-6px; outline:none; cursor:text; }
+.settings-cat-name:hover { border-color:rgba(255,255,255,.12); }
+.settings-cat-name:focus { border-color:rgba(255,255,255,.35); background:rgba(255,255,255,.04); }
+.settings-cat-colors { display:flex; flex-wrap:wrap; gap:6px; padding:4px 0 10px 24px; }
 /* On a phone the side menu took 40% of the width; it becomes a row on top. */
 @media (max-width:600px) {
   .settings-layout { flex-direction:column; min-height:0; }
@@ -8045,6 +8059,39 @@ textarea:focus-visible {
   .settings-add-hol > span:empty { display:none; }
   .settings-add-hol #holiday-type { grid-column:1 / -1; }
 }
+
+/* ── @ people picker (src/29-mentions.js) ─────────────────── */
+.mn-drop {
+  position:fixed; z-index:2000; max-width:340px; padding:4px;
+  background:#121212; border:1px solid rgba(255,255,255,.16); border-radius:var(--r-sm);
+  box-shadow:0 14px 34px rgba(0,0,0,.7);
+}
+.mn-drop[hidden] { display:none; }
+.mn-item {
+  display:flex; align-items:center; gap:9px; padding:7px 10px; border-radius:var(--r-xs);
+  font-family:var(--font-body); font-size:var(--fs-small); color:var(--cream); cursor:pointer;
+}
+.mn-item.on { background:rgba(255,255,255,.1); }
+.mn-new { color:var(--muted); }
+.mn-av {
+  display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;
+  width:20px; height:20px; border-radius:50%; font-size:var(--fs-micro); font-weight:600; color:#0d0c0a;
+}
+.mn-av-new { background:transparent; border:1px dashed rgba(255,255,255,.35); color:var(--muted); }
+.mn-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.mn-chips[hidden] { display:none; }
+.mn-chip {
+  display:inline-flex; align-items:center; gap:6px; padding:3px 4px 3px 3px;
+  border:1px solid rgba(255,255,255,.2); border-radius:var(--r-pill);
+  font-family:var(--font-body); font-size:var(--fs-small); color:var(--cream); white-space:nowrap;
+}
+.mn-chip .mn-av { width:18px; height:18px; }
+.mn-chip-x {
+  background:none; border:none; padding:0 4px; cursor:pointer; color:var(--muted); font-size:var(--fs-micro);
+}
+.mn-chip-x:hover, .mn-chip-x:focus-visible { color:var(--cream); }
+#qcap-people, #dash-quick-add-people { margin-top:8px; }
+[data-atk-people]:not([hidden]) { margin-bottom:8px; }
 
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
    One motion for every button in the app: a circle of pure white, larger than

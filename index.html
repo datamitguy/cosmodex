@@ -348,7 +348,8 @@
             </div>
           </div>
           <div class="dash-quick-add" id="dash-quick-add" style="display:none">
-            <input id="dash-quick-add-input" class="dash-quick-add-input" type="text" placeholder="New task for today…  ·  Enter to add, Esc to cancel" autocomplete="off" />
+            <input id="dash-quick-add-input" class="dash-quick-add-input" type="text" placeholder="New task for today…  ·  @ for a person, Enter to add, Esc to cancel" autocomplete="off" />
+            <div class="mn-chips" id="dash-quick-add-people" hidden></div>
           </div>
           <div class="dash-cal-body" id="dash-cal-body"><!-- built by renderDashboardBoard() --></div>
         </div>
@@ -1494,7 +1495,7 @@
           <div class="settings-content-panel active" id="st-pane-categories">
             <div class="settings-section" id="settings-manage-cats-section">
               <div class="settings-section-title">Manage Categories</div>
-              <div class="settings-desc">Categories colour tasks and commitments. Removing one clears it from everything that used it.</div>
+              <div class="settings-desc">Categories colour tasks, commitments and calendar blocks. Click a name to rename it, the dot to change its colour — the last dot is any colour you like. Removing one clears it from everything that used it.</div>
               <div id="settings-cat-list" style="margin-bottom:14px"></div>
               <div class="settings-add-cat" style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center">
                 <input id="new-cat-label" class="sched-input" placeholder="Category name" autocomplete="off">
@@ -1513,7 +1514,7 @@
           <div class="settings-content-panel" id="st-pane-calendar">
             <div class="settings-section">
               <div class="settings-section-title">Holidays</div>
-              <div class="settings-desc">Hong Kong public holidays for 2025–2026 came pre-loaded. Add your own days off below — every holiday is marked on the calendar. A range adds one entry per day, up to 60 days.</div>
+              <div class="settings-desc">Hong Kong public holidays through 2027 are pre-loaded. Add your own days off below — every holiday is marked on the calendar. A range adds one entry per day, up to 60 days.</div>
               <div id="settings-holidays-list" style="max-height:260px;overflow-y:auto;margin-bottom:14px"></div>
               <div class="settings-add-hol" style="display:grid;grid-template-columns:auto 1fr auto 1fr auto auto;gap:6px;align-items:center">
                 <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:var(--muted)">From</span>
@@ -1530,6 +1531,12 @@
                 <input id="holiday-name" type="text" class="sched-input" placeholder="Holiday name" />
                 <button class="task-add-confirm" id="holiday-add-btn">Add</button>
               </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title">Import public holidays</div>
+              <div class="settings-desc">Load a calendar file (.ics) — a new year, or another country. Hong Kong's official one is at <code style="font-family:var(--font-mono);font-size:var(--fs-micro)">1823.gov.hk/common/ical/en.ics</code>. Everything in it comes in as Public; a date that already has a holiday keeps it.</div>
+              <button class="btn-secondary" id="holiday-import-btn" style="font-size:var(--fs-micro);padding:8px 16px">⤒ Import .ics file</button>
+              <input type="file" id="holiday-import-file" accept=".ics,text/calendar" hidden>
             </div>
           </div>
 
@@ -1896,7 +1903,8 @@
       <button class="overlay-close" data-close="qcap-modal">✕</button>
     </div>
     <div class="overlay-body qcap-body" id="qcap-form">
-      <input id="qcap-title" type="text" class="sched-input qcap-title" placeholder="What are you about to do?" autocomplete="off" />
+      <input id="qcap-title" type="text" class="sched-input qcap-title" placeholder="What are you about to do?  @ adds a person" autocomplete="off" />
+      <div class="mn-chips" id="qcap-people" hidden></div>
       <div class="qcap-when">
         <div>
           <label class="sched-label" for="qcap-date">Date</label>

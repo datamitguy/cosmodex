@@ -21026,7 +21026,15 @@ async function initDailyNotes() {
   const invoke = _dnInvoke();
   if (!panel || !invoke) return;
   try { _dnList = await invoke('list_daily_notes'); }
-  catch (e) { _dnList = []; showToast('Could not read the notes folder', 'error'); }
+  catch (e) {
+    _dnList = [];
+    // The two ways this fails after an update are both "an old piece is still
+    // running"; say which, since the fix differs.
+    const m = String(e && e.message || '');
+    showToast(/404/.test(m) ? 'The Cosmodex server is from before this update — close its Terminal window (or quit the Dock app) and start Cosmodex again'
+            : /unknown note command/.test(m) ? 'sqlite-store.js is from before this update — copy in the new one and reload'
+            : 'Could not read the notes folder (' + m + ')', 'error', 9000);
+  }
   if (!_dnList.some(n => n.date === _dnSel)) _dnSel = _dnList[0]?.date || null;
   _dnRenderList();
   await _dnOpen(_dnSel);

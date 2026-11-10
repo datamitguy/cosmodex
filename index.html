@@ -85,6 +85,11 @@
         <span class="nav-item-icon">▤</span>
         Lists
       </div>
+      <!-- Office build only: shown by src/30-daily-notes.js when the notes bridge exists. -->
+      <div class="nav-item" data-panel="dailynotes" id="nav-dailynotes" role="button" tabindex="0" hidden>
+        <span class="nav-item-icon">✒</span>
+        Daily notes
+      </div>
       <div class="nav-item" data-panel="alltasks" id="nav-alltasks" role="button" tabindex="0">
         <span class="nav-item-icon">✓</span>
         Tasks
@@ -968,6 +973,15 @@
       <div id="orr-main" class="orr-main"></div>
       <div id="orr-ticker" class="orr-ticker" hidden></div>
     </div><!-- /panel-orrery -->
+
+    <!-- Daily notes — every day's dashboard note; filled by src/30-daily-notes.js. -->
+    <div id="panel-dailynotes" class="dn-panel" style="display:none">
+      <aside class="dn-side">
+        <div class="dash-eyebrow" id="dn-count">DAILY NOTES</div>
+        <div class="dn-list" id="dn-list"></div>
+      </aside>
+      <section class="dn-view" id="dn-view"></section>
+    </div><!-- /panel-dailynotes -->
 
     <!-- Mind Map Panel -->
     <div id="panel-mindmap" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:#000000;position:relative">

@@ -8093,6 +8093,34 @@ textarea:focus-visible {
 #qcap-people, #dash-quick-add-people { margin-top:8px; }
 [data-atk-people]:not([hidden]) { margin-bottom:8px; }
 
+/* ── Daily notes page (src/30-daily-notes.js) ───────────────── */
+.dn-panel { flex:1; min-height:0; gap:28px; padding:24px 32px; overflow:hidden; }
+.nav-item[hidden] { display:none; }
+.dn-side { width:300px; flex-shrink:0; display:flex; flex-direction:column; min-height:0; gap:12px; }
+.dn-list { overflow-y:auto; display:flex; flex-direction:column; gap:2px; padding-right:6px; }
+.dn-month { font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; color:var(--muted); padding:14px 10px 6px; }
+.dn-month:first-child { padding-top:0; }
+.dn-item { display:flex; flex-direction:column; gap:3px; text-align:left; width:100%; padding:9px 10px;
+  background:none; border:1px solid transparent; border-radius:var(--r-sm); cursor:pointer; color:var(--cream); }
+.dn-item:hover { background:rgba(255,255,255,.04); }
+.dn-item.on { background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.14); }
+.dn-item:focus-visible { outline:1px solid rgba(255,255,255,.5); }
+.dn-item-date { font-family:var(--font-body); font-size:var(--fs-small); }
+.dn-item-pre { font-family:var(--font-body); font-size:var(--fs-micro); color:var(--muted);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dn-empty { font-family:var(--font-body); font-size:var(--fs-small); color:var(--muted); line-height:1.5; }
+.dn-view { flex:1; min-width:0; display:flex; flex-direction:column; min-height:0; }
+.dn-view-head { display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding-bottom:16px;
+  border-bottom:1px solid rgba(255,255,255,.1); margin-bottom:18px; }
+.dn-view-date { flex:1; font-family:var(--font-display); font-weight:300; font-size:var(--fs-title, 28px); color:#fff; }
+.dn-view-acts { display:flex; gap:8px; }
+.dn-body { flex:1; overflow-y:auto; max-width:760px; }
+@media (max-width:700px) {
+  .dn-panel { flex-direction:column; padding:16px; overflow-y:auto; }
+  .dn-side { width:auto; }
+  .dn-list { max-height:30vh; }
+}
+
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
    One motion for every button in the app: a circle of pure white, larger than
    the button and clipped by it, travels upward — in from below on hover, out

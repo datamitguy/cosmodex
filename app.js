@@ -346,6 +346,13 @@ document.querySelectorAll('.nav-item[data-panel]').forEach(item => {
       showMainPanel('milestones');
       return;
     }
+    // Daily notes → full page (office build only)
+    if (panel === 'dailynotes') {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      showMainPanel('dailynotes');
+      return;
+    }
     // Orrery → full page
     if (panel === 'orrery') {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -469,9 +476,11 @@ function _showMainPanelPaint(name) {
   const orrPanel = document.getElementById('panel-orrery');
   if (orrPanel) orrPanel.style.display = name === 'orrery' ? 'flex' : 'none';
   document.getElementById('panel-mindmap').style.display     = name === 'mindmap' ? 'flex' : 'none';
+  const dnPanel = document.getElementById('panel-dailynotes');
+  if (dnPanel) dnPanel.style.display = name === 'dailynotes' ? 'flex' : 'none';
   const notesPanel = document.getElementById('panel-notes');
   if (notesPanel) notesPanel.style.display = name === 'notes' ? 'flex' : 'none';
-  const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Stillwater', orrery:'Orrery', mindmap:'Mind Map', notes:'Notes' };
+  const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Stillwater', orrery:'Orrery', mindmap:'Mind Map', notes:'Notes', dailynotes:'Daily notes' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = (name === 'timedrift' && _tdSessionOpen) ? 'Focus' : (titles[name] || 'Today');
   if (name === 'default') { window.renderDashboardBoard?.(); }
@@ -498,6 +507,7 @@ function _showMainPanelPaint(name) {
   else { stopTimedrift(); }
   if (name === 'mindmap') { window.initMindMap?.(); }
   if (name === 'notes') { window.initNotesCanvas?.(); }
+  if (name === 'dailynotes') { window.initDailyNotes?.(); }
 }
 
 /* ══ LISTS — FIRESTORE CRUD ══ */
@@ -16200,6 +16210,9 @@ window.renderInsightsX = renderInsightsX;
     document.addEventListener('visibilitychange', reload);
   }
 
+  // The Daily notes page (30-daily-notes.js) shows the same notes the same way.
+  window._dnMd = _md;
+
   window._dashRenderNote = async function () {
     const el = document.getElementById('dash-note-panel'); if (!el) return;
     const dateStr = localDateStr(_dashCalDate);
@@ -16222,7 +16235,11 @@ window.renderInsightsX = renderInsightsX;
 
     // Pills always render (so Captures is reachable even before today's note
     // exists). Body switches on the active mode.
-    if (_mode === 'captures' && !_invoke()) _mode = 'edit';
+    // Captures is the iPhone inbox, which only the desktop app receives. The
+    // office build has files but no phone, so it gets a way to its other
+    // notes there instead.
+    const phoneInbox = !!(window.__TAURI__ && _invoke());
+    if (_mode === 'captures' && !phoneInbox) _mode = 'edit';
     const eyebrow = _mode === 'captures' ? '📥 CAPTURES · running inbox' : `✒ VALERIE · ${escHtml(label)}`;
     el.innerHTML =
       `<div class="dash-note-head"><span class="dash-eyebrow" id="dash-note-eyebrow">${eyebrow}</span>
@@ -16231,11 +16248,17 @@ window.renderInsightsX = renderInsightsX;
            <div class="dash-note-pills" id="dash-note-pills" title="⌘E toggles Edit / Read">
              <button type="button" data-mode="edit"${_mode === 'edit' ? ' class="active"' : ''}>Edit</button>
              <button type="button" data-mode="read"${_mode === 'read' ? ' class="active"' : ''}>Read</button>
-             ${_invoke() ? `<button type="button" data-mode="captures"${_mode === 'captures' ? ' class="active"' : ''}>📥 Captures</button>` : ''}
+             ${phoneInbox ? `<button type="button" data-mode="captures"${_mode === 'captures' ? ' class="active"' : ''}>📥 Captures</button>` : ''}
            </div>
+           ${!phoneInbox && window.CDX_NOTES_INVOKE ? '<button type="button" class="dash-btn" id="dash-note-all" title="Every day\'s note, to read, copy or delete">▤ All notes</button>' : ''}
          </div>
        </div>
        <div class="dash-note-body" id="dash-note-body"></div>`;
+    el.querySelector('#dash-note-all')?.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      document.getElementById('nav-dailynotes')?.classList.add('active');
+      showMainPanel('dailynotes');
+    });
     el.querySelector('#dash-note-pills').addEventListener('click', e => {
       const btn = e.target.closest('button[data-mode]'); if (!btn || btn.dataset.mode === _mode) return;
       _mode = btn.dataset.mode;
@@ -20964,3 +20987,136 @@ window.renderMentionChips = renderMentionChips;
 
 window.addEventListener('resize', _mnClose);
 document.addEventListener('scroll', e => { if (_mnState && !_mnEl.contains(e.target)) _mnClose(); }, true);
+/* ══════════════════════════════════════════════════════════════════════════
+   DAILY NOTES — every day's note in one place
+   ──────────────────────────────────────────────────────────────────────────
+   The note at the bottom of the dashboard is one file per day, and it only
+   ever shows the day the pills point at. Anything older was still on disk but
+   could only be found by opening the folder by hand. This page lists every
+   day that has a note; click one to read it.
+
+   Each note has two actions, for the way they are used at the office:
+     Copy for OneNote — puts the note on the clipboard as formatted text
+                        (headings, bullets, checkboxes survive), so one ⌘V
+                        on a new OneNote page carries it across.
+     Delete           — once it is in OneNote. The file moves to
+                        notes/_deleted/ rather than being erased, and Undo
+                        puts it back.
+
+   Only in the office (lite) build, where the notes are files the local server
+   can list. The desktop app keeps its notes in Obsidian, which already shows
+   them; the web build has none.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let _dnList = [];
+let _dnSel = null;
+let _dnText = '';
+
+function _dnInvoke() { return window.CDX_NOTES_INVOKE || null; }
+
+function _dnLabel(d) {
+  const dt = new Date(d + 'T00:00');
+  const today = localDateStr(new Date());
+  const rel = d === today ? 'Today · ' : '';
+  return rel + dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+async function initDailyNotes() {
+  const panel = document.getElementById('panel-dailynotes');
+  const invoke = _dnInvoke();
+  if (!panel || !invoke) return;
+  try { _dnList = await invoke('list_daily_notes'); }
+  catch (e) { _dnList = []; showToast('Could not read the notes folder', 'error'); }
+  if (!_dnList.some(n => n.date === _dnSel)) _dnSel = _dnList[0]?.date || null;
+  _dnRenderList();
+  await _dnOpen(_dnSel);
+}
+window.initDailyNotes = initDailyNotes;
+
+function _dnRenderList() {
+  const el = document.getElementById('dn-list');
+  if (!el) return;
+  document.getElementById('dn-count').textContent =
+    _dnList.length ? `${_dnList.length} NOTE${_dnList.length === 1 ? '' : 'S'}` : 'DAILY NOTES';
+  if (!_dnList.length) {
+    el.innerHTML = `<div class="dn-empty">No notes yet. Write one at the bottom of the dashboard and it appears here.</div>`;
+    return;
+  }
+  let month = '';
+  el.innerHTML = _dnList.map(n => {
+    const m = n.date.slice(0, 7);
+    const head = m !== month
+      ? `<div class="dn-month">${new Date(n.date + 'T00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase()}</div>` : '';
+    month = m;
+    return head + `<button type="button" class="dn-item${n.date === _dnSel ? ' on' : ''}" data-dn="${escAttr(n.date)}">
+        <span class="dn-item-date">${escHtml(_dnLabel(n.date))}</span>
+        <span class="dn-item-pre">${n.preview ? escHtml(n.preview) : '<em>Empty</em>'}</span>
+      </button>`;
+  }).join('');
+}
+
+async function _dnOpen(date) {
+  _dnSel = date;
+  document.querySelectorAll('.dn-item').forEach(b => b.classList.toggle('on', b.dataset.dn === date));
+  const view = document.getElementById('dn-view');
+  if (!view) return;
+  if (!date) { view.innerHTML = ''; return; }
+  try { _dnText = (await _dnInvoke()('read_daily_note', { date })) || ''; }
+  catch (e) { _dnText = ''; }
+  if (_dnSel !== date) return;   // another date was clicked while this one loaded
+  view.innerHTML = `
+    <div class="dn-view-head">
+      <div class="dn-view-date">${escHtml(_dnLabel(date))}</div>
+      <div class="dn-view-acts">
+        <button type="button" class="btn-primary" id="dn-copy" style="font-size:var(--fs-micro);padding:8px 16px">⧉ Copy for OneNote</button>
+        <button type="button" class="btn-secondary" id="dn-del" style="font-size:var(--fs-micro);padding:8px 16px">Delete</button>
+      </div>
+    </div>
+    <div class="dash-note-preview dash-note-read dn-body">${_dnText.trim() ? window._dnMd(_dnText) : '<p><em>This note is empty.</em></p>'}</div>`;
+  document.getElementById('dn-copy').onclick = () => _dnCopy(date);
+  document.getElementById('dn-del').onclick = () => _dnDelete(date);
+}
+
+// HTML for OneNote (it keeps headings and lists), plain markdown as the
+// fallback for anything that only takes text.
+async function _dnCopy(date) {
+  const html = `<h1>${escHtml(_dnLabel(date).replace(/^Today · /, ''))}</h1>` + window._dnMd(_dnText);
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([html], { type: 'text/html' }),
+      'text/plain': new Blob([_dnText], { type: 'text/plain' }),
+    })]);
+  } catch (e) {
+    try { await navigator.clipboard.writeText(_dnText); }
+    catch (e2) { showToast('Could not copy — select the text and copy it instead', 'error'); return; }
+  }
+  showToast('Copied — in OneNote, make a new page (⌘N) and paste (⌘V)', 'success', 4500);
+}
+
+async function _dnDelete(date) {
+  const content = _dnText;
+  try { await _dnInvoke()('delete_daily_note', { date }); }
+  catch (e) { showToast('Could not delete that note', 'error'); return; }
+  const i = _dnList.findIndex(n => n.date === date);
+  _dnList.splice(i, 1);
+  _dnSel = (_dnList[i] || _dnList[i - 1])?.date || null;
+  _dnRenderList();
+  _dnOpen(_dnSel);
+  window._dashRenderNote?.();
+  showUndoToast(`Deleted the note for ${_dnLabel(date)}`, async () => {
+    await _dnInvoke()('write_daily_note', { date, content });
+    _dnSel = date;
+    initDailyNotes();
+    window._dashRenderNote?.();
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // The office build installs its notes bridge before the app starts; without
+  // it there are no note files to list, so the page stays out of the menu.
+  if (_dnInvoke()) document.getElementById('nav-dailynotes')?.removeAttribute('hidden');
+  document.getElementById('dn-list')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-dn]');
+    if (b) _dnOpen(b.dataset.dn);
+  });
+});

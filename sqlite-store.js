@@ -462,6 +462,12 @@
     if (cmd === 'write_daily_note') {
       return api('PUT', '/api/note', { date: args.date, content: args.content });
     }
+    if (cmd === 'list_daily_notes') {
+      return api('GET', '/api/notes').then(function (r) { return r.notes || []; });
+    }
+    if (cmd === 'delete_daily_note') {
+      return api('DELETE', '/api/note?date=' + encodeURIComponent(args.date));
+    }
     if (cmd === 'read_daily_template') {
       return api('GET', '/api/template').then(function (r) { return r.content || ''; });
     }

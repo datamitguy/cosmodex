@@ -133,6 +133,44 @@ def write_text(path, content):
     os.replace(tmp, path)
 
 
+def list_notes():
+    """Every day that has a note, newest first, with a one-line preview."""
+    out = []
+    if not os.path.isdir(NOTES_ROOT):
+        return out
+    for month in os.listdir(NOTES_ROOT):
+        folder = os.path.join(NOTES_ROOT, month)
+        if month.startswith("_") or not os.path.isdir(folder):
+            continue
+        for name in os.listdir(folder):
+            date_str = name[:-3]
+            if not name.endswith(".md") or not DATE_RE.match(date_str):
+                continue
+            path = os.path.join(folder, name)
+            text = read_text(path) or ""
+            # The first line with words in it, minus markdown marks.
+            bare = (re.sub(r"^[#>\-*\s]*(\[[ xX]\]\s*)?", "", l).strip() for l in text.splitlines())
+            first = next((l for l in bare if l), "")
+            out.append({"date": date_str, "chars": len(text.strip()),
+                        "preview": first[:120], "modified": os.path.getmtime(path)})
+    out.sort(key=lambda n: n["date"], reverse=True)
+    return out
+
+
+def trash_note(date_str):
+    """Move a day's note to notes/_deleted/ — out of the way, not erased."""
+    src = note_path(date_str)
+    if not os.path.exists(src):
+        return False
+    bin_dir = os.path.join(NOTES_ROOT, "_deleted")
+    os.makedirs(bin_dir, exist_ok=True)
+    dest = os.path.join(bin_dir, date_str + ".md")
+    if os.path.exists(dest):
+        dest = os.path.join(bin_dir, "%s-%s.md" % (date_str, datetime.now().strftime("%H%M%S")))
+    os.replace(src, dest)
+    return True
+
+
 # ── http ───────────────────────────────────────────────────────────────────
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
@@ -190,6 +228,9 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError:
                 return self._send({"error": "bad date"}, 400)
             return self._send({"content": content})
+
+        if u.path == "/api/notes":
+            return self._send({"notes": list_notes()})
 
         if u.path == "/api/template":
             return self._send({"content": read_text(os.path.join(NOTES_ROOT, "_template.md"))})
@@ -257,6 +298,11 @@ class Handler(SimpleHTTPRequestHandler):
         if u.path == "/api/doc":
             delete_doc((q.get("path") or [""])[0])
             return self._send({"ok": True})
+        if u.path == "/api/note":
+            try:
+                return self._send({"ok": trash_note((q.get("date") or [""])[0])})
+            except ValueError:
+                return self._send({"error": "bad date"}, 400)
         return self._send({"error": "unknown route"}, 404)
 
 

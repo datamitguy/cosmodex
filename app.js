@@ -16064,7 +16064,10 @@ window.renderInsightsX = renderInsightsX;
         const invoke = _invoke(); if (!invoke) return;
         let seed = '';
         try { seed = await invoke('read_daily_template'); } catch (e) {}
-        if (!seed || !seed.trim()) seed = `# ${_label(dateStr)}\n\n`;
+        // The date only — "TODAY ·" would be written into the file and still
+        // say today a week later.
+        if (!seed || !seed.trim()) seed = `# ${new Date(dateStr + 'T00:00').toLocaleDateString('en-GB',
+          { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}\n\n`;
         try { await invoke('write_daily_note', { date: dateStr, content: seed }); }
         catch (e) { if (typeof showToast === 'function') showToast('Could not create the note', 'error'); return; }
         window._dashRenderNote();
@@ -21010,9 +21013,29 @@ document.addEventListener('scroll', e => { if (_mnState && !_mnEl.contains(e.tar
 
 let _dnList = [];
 let _dnSel = null;
-let _dnText = '';
+let _dnText = '';            // what the page shows (date line left out)
+let _dnRaw = '';             // the file as it is, for Undo
 
 function _dnInvoke() { return window.CDX_NOTES_INVOKE || null; }
+
+// A note's own first line is usually its date ("# TODAY · Tuesday 10
+// November", from before the dashboard stopped writing TODAY into it). The
+// page header already shows the date, so that line is left out of the view and
+// the copy. The file itself is not changed.
+function _dnBody(text) {
+  return text.replace(/^\s*#\s+((today|yesterday|tomorrow)\s*·\s*)?(mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+\d{1,2}\s+[a-z]+(\s+\d{4})?\s*(\n+|$)/i, '');
+}
+
+// The first line with words in it, skipping the date heading the header
+// already shows.
+function _dnPreview(n) {
+  if (typeof n.content !== 'string') return n.preview || '';
+  for (const l of _dnBody(n.content).split('\n')) {
+    const t = l.replace(/^[#>\-*\s]*(\[[ xX]\]\s*)?/, '').replace(/[*_=~`]/g, '').trim();
+    if (t) return t.slice(0, 120);
+  }
+  return '';
+}
 
 function _dnLabel(d) {
   const dt = new Date(d + 'T00:00');
@@ -21058,7 +21081,7 @@ function _dnRenderList() {
     month = m;
     return head + `<button type="button" class="dn-item${n.date === _dnSel ? ' on' : ''}" data-dn="${escAttr(n.date)}">
         <span class="dn-item-date">${escHtml(_dnLabel(n.date))}</span>
-        <span class="dn-item-pre">${n.preview ? escHtml(n.preview) : '<em>Empty</em>'}</span>
+        <span class="dn-item-pre">${_dnPreview(n) ? escHtml(_dnPreview(n)) : '<em>Empty</em>'}</span>
       </button>`;
   }).join('');
 }
@@ -21069,9 +21092,34 @@ async function _dnOpen(date) {
   const view = document.getElementById('dn-view');
   if (!view) return;
   if (!date) { view.innerHTML = ''; return; }
-  try { _dnText = (await _dnInvoke()('read_daily_note', { date })) || ''; }
-  catch (e) { _dnText = ''; }
+  view.innerHTML = `<div class="dn-view-head"><div class="dn-view-date">${escHtml(_dnLabel(date))}</div></div>
+    <div class="dn-empty">Opening…</div>`;
+  // Every failure lands on the page with its real reason — a slow or failing
+  // read used to surface only as the app-wide "didn't save" toast.
+  const t0 = Date.now();
+  try {
+    // The list already carries each note's text; the server is asked only if
+    // it did not (an older server).
+    const cached = _dnList.find(n => n.date === date)?.content;
+    if (typeof cached === 'string') _dnRaw = cached;
+    else {
+      const read = _dnInvoke()('read_daily_note', { date });
+      const late = new Promise((_, no) => setTimeout(() => no(new Error('no answer from the Cosmodex server after 15 seconds')), 15000));
+      _dnRaw = (await Promise.race([read, late])) || '';
+    }
+    _dnText = _dnBody(_dnRaw);
+  } catch (e) {
+    if (_dnSel !== date) return;
+    console.error('daily notes: read', date, e);
+    view.innerHTML = `<div class="dn-view-head"><div class="dn-view-date">${escHtml(_dnLabel(date))}</div></div>
+      <div class="dn-empty">Could not open this note.<br><code>${escHtml(String(e && e.message || e))}</code></div>`;
+    return;
+  }
   if (_dnSel !== date) return;   // another date was clicked while this one loaded
+  const ms = Date.now() - t0;
+  if (ms > 3000) console.warn('daily notes: reading', date, 'took', ms, 'ms');
+  // The words first, as plain text; the formatting is applied a frame later.
+  const body = _dnText.trim() ? `<div class="dn-plain">${escHtml(_dnText)}</div>` : '<p><em>This note is empty.</em></p>';
   view.innerHTML = `
     <div class="dn-view-head">
       <div class="dn-view-date">${escHtml(_dnLabel(date))}</div>
@@ -21080,7 +21128,13 @@ async function _dnOpen(date) {
         <button type="button" class="btn-secondary" id="dn-del" style="font-size:var(--fs-micro);padding:8px 16px">Delete</button>
       </div>
     </div>
-    <div class="dash-note-preview dash-note-read dn-body">${_dnText.trim() ? window._dnMd(_dnText) : '<p><em>This note is empty.</em></p>'}</div>`;
+    <div class="dash-note-preview dash-note-read dn-body">${body}</div>`;
+  if (_dnText.trim()) requestAnimationFrame(() => {
+    const el = view.querySelector('.dn-body');
+    if (!el || _dnSel !== date) return;
+    try { el.innerHTML = window._dnMd(_dnText); }
+    catch (e) { console.error('daily notes: format', date, e); }   // the plain text stays
+  });
   document.getElementById('dn-copy').onclick = () => _dnCopy(date);
   document.getElementById('dn-del').onclick = () => _dnDelete(date);
 }
@@ -21102,7 +21156,7 @@ async function _dnCopy(date) {
 }
 
 async function _dnDelete(date) {
-  const content = _dnText;
+  const content = _dnRaw;
   try { await _dnInvoke()('delete_daily_note', { date }); }
   catch (e) { showToast('Could not delete that note', 'error'); return; }
   const i = _dnList.findIndex(n => n.date === date);

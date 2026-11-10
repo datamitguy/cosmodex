@@ -8115,6 +8115,7 @@ textarea:focus-visible {
 .dn-view-date { flex:1; font-family:var(--font-display); font-weight:300; font-size:var(--fs-title, 28px); color:#fff; }
 .dn-view-acts { display:flex; gap:8px; }
 .dn-body { flex:1; overflow-y:auto; max-width:760px; }
+.dn-plain { white-space:pre-wrap; font-family:var(--font-body); font-size:var(--fs-body); color:var(--cream); line-height:1.6; }
 @media (max-width:700px) {
   .dn-panel { flex-direction:column; padding:16px; overflow-y:auto; }
   .dn-side { width:auto; }

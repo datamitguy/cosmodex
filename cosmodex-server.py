@@ -151,7 +151,9 @@ def list_notes():
             # The first line with words in it, minus markdown marks.
             bare = (re.sub(r"^[#>\-*\s]*(\[[ xX]\]\s*)?", "", l).strip() for l in text.splitlines())
             first = next((l for l in bare if l), "")
-            out.append({"date": date_str, "chars": len(text.strip()),
+            # The text comes with the list, so opening a note on the page needs
+            # no second request. Daily notes are small; a year is well under 1 MB.
+            out.append({"date": date_str, "chars": len(text.strip()), "content": text,
                         "preview": first[:120], "modified": os.path.getmtime(path)})
     out.sort(key=lambda n: n["date"], reverse=True)
     return out

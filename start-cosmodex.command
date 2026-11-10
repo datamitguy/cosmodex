@@ -57,15 +57,33 @@ running_port() {
 # compiler, nothing installed.
 give_icon() {
   local icns="$HERE/mac/CosmodexOffice.icns"
-  [ -f "$icns" ] || return 0
-  xattr -p com.apple.ResourceFork "$SELF" >/dev/null 2>&1 && return 0
-  osascript -l JavaScript - "$icns" "$SELF" >/dev/null 2>&1 <<'JS'
+  if [ ! -f "$icns" ]; then
+    echo "  (No Cosmodex icon: mac/CosmodexOffice.icns is missing from this folder.)"
+    return 0
+  fi
+  # A custom icon needs two things: the picture (the resource fork) and the
+  # "has custom icon" bit in the Finder flags. Some ways of copying files in
+  # keep one and drop the other, so check both.
+  local flags
+  flags="$(xattr -px com.apple.FinderInfo "$SELF" 2>/dev/null | tr -d ' \n' | cut -c17-18)"
+  if xattr -p com.apple.ResourceFork "$SELF" >/dev/null 2>&1 && [ -n "$flags" ] \
+     && [ $(( 0x$flags & 0x04 )) -ne 0 ]; then
+    return 0
+  fi
+  xattr -d com.apple.ResourceFork "$SELF" 2>/dev/null
+  if osascript -l JavaScript - "$icns" "$SELF" >/dev/null 2>&1 <<'JS'
 function run(argv) {
   ObjC.import('AppKit');
   var img = $.NSImage.alloc.initWithContentsOfFile(argv[0]);
-  $.NSWorkspace.sharedWorkspace.setIconForFileOptions(img, argv[1], 0);
+  if (!$.NSWorkspace.sharedWorkspace.setIconForFileOptions(img, argv[1], 0)) throw new Error('refused');
 }
 JS
+  then
+    echo "  Gave this file the Cosmodex icon. If the Dock still shows the old one,"
+    echo "  drag it off the Dock and back on."
+  else
+    echo "  (Could not set the Cosmodex icon — this Mac did not allow it. Cosmodex runs as normal.)"
+  fi
 }
 
 # A second click opens a second Terminal window. Once it has done its job —

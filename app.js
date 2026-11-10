@@ -21061,6 +21061,20 @@ async function initDailyNotes() {
   if (!_dnList.some(n => n.date === _dnSel)) _dnSel = _dnList[0]?.date || null;
   _dnRenderList();
   await _dnOpen(_dnSel);
+  _dnPreload();
+}
+
+// A server from before the list carried each note's text sends only the
+// dates. Fetch the rest quietly, one at a time, so a note is ready before it
+// is clicked — reading a file OneDrive keeps online-only can take seconds.
+async function _dnPreload() {
+  const todo = _dnList.filter(n => typeof n.content !== 'string');
+  if (!todo.length) return;
+  console.warn('daily notes: the server did not send note text — restart Cosmodex to get the faster list. Preloading', todo.length, 'notes.');
+  for (const n of todo) {
+    if (_mainPanel !== 'dailynotes') return;
+    try { n.content = (await _dnInvoke()('read_daily_note', { date: n.date })) || ''; } catch (e) {}
+  }
 }
 window.initDailyNotes = initDailyNotes;
 
@@ -21100,12 +21114,13 @@ async function _dnOpen(date) {
   try {
     // The list already carries each note's text; the server is asked only if
     // it did not (an older server).
-    const cached = _dnList.find(n => n.date === date)?.content;
-    if (typeof cached === 'string') _dnRaw = cached;
+    const entry = _dnList.find(n => n.date === date);
+    if (entry && typeof entry.content === 'string') _dnRaw = entry.content;
     else {
       const read = _dnInvoke()('read_daily_note', { date });
       const late = new Promise((_, no) => setTimeout(() => no(new Error('no answer from the Cosmodex server after 15 seconds')), 15000));
       _dnRaw = (await Promise.race([read, late])) || '';
+      if (entry) entry.content = _dnRaw;
     }
     _dnText = _dnBody(_dnRaw);
   } catch (e) {
@@ -21129,12 +21144,16 @@ async function _dnOpen(date) {
       </div>
     </div>
     <div class="dash-note-preview dash-note-read dn-body">${body}</div>`;
-  if (_dnText.trim()) requestAnimationFrame(() => {
+  // Two frames: the first paints the plain text, the second formats it — a
+  // single requestAnimationFrame runs before that paint and would hide it.
+  if (_dnText.trim()) requestAnimationFrame(() => setTimeout(() => {
     const el = view.querySelector('.dn-body');
     if (!el || _dnSel !== date) return;
+    const t0 = Date.now();
     try { el.innerHTML = window._dnMd(_dnText); }
     catch (e) { console.error('daily notes: format', date, e); }   // the plain text stays
-  });
+    if (Date.now() - t0 > 500) console.warn('daily notes: formatting', date, 'took', Date.now() - t0, 'ms');
+  }, 0));
   document.getElementById('dn-copy').onclick = () => _dnCopy(date);
   document.getElementById('dn-del').onclick = () => _dnDelete(date);
 }

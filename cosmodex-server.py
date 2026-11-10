@@ -36,6 +36,7 @@ import re
 import sqlite3
 import sys
 import threading
+import time
 from datetime import datetime
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -193,6 +194,10 @@ class Handler(SimpleHTTPRequestHandler):
             return
         sys.stderr.write("  %s\n" % (fmt % args))
 
+    def parse_request(self):
+        self._t0 = time.time()
+        return super().parse_request()
+
     # -- helpers --
     def _send(self, obj, code=200):
         body = json.dumps(obj).encode("utf-8")
@@ -202,6 +207,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+        # Anything slow is said in this window, with its time, so a slow note
+        # can be told apart from a slow page.
+        took = time.time() - getattr(self, "_t0", time.time())
+        if took > 1:
+            sys.stderr.write("  slow: %s %s took %.1f s\n" % (self.command, urlparse(self.path).path, took))
 
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -308,6 +318,25 @@ class Handler(SimpleHTTPRequestHandler):
         return self._send({"error": "unknown route"}, 404)
 
 
+def warm_notes():
+    """Read every note once, in the background, as the server starts.
+
+    Where the folder is synced by OneDrive (Documents and Desktop often are on
+    a work Mac), older files are kept "online only" and the first read of one
+    waits for a download — seconds, even for one line. Reading them all now
+    means they are on the disk before anyone clicks one."""
+    t0 = time.time()
+    try:
+        n = len(list_notes())
+    except Exception as exc:
+        sys.stderr.write("  notes: could not read ahead (%s)\n" % exc)
+        return
+    took = time.time() - t0
+    if took > 2:
+        sys.stderr.write("  notes: read %d notes ahead in %.0f s — the folder is slow to read"
+                         " (OneDrive 'online only' files?). They are ready now.\n" % (n, took))
+
+
 def main():
     os.makedirs(NOTES_ROOT, exist_ok=True)
     try:
@@ -324,6 +353,7 @@ def main():
     print()
     print("  Keep this window open. Close it to stop.")
     print()
+    threading.Thread(target=warm_notes, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 
 

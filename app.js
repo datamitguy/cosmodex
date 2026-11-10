@@ -21133,6 +21133,9 @@ async function _dnOpen(date) {
   if (_dnSel !== date) return;   // another date was clicked while this one loaded
   const ms = Date.now() - t0;
   if (ms > 3000) console.warn('daily notes: reading', date, 'took', ms, 'ms');
+  // Said on the page, so a slow open comes with its cause: the time went to
+  // reading the file, not to showing it.
+  const slow = ms > 1500 ? `<div class="dn-slow">Took ${(ms / 1000).toFixed(1)} s to read this note from disk. Restarting Cosmodex reads every note ahead.</div>` : '';
   // The words first, as plain text; the formatting is applied a frame later.
   const body = _dnText.trim() ? `<div class="dn-plain">${escHtml(_dnText)}</div>` : '<p><em>This note is empty.</em></p>';
   view.innerHTML = `
@@ -21143,7 +21146,7 @@ async function _dnOpen(date) {
         <button type="button" class="btn-secondary" id="dn-del" style="font-size:var(--fs-micro);padding:8px 16px">Delete</button>
       </div>
     </div>
-    <div class="dash-note-preview dash-note-read dn-body">${body}</div>`;
+    ${slow}<div class="dash-note-preview dash-note-read dn-body">${body}</div>`;
   // Two frames: the first paints the plain text, the second formats it — a
   // single requestAnimationFrame runs before that paint and would hide it.
   if (_dnText.trim()) requestAnimationFrame(() => setTimeout(() => {

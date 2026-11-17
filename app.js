@@ -21637,9 +21637,27 @@ async function _cstInCommit() {
   const st = _cstIn; if (!st || st.done) return;
   const text = st.input.value.trim();
   _cstInClose(true);
-  if (!text) return;
+  if (!text && !st.picked.length) return;
   const b = _cstBatch();
   let id = st.editId;
+  if (!text) {
+    // Only a name was typed. With a thought open or a parent (Tab), the person
+    // joins that thought; on empty canvas they are set down on their own.
+    const host = id || st.parentId;
+    let last = null, pos = { x: st.x, y: st.y };
+    st.picked.forEach(p => {
+      if (host && b.get(host)) { _cstAttachPerson(b, host, p); last = b.personNode(p.id); return; }
+      last = b.personNode(p.id);
+      if (!last) {
+        const nid = crypto.randomUUID();
+        b.set(nid, _cstDoc('person', p.name, pos, { personId: p.id }));
+        last = b.get(nid); pos = _cstPlace(pos.x, pos.y, b.nodes());
+      }
+    });
+    if (last) { _cstSel = last.id; _cstFocus = last.id; }
+    await b.commit();
+    return;
+  }
   if (id) {
     if (b.get(id) && b.get(id).text !== text) b.patch(id, { text });
   } else {

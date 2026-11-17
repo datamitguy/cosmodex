@@ -20892,7 +20892,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let NODES_CST = [];              // the nodes of the map on screen
 let _cstAll = [];                // every node, both maps
-let _cstMap = 'constellation';   // 'constellation' | 'mindmap' — the Mind Map page is this same page with its own nodes
+let _cstMap = 'constellation';   // 'constellation', or the id of a mind map ('mindmap' is the first; others are 'mm_…')
+let _cstMmCur = 'mindmap';       // the mind map last open on the Mind Map page
+try { _cstMmCur = localStorage.getItem('cdx_cst_mm') || 'mindmap'; } catch (e) { /* fine */ }
+let _cstHidden = new Set();      // nodes tucked away under a folded thought
+let _cstFoldN = {};              // folded node id → how many it hides
+let _cstFindQ = '';              // search text; while set, folds are ignored so nothing is missed
+let _cstFindHits = [];
 const _cstHists = {};            // undo history, kept per map
 let _cstUnsub = null;
 let _cstWired = false;
@@ -20916,9 +20922,10 @@ let _cstDirty = false;           // …and runs once on release
 let _cstRefreshQ = 0;
 let _cstHist = _cstHists.constellation = { undo: [], redo: [], busy: false };   // see "Undo and redo"
 
-const _cstViewKey = () => _cstMap === 'mindmap' ? 'cdx_cst_view_mindmap' : 'cdx_cst_view';
+const _cstViewKey = () => _cstMap === 'constellation' ? 'cdx_cst_view' : 'cdx_cst_view_' + _cstMap;
 const _cstOn = () => typeof _mainPanel !== 'undefined' && (_mainPanel === 'constellation' || _mainPanel === 'mindmap');
-const _cstMine = () => _cstAll.filter(n => (n.map || 'constellation') === _cstMap);
+const _cstMine = () => _cstAll.filter(n => n.kind !== 'map' && (n.map || 'constellation') === _cstMap);
+const _cstVis = () => NODES_CST.filter(n => !_cstHidden.has(n.id));
 // Line icons, one weight, drawn in the text colour. Paths on a 24 grid.
 const _CST_ICON = {
   select: 'M5 3l14 7-6 2-2 6z',
@@ -20935,6 +20942,9 @@ const _CST_ICON = {
   task: 'M4 4h16v16H4zM8 12l3 3 5-6',
   link: 'M3 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M15 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M9 12h6',
   arrow: 'M4 12h15M13 6l6 6-6 6',
+  fold: 'M4 6h16M4 12h9M4 18h5M17 12l3 3 0-6z',
+  tidy: 'M4 12h5M9 5v14M9 5h6M9 12h6M9 19h6',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM16 16l4 4',
   unlink: 'M3 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M15 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M10.5 16l3-8',
 };
 const _cstIcon = (k) => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${_CST_ICON[k]}"/></svg>`;
@@ -21281,10 +21291,10 @@ function _cstZoomAt(factor, cx, cy) {
   _cstApplyView();
 }
 
-function _cstFit() {
-  const boxes = [];
+function _cstFit(only) {
+  const boxes = [], pick = only instanceof Set && only.size ? only : null;   // a click passes its event here, which is not a Set
   _cstEl.layer.querySelectorAll('.cst-node').forEach(el => {
-    const n = _cstById(el.dataset.id); if (!n) return;
+    const n = _cstById(el.dataset.id); if (!n || (pick && !pick.has(n.id))) return;
     const w = el.offsetWidth, h = el.offsetHeight;
     boxes.push({ x0: _cstX(n) - w / 2, x1: _cstX(n) + w / 2, y0: _cstY(n) - h / 2, y1: _cstY(n) + h / 2 });
   });
@@ -21341,6 +21351,8 @@ function _cstRender() {
   if (!_cstOn() || !_cstEl.layer) return;
   if (_cstDrag) { _cstDirty = true; return; }   // the dragged element must survive until release
   const kbd = document.activeElement?.closest?.('.cst-node')?.dataset.id;
+  _cstCalcHidden();
+  const shown = _cstVis(), lines = _cstEdges().filter(([a, c]) => !_cstHidden.has(a) && !_cstHidden.has(c));
   const counts = {};
   _cstEdges().forEach(([a, c]) => {
     const A = _cstById(a), C = _cstById(c);
@@ -21348,19 +21360,23 @@ function _cstRender() {
     if (C?.kind === 'person' && A?.kind === 'thought') counts[c] = (counts[c] || 0) + 1;
   });
 
-  _cstEl.layer.innerHTML = NODES_CST.map(n => {
+  _cstEl.layer.innerHTML = shown.map(n => {
     const task = _cstTaskFor(n);
     const cls = n.kind === 'person' ? 'cst-person'
       : `cst-thought${n.priority ? ' p-' + n.priority : ''}${task?.done ? ' is-done' : ''}`;
     const who = n.kind === 'person' ? (PEOPLE.find(x => x.id === n.personId)?.name || n.text || '') : (n.text || '');
-    return `<div class="cst-node ${cls}" data-id="${escAttr(n.id)}" tabindex="0" role="button" aria-label="${escAttr(who)}" style="left:${_cstX(n)}px;top:${_cstY(n)}px" title="${escAttr(n.text || '')}">${_cstNodeHtml(n, counts)}<span class="cst-h" aria-hidden="true"></span></div>`;
+    return `<div class="cst-node ${cls}" data-id="${escAttr(n.id)}" tabindex="0" role="button" aria-label="${escAttr(who)}" style="left:${_cstX(n)}px;top:${_cstY(n)}px" title="${escAttr(n.text || '')}">${_cstNodeHtml(n, counts)}${_cstFoldN[n.id] ? `<span class="cst-fold" title="${_cstFoldN[n.id]} folded away — click to unfold">+${_cstFoldN[n.id]}</span>` : ''}<span class="cst-h" aria-hidden="true"></span></div>`;
   }).join('');
-  _cstEl.lines.innerHTML = _cstEdges().map(([a, c]) =>
+  _cstEl.lines.innerHTML = lines.map(([a, c]) =>
     `<g data-a="${escAttr(a)}" data-b="${escAttr(c)}">${_cstEdgeHtml(a, c)}</g>`).join('');
 
   const people = NODES_CST.filter(n => n.kind === 'person').length;
   const th = NODES_CST.length - people;
-  _cstEl.eyebrow.textContent = `${_cstMap === 'mindmap' ? 'MIND MAP' : 'CONSTELLATION'} · ${th} ${th === 1 ? 'THOUGHT' : 'THOUGHTS'} · ${people} ${people === 1 ? 'PERSON' : 'PEOPLE'}`;
+  const tally = `${th} ${th === 1 ? 'THOUGHT' : 'THOUGHTS'} · ${people} ${people === 1 ? 'PERSON' : 'PEOPLE'}`;
+  if (_cstMap === 'constellation') _cstEl.eyebrow.textContent = `CONSTELLATION · ${tally}`;
+  else _cstEl.eyebrow.innerHTML = `<button type="button" class="cst-mapbtn" title="Your mind maps: switch, new, rename, save a copy, delete">${escHtml(_cstMapName(_cstMap))} <span aria-hidden="true">▾</span></button> · ${tally}`;
+  const q = _cstFindQ;
+  _cstFindHits = q ? shown.filter(n => ((n.kind === 'person' ? PEOPLE.find(x => x.id === n.personId)?.name : null) || n.text || '').toLowerCase().includes(q)).map(n => n.id) : [];
   _cstEl.empty.hidden = NODES_CST.length > 0 || !!_cstIn;
 
   if (_cstIn?.editId) _cstEl.layer.querySelector(`[data-id="${CSS.escape(_cstIn.editId)}"]`)?.classList.add('cst-editing');
@@ -21378,21 +21394,23 @@ function _cstRender() {
 // Selection and focus change often; they only toggle classes so the fades run.
 function _cstPaint() {
   // Code that sets _cstSel directly (a new thought, undo) is brought into line here.
-  _cstMulti.forEach(id => { if (!_cstById(id)) _cstMulti.delete(id); });
+  _cstMulti.forEach(id => { if (!_cstById(id) || _cstHidden.has(id)) _cstMulti.delete(id); });
+  if (_cstSel && _cstHidden.has(_cstSel)) _cstSel = null;
   if (_cstSel && !_cstMulti.has(_cstSel)) _cstMulti = new Set([_cstSel]);
   if (!_cstSel && _cstMulti.size) _cstSel = [..._cstMulti].pop();
   if (_cstLine && !_cstEdges().some(e => e.includes(_cstLine[0]) && e.includes(_cstLine[1]))) _cstLine = null;
   if (_cstMulti.size) _cstLine = null;
 
   const lit = _cstFocus ? new Set([_cstFocus, ..._cstNeighbours(_cstFocus)]) : null;
+  const found = _cstFindQ ? new Set(_cstFindHits) : null;
   _cstEl.layer.querySelectorAll('.cst-node').forEach(el => {
     el.classList.toggle('sel', _cstMulti.has(el.dataset.id));
-    el.classList.toggle('dim', !!lit && !lit.has(el.dataset.id));
+    el.classList.toggle('dim', (!!lit && !lit.has(el.dataset.id)) || (!!found && !found.has(el.dataset.id)));
   });
   _cstEl.lines.querySelectorAll('g').forEach(p => {
     const a = p.dataset.a, c = p.dataset.b;
     p.classList.toggle('hot', _cstMulti.has(a) || _cstMulti.has(c));
-    p.classList.toggle('dim', !!_cstFocus && a !== _cstFocus && c !== _cstFocus);
+    p.classList.toggle('dim', (!!_cstFocus && a !== _cstFocus && c !== _cstFocus) || (!!found && !(found.has(a) && found.has(c))));
     p.classList.toggle('pick', !!_cstLine && _cstLine.includes(a) && _cstLine.includes(c));
   });
   const del = _cstEl.tools?.querySelector('[data-tool="delete"]'), none = !_cstMulti.size && !_cstLine;
@@ -21483,14 +21501,14 @@ function _cstBar() {
 
   const one = nodes.length === 1 ? nodes[0] : null, thoughts = nodes.filter(n => n.kind === 'thought');
   const linked = nodes.length === 2 && _cstEdges().some(e => e.includes(nodes[0].id) && e.includes(nodes[1].id));
-  const sig = _cstLine ? 'line' : `${nodes.map(n => n.id).join(',')}|${linked}|${one && _cstTaskFor(one) ? 't' : ''}`;
+  const sig = _cstLine ? 'line' : `${nodes.map(n => n.id).join(',')}|${linked}|${one && _cstTaskFor(one) ? 't' : ''}${one?.folded ? 'f' : ''}`;
   if (sig !== _cstBarSig) {
     _cstBarSig = sig;
     const b = (act, icon, label) => _cstIb(`data-bar="${act}"`, icon, label);
     let html;
     if (_cstLine) html = b('label', 'edit', 'Label this line (double-click it)') + b('arrow', 'arrow', 'Arrow') + '<span class="cst-tools-sep"></span>' + b('unlink', 'unlink', 'Remove this line (Delete)');
     else if (one?.kind === 'thought') html = b('edit', 'edit', 'Edit (F2)') + b('child', 'child', 'Add a linked thought (Tab)')
-      + '<span class="cst-tools-sep"></span>' + b('priority', 'flag', 'Priority') + b('person', 'person', 'Person') + b('commitment', 'target', 'Commitment')
+      + '<span class="cst-tools-sep"></span>' + b('fold', 'fold', one.folded ? 'Unfold what hangs from it (.)' : 'Fold away what hangs from it (.)') + b('priority', 'flag', 'Priority') + b('person', 'person', 'Person') + b('commitment', 'target', 'Commitment')
       + b('task', 'task', _cstTaskFor(one) ? 'Open in Tasks' : 'Add to Tasks') + '<span class="cst-tools-sep"></span>' + b('delete', 'trash', 'Delete (Delete)');
     else if (one) html = b('delete', 'trash', 'Remove from map (Delete)');
     else html = `<span class="cst-bar-n">${nodes.length} selected</span>`
@@ -21543,6 +21561,7 @@ function _cstBarClick(e) {
     } })));
   }
   else if (!one || one.kind !== 'thought') return;
+  else if (act === 'fold') _cstFold(one.id);
   else if (act === 'edit') _cstInOpen({ x: _cstX(one), y: _cstY(one), editId: one.id, text: one.text || '' });
   else if (act === 'child') _cstAddChild(one);
   else if (act === 'task') { if (_cstTaskFor(one)) _cstOpenTask(one.taskId); else _cstPromote(one.id); }
@@ -21606,6 +21625,236 @@ function _cstSide() {
     <div class="cst-side-f">${open} open in total</div>`;
 }
 
+/* ── Fold and unfold ─────────────────────────────────────────────────────── *
+   Folding a thought tucks away everything that hangs from it: all it can
+   reach without going back through the thought it hangs from itself. */
+function _cstAdj() {
+  const adj = new Map(NODES_CST.map(n => [n.id, []]));
+  _cstEdges().forEach(([a, c]) => { adj.get(a).push(c); adj.get(c).push(a); });
+  return adj;
+}
+function _cstBranch(f, adj = _cstAdj()) {
+  const seen = new Set([f.id]), parent = _cstParent(f), out = new Set();
+  if (parent) seen.add(parent.id);
+  const q = [f.id];
+  while (q.length) (adj.get(q.shift()) || []).forEach(id => { if (!seen.has(id)) { seen.add(id); out.add(id); q.push(id); } });
+  return out;
+}
+function _cstCalcHidden() {
+  _cstHidden = new Set(); _cstFoldN = {};
+  if (_cstFindQ) return;
+  const adj = _cstAdj();
+  NODES_CST.forEach(f => {
+    if (!f.folded) return;
+    const br = _cstBranch(f, adj);
+    _cstFoldN[f.id] = br.size;
+    br.forEach(id => _cstHidden.add(id));
+  });
+}
+async function _cstFold(id) {
+  const n = _cstById(id); if (!n) return;
+  if (!n.folded && !_cstBranch(n).size) { showToast('Nothing hangs from this thought.'); return; }
+  await _cstSaveNode(id, { folded: !n.folded }, n.folded ? 'Unfold' : 'Fold');
+}
+
+/* ── Tidy ────────────────────────────────────────────────────────────────── *
+   Lays a branch out as a tree reading left to right: each generation in its
+   own column, children stacked beside their parent, nothing overlapping.
+   With one thought selected it tidies what hangs from that thought; with
+   nothing selected, the whole map. The starting thought stays where it is. */
+async function _cstTidy() {
+  if (!NODES_CST.length) return;
+  const adj = _cstAdj(), sel = _cstMulti.size === 1 ? _cstById(_cstSel) : null;
+  const trees = [];                                  // [root, Set of ids in the tree]
+  if (sel) trees.push([sel, new Set([sel.id, ..._cstBranch(sel, adj)])]);
+  else {
+    const left = new Set(NODES_CST.map(n => n.id));
+    while (left.size) {
+      const comp = new Set(), q = [left.values().next().value];
+      comp.add(q[0]);
+      while (q.length) (adj.get(q.shift()) || []).forEach(id => { if (!comp.has(id)) { comp.add(id); q.push(id); } });
+      comp.forEach(id => left.delete(id));
+      const nodes = [...comp].map(_cstById);
+      // The root is a thought that hangs from nothing; failing that, the busiest one.
+      const tops = nodes.filter(n => n.kind === 'thought' && !_cstParent(n));
+      const root = (tops.length ? tops : nodes).sort((a, b) => adj.get(b.id).length - adj.get(a.id).length || _cstX(a) - _cstX(b))[0];
+      trees.push([root, comp]);
+    }
+    trees.sort((a, b) => _cstY(a[0]) - _cstY(b[0]));
+  }
+  const moves = [];
+  let floor = null, x0 = null;
+  trees.forEach(([root, set]) => {
+    const kids = new Map(), depth = new Map([[root.id, 0]]), order = [root.id];
+    for (let i = 0; i < order.length; i++) {
+      const id = order[i];
+      const ch = (adj.get(id) || []).filter(c => set.has(c) && !depth.has(c)).sort((a, b) => _cstY(_cstById(a)) - _cstY(_cstById(b)) || _cstX(_cstById(a)) - _cstX(_cstById(b)));
+      ch.forEach(c => { depth.set(c, depth.get(id) + 1); order.push(c); });
+      kids.set(id, ch);
+    }
+    const size = new Map(order.map(id => [id, _cstSize(_cstById(id))]));
+    const colW = [];
+    order.forEach(id => { const d = depth.get(id); colW[d] = Math.max(colW[d] || 0, size.get(id).w); });
+    const colX = [0];
+    for (let d = 1; d < colW.length; d++) colX[d] = colX[d - 1] + colW[d - 1] / 2 + colW[d] / 2 + 70;
+    const span = new Map();
+    const measure = (id) => { const own = size.get(id).h + 14, sum = kids.get(id).reduce((t, c) => t + measure(c), 0); span.set(id, Math.max(own, sum)); return span.get(id); };
+    measure(root.id);
+    const pos = new Map();
+    const lay = (id, top) => {
+      pos.set(id, { x: colX[depth.get(id)], y: top + span.get(id) / 2 });
+      let t = top + (span.get(id) - kids.get(id).reduce((a, c) => a + span.get(c), 0)) / 2;
+      kids.get(id).forEach(c => { lay(c, t); t += span.get(c); });
+    };
+    lay(root.id, 0);
+    // Anchor: the root keeps its place; later trees stack under the one before.
+    const r = pos.get(root.id);
+    let ox = _cstX(root) - r.x, oy = _cstY(root) - r.y;
+    if (!sel) { if (x0 == null) x0 = _cstX(root); ox = x0 - r.x; if (floor != null) oy = floor + 60; else oy = _cstY(root) - r.y; floor = oy + span.get(root.id); }
+    order.forEach(id => {
+      const n = _cstById(id), p = pos.get(id), x = Math.round(p.x + ox), y = Math.round(p.y + oy);
+      if (x !== _cstX(n) || y !== _cstY(n)) moves.push({ id, patch: { x, y } });
+    });
+  });
+  if (!moves.length) { showToast('Already tidy.'); return; }
+  if (await _cstSaveMany(moves, 'Tidy') && !sel) setTimeout(_cstFit, 120);
+}
+
+/* ── Search ──────────────────────────────────────────────────────────────── *
+   Type to dim everything that does not match; Enter steps through the
+   matches and brings each to the middle. Folded branches open while it is up. */
+function _cstFindOpen() {
+  _cstInFlush(); _cstMenuClose();
+  _cstEl.find.hidden = false;
+  const input = _cstEl.find.querySelector('input');
+  input.focus({ preventScroll: true }); input.select();
+  _cstFindRun(input.value);
+}
+function _cstFindClose() {
+  if (_cstEl.find.hidden) return;
+  _cstEl.find.hidden = true; _cstFindQ = ''; _cstFindHits = [];
+  _cstRender();
+}
+function _cstFindRun(text) {
+  _cstFindQ = (text || '').trim().toLowerCase();
+  _cstRender();                                   // folds lift while searching
+  _cstFindCount(_cstFindHits.includes(_cstSel) ? _cstFindHits.indexOf(_cstSel) : -1);
+}
+function _cstFindCount(i) {
+  _cstEl.find.querySelector('.cst-find-n').textContent = !_cstFindQ ? '' : !_cstFindHits.length ? 'No match' : i < 0 ? `${_cstFindHits.length} found` : `${i + 1} of ${_cstFindHits.length}`;
+}
+function _cstFindStep(dir) {
+  if (!_cstFindHits.length) return;
+  const at = _cstFindHits.indexOf(_cstSel), i = at < 0 ? (dir > 0 ? 0 : _cstFindHits.length - 1) : (at + dir + _cstFindHits.length) % _cstFindHits.length;
+  _cstSelect(_cstFindHits[i], true); _cstPanTo(_cstFindHits[i]);
+  _cstFindCount(i);
+}
+
+/* ── Mind maps: more than one, each with a name ──────────────────────────── *
+   The Mind Map page keeps several maps. Each node carries the id of its map;
+   a map's name is one small record of kind 'map' in the same collection. The
+   first map ('mindmap') exists without a record until it is renamed. */
+function _cstMaps() {
+  const named = _cstAll.filter(n => n.kind === 'map');
+  const list = named.filter(m => m.map !== 'mindmap').map(m => ({ id: m.map, name: m.name || 'Untitled map' })).sort((a, b) => a.name.localeCompare(b.name));
+  return [{ id: 'mindmap', name: named.find(m => m.map === 'mindmap')?.name || 'Untitled map' }, ...list];
+}
+const _cstMapName = (id) => _cstMaps().find(m => m.id === id)?.name || 'Untitled map';
+
+// Show another map on the same stage: its nodes, its saved position, its own undo history.
+function _cstOpenMap(want) {
+  _cstInFlush(); _cstMenuClose();
+  clearTimeout(_cstViewTimer);
+  try { localStorage.setItem(_cstViewKey(), JSON.stringify(_cstView)); } catch (e) { /* fine */ }
+  _cstMap = want;
+  _cstSel = null; _cstFocus = null; _cstMulti.clear(); _cstLine = null; _cstSeen = null;
+  if (_cstEl.find && !_cstEl.find.hidden) { _cstEl.find.hidden = true; _cstFindQ = ''; _cstFindHits = []; }
+  _cstHist = _cstHists[want] || (_cstHists[want] = { undo: [], redo: [], busy: false });
+  NODES_CST = _cstMine();
+  _cstNeedFit = false; _cstLoadView(); _cstApplyView();
+  _cstHistUi();
+}
+function _cstMapGo(id) {
+  _cstMmCur = id;
+  try { localStorage.setItem('cdx_cst_mm', id); } catch (e) { /* fine */ }
+  _cstOpenMap(id); _cstRender();
+}
+
+// A one-line box where the map's name sits. Resolves with the text, or null on Esc / empty.
+function _cstAsk(placeholder, initial = '') {
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.className = 'cst-ask';
+    wrap.innerHTML = '<input class="cst-input" type="text" maxlength="60" autocomplete="off" spellcheck="false">';
+    _cstEl.stage.appendChild(wrap);
+    const input = wrap.querySelector('input');
+    input.placeholder = placeholder; input.value = initial;
+    let done = false;
+    const close = (keep) => { if (done) return; done = true; wrap.remove(); resolve(keep ? input.value.trim() || null : null); };
+    input.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); close(true); } else if (e.key === 'Escape') { e.preventDefault(); close(false); }
+    });
+    input.addEventListener('blur', () => setTimeout(() => close(false), 150));
+    input.focus({ preventScroll: true }); input.select();
+  });
+}
+
+// Writes in groups, since one save holds a limited number of records.
+async function _cstBulk(ops) {
+  try {
+    for (let i = 0; i < ops.length; i += 400) {
+      const w = CDX_FB.writeBatch(window.CDX_DB);
+      ops.slice(i, i + 400).forEach(f => f(w));
+      await w.commit();
+    }
+    return true;
+  } catch (e) { console.error(e); showToast('Could not save — try again', 'error'); return false; }
+}
+const _cstMapRef = (id) => _ud('constellation', 'map_' + id);
+const _cstMapRec = (id, name) => ({ kind: 'map', map: id, name, createdAt: CDX_FB.serverTimestamp() });
+
+async function _cstMapNew() {
+  const name = await _cstAsk('Name the new map'); if (!name) return;
+  const id = 'mm_' + crypto.randomUUID();
+  if (await _cstBulk([w => w.set(_cstMapRef(id), _cstMapRec(id, name))])) _cstMapGo(id);
+}
+async function _cstMapRename() {
+  const id = _cstMap, name = await _cstAsk('Rename this map', _cstMapName(id)); if (!name) return;
+  await _cstBulk([w => w.set(_cstMapRef(id), _cstMapRec(id, name))]);
+}
+// "Save a copy as…": the whole map again under a new name, so a version can be kept before changing it.
+async function _cstMapCopy() {
+  const name = await _cstAsk('Name the copy', _cstMapName(_cstMap) + ' copy'); if (!name) return;
+  const id = 'mm_' + crypto.randomUUID(), ids = new Map(NODES_CST.map(n => [n.id, crypto.randomUUID()]));
+  const ops = [w => w.set(_cstMapRef(id), _cstMapRec(id, name))];
+  NODES_CST.forEach(n => {
+    const d = { ...n, map: id, links: (n.links || []).map(l => ids.get(l)).filter(Boolean) }; delete d.id;
+    if (n.parent) d.parent = ids.get(n.parent) || null;
+    if (n.edges) d.edges = Object.fromEntries(Object.entries(n.edges).filter(([k]) => ids.has(k)).map(([k, v]) => [ids.get(k), v]));
+    ops.push(w => w.set(_ud('constellation', ids.get(n.id)), d));
+  });
+  if (await _cstBulk(ops)) { _cstMapGo(id); showToast(`Saved a copy · ${name}`); }
+}
+async function _cstMapDelete() {
+  const id = _cstMap, name = _cstMapName(id), n = NODES_CST.length;
+  if (!(await cdxConfirm(`Delete the map “${name}”${n ? ` and the ${n} ${n === 1 ? 'item' : 'items'} on it` : ''}? This cannot be undone.`))) return;
+  const ops = NODES_CST.map(x => w => w.delete(_ud('constellation', x.id)));
+  if (_cstAll.some(m => m.kind === 'map' && m.map === id)) ops.push(w => w.delete(_cstMapRef(id)));
+  if (await _cstBulk(ops)) { delete _cstHists[id]; _cstMapGo('mindmap'); showToast(`Deleted · ${name}`); }
+}
+function _cstMapMenu(btn) {
+  const r = btn.getBoundingClientRect();
+  _cstMenuOpen(r.left, r.bottom + 6, () => [
+    ..._cstMaps().map(m => ({ label: m.name, check: m.id === _cstMap, act: () => { if (m.id !== _cstMap) _cstMapGo(m.id); } })),
+    { divider: true },
+    { label: 'New map…', act: _cstMapNew },
+    { label: 'Rename…', act: _cstMapRename },
+    { label: 'Save a copy as…', act: _cstMapCopy },
+    { label: 'Delete this map…', act: _cstMapDelete },
+  ]);
+}
+
 /* ── Growing the map from the keyboard ───────────────────────────────────── *
    Tab opens a thought hanging from the selected one. Enter opens one beside
    it, hanging from the same thought it hangs from. Either key, pressed while
@@ -21651,8 +21900,8 @@ function _cstStep(dx, dy) {
   if (!from) {                                   // nothing selected: start from the middle of the view
     const c = _cstToWorld(_cstEl.stage.getBoundingClientRect().left + _cstEl.stage.clientWidth / 2,
       _cstEl.stage.getBoundingClientRect().top + _cstEl.stage.clientHeight / 2);
-    NODES_CST.forEach(n => { const d = Math.hypot(_cstX(n) - c.x, _cstY(n) - c.y); if (!best || d < best.d) best = { n, d }; });
-  } else NODES_CST.forEach(n => {
+    _cstVis().forEach(n => { const d = Math.hypot(_cstX(n) - c.x, _cstY(n) - c.y); if (!best || d < best.d) best = { n, d }; });
+  } else _cstVis().forEach(n => {
     if (n.id === from.id) return;
     const vx = _cstX(n) - _cstX(from), vy = _cstY(n) - _cstY(from);
     const along = vx * dx + vy * dy, across = Math.abs(vx * dy) + Math.abs(vy * dx);
@@ -22059,9 +22308,10 @@ function _cstLinkDrag(e, n) {
    With the Pan tool, Space held, the middle button, or a finger: slide the map. */
 
 function _cstPointerDown(e) {
-  if ((e.button !== 0 && e.button !== 1) || e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap')) return;
+  if ((e.button !== 0 && e.button !== 1) || e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-find,.cst-ask,.cst-mapbtn')) return;
   _cstMenuClose();
   const nodeEl = e.target.closest('.cst-node'), n = nodeEl && _cstById(nodeEl.dataset.id);
+  if (n && e.button === 0 && e.target.closest('.cst-fold')) { _cstFold(n.id); return; }
   if (n && e.button === 0 && e.target.closest('.cst-h')) { e.preventDefault(); _cstLinkDrag(e, n); return; }
   const lineEl = e.target.closest?.('.cst-lines g');
   const add = e.shiftKey || e.metaKey;
@@ -22147,7 +22397,7 @@ function _cstWheel(e) {
 }
 
 function _cstDblClick(e) {
-  if (e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-h')) return;
+  if (e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-h,.cst-fold,.cst-find,.cst-ask,.cst-mapbtn')) return;
   const ln = e.target.closest('.cst-lines g');
   if (ln) { _cstSelectLine(ln.dataset.a, ln.dataset.b); _cstLabelEdit(ln.dataset.a, ln.dataset.b); return; }
   const el = e.target.closest('.cst-node'), n = el && _cstById(el.dataset.id);
@@ -22163,12 +22413,14 @@ function _cstKey(e) {
   if (e.metaKey || e.ctrlKey) {
     const k = e.key.toLowerCase();
     if (k === 'z' || k === 'y') { e.preventDefault(); (k === 'y' || e.shiftKey ? _cstRedo : _cstUndo)(); }
-    else if (k === 'a') { e.preventDefault(); _cstSelectMany(NODES_CST.map(n => n.id)); }
+    else if (k === 'a') { e.preventDefault(); _cstSelectMany(_cstVis().map(n => n.id)); }
+    else if (k === 'f') { e.preventDefault(); _cstFindOpen(); }
     return;
   }
   const sel = _cstMulti.size === 1 ? _cstById(_cstSel) : null;   // Tab and Enter act on one node only
   if (e.key === 'Escape') {
     if (_cstMenu) _cstMenuClose();
+    else if (!_cstEl.find.hidden) _cstFindClose();
     else { _cstFocus = null; _cstSelect(null); }
     return;
   }
@@ -22187,7 +22439,10 @@ function _cstKey(e) {
     if (e.key === ' ') return;
   }
   if (e.key === ' ') { e.preventDefault(); if (!_cstSpace) { _cstSpace = true; _cstEl.stage.dataset.space = '1'; } return; }
-  if (e.key === 'f') { e.preventDefault(); _cstFit(); }
+  if (e.key === 'f' || (e.shiftKey && e.code === 'Digit1')) { e.preventDefault(); _cstFit(); }
+  else if (e.shiftKey && e.code === 'Digit2') { e.preventDefault(); if (_cstMulti.size) _cstFit(new Set(_cstMulti)); else showToast('Select something first.'); }
+  else if (e.key === '/') { e.preventDefault(); _cstFindOpen(); }
+  else if (e.key === '.' && sel?.kind === 'thought') { e.preventDefault(); _cstFold(sel.id); }
   else if (e.key === 'v' || e.key === 'h') { e.preventDefault(); _cstSetTool(e.key === 'v' ? 'move' : 'pan'); }
   else if (e.key === 'l' && _cstMulti.size === 2) { e.preventDefault(); const [a, c] = [..._cstMulti]; _cstToggleLink(a, c); }
   else if (e.key === 'Tab' && sel) { e.preventDefault(); _cstAddChild(sel); }
@@ -22213,8 +22468,20 @@ function initConstellation() {
     const sep = '<span class="cst-tools-sep" aria-hidden="true"></span>';
     _cstEl.tools.innerHTML = _cstIb('data-tool="move" aria-pressed="true"', 'select', 'Select and move (V)') + _cstIb('data-tool="pan" aria-pressed="false"', 'pan', 'Pan (H, or hold Space)')
       + sep + _cstIb('data-tool="add"', 'add', 'Add a thought (double-click)') + _cstIb('data-tool="delete" aria-disabled="true"', 'trash', 'Delete selected (Delete)', ' off')
+      + sep + _cstIb('data-tool="tidy"', 'tidy', 'Tidy: lay out as a tree (the selected branch, or everything)') + _cstIb('data-tool="find"', 'search', 'Search (/ or ⌘F)')
       + sep + _cstIb('data-tool="undo" aria-disabled="true"', 'undo', 'Undo (⌘Z)', ' off') + _cstIb('data-tool="redo" aria-disabled="true"', 'redo', 'Redo (⇧⌘Z)', ' off');
     _cstEl.bar.addEventListener('click', _cstBarClick);
+    _cstEl.find = q('.cst-find');
+    const fi = _cstEl.find.querySelector('input');
+    fi.addEventListener('input', () => _cstFindRun(fi.value));
+    fi.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); _cstFindStep(e.shiftKey ? -1 : 1); }
+      else if (e.key === 'Escape') { e.preventDefault(); _cstFindClose(); }
+      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') e.preventDefault();
+    });
+    _cstEl.find.querySelector('[data-close]').addEventListener('click', _cstFindClose);
+    _cstEl.eyebrow.addEventListener('click', e => { const b = e.target.closest('.cst-mapbtn'); if (b) _cstMapMenu(b); });
     _cstLoadView();
     _cstApplyView();
     const st = _cstEl.stage;
@@ -22235,6 +22502,8 @@ function initConstellation() {
         let at = _cstToWorld(r.left + st.clientWidth / 2, r.top + st.clientHeight / 2);
         if (NODES_CST.some(n => Math.hypot(_cstX(n) - at.x, _cstY(n) - at.y) < 90)) at = _cstPlace(at.x, at.y, NODES_CST);
         _cstInOpen({ x: at.x, y: at.y }); }
+      else if (t === 'tidy') _cstTidy();
+      else if (t === 'find') _cstFindOpen();
       else if (t === 'undo') _cstUndo();
       else if (t === 'redo') _cstRedo();
       else if (t === 'delete') _cstDeleteSel();
@@ -22260,22 +22529,14 @@ function initConstellation() {
       if (panel.style.display === 'none') { _cstMenuClose(); _cstInFlush(); }
     }).observe(panel, { attributes: true, attributeFilter: ['style'] });
   }
-  // Arriving from the other map's page: same stage, different nodes.
-  const want = _mainPanel === 'mindmap' ? 'mindmap' : 'constellation';
-  if (want !== _cstMap) {
-    _cstInFlush(); _cstMenuClose();
-    clearTimeout(_cstViewTimer);
-    try { localStorage.setItem(_cstViewKey(), JSON.stringify(_cstView)); } catch (e) { /* fine */ }
-    _cstMap = want;
-    _cstSel = null; _cstFocus = null; _cstMulti.clear(); _cstLine = null; _cstSeen = null;
-    _cstHist = _cstHists[want] || (_cstHists[want] = { undo: [], redo: [], busy: false });
-    NODES_CST = _cstMine();
-    _cstNeedFit = false; _cstLoadView(); _cstApplyView();
-    _cstHistUi();
-  }
+  // Arriving from the other page: same stage, different nodes.
+  const want = _mainPanel === 'mindmap' ? _cstMmCur : 'constellation';
+  if (want !== _cstMap) _cstOpenMap(want);
   if (!_cstUnsub) {
     _cstUnsub = CDX_FB.onSnapshot(_uc('constellation'), snap => {
       _cstAll = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // The open mind map was deleted (on another device, say): fall back to the first.
+      if (_cstMap.startsWith('mm_') && !_cstAll.some(m => m.kind === 'map' && m.map === _cstMap)) { _cstMmCur = 'mindmap'; _cstOpenMap('mindmap'); }
       NODES_CST = _cstMine();
       _cstLoaded = true;
       _cstRender();

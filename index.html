@@ -73,13 +73,24 @@
     </div>
   </div>
 
+  <!-- Four short groups rather than two long ones, so a page is found by what
+       it is for: today's work, planning ahead, thinking, focusing and looking
+       back. Rarely used pages sit in Tools, which starts folded. -->
   <div class="nav-sections">
     <div class="nav-section">
-      <div class="nav-section-label">Workspace</div>
+      <div class="nav-section-label">Today</div>
       <div class="nav-item active" data-panel="today" role="button" tabindex="0">
         <span class="nav-item-icon">◈</span>
         Dashboard
         <span class="nav-item-count" id="nav-count-today">—</span>
+      </div>
+      <div class="nav-item" data-panel="alltasks" id="nav-alltasks" role="button" tabindex="0">
+        <span class="nav-item-icon">✓</span>
+        Tasks
+      </div>
+      <div class="nav-item" data-panel="calendarx" id="nav-calendarx" role="button" tabindex="0">
+        <span class="nav-item-icon">▦</span>
+        Calendar
       </div>
       <div class="nav-item" data-panel="lists" id="nav-lists" role="button" tabindex="0">
         <span class="nav-item-icon">▤</span>
@@ -90,18 +101,10 @@
         <span class="nav-item-icon">✒</span>
         Daily notes
       </div>
-      <div class="nav-item" data-panel="alltasks" id="nav-alltasks" role="button" tabindex="0">
-        <span class="nav-item-icon">✓</span>
-        Tasks
-      </div>
-      <div class="nav-item" data-panel="calendarx" id="nav-calendarx" role="button" tabindex="0">
-        <span class="nav-item-icon">▦</span>
-        Calendar
-      </div>
     </div>
 
     <div class="nav-section">
-      <div class="nav-section-label">Life OS</div>
+      <div class="nav-section-label">Plan</div>
       <div class="nav-item" data-panel="planning" id="nav-planning" role="button" tabindex="0">
         <span class="nav-item-icon">◉</span>
         Planning
@@ -118,17 +121,38 @@
         </span>
         Orrery
       </div>
-      <div class="nav-item" data-panel="constellation" id="nav-constellation" role="button" tabindex="0">
-        <span class="nav-item-icon" aria-hidden="true">✧</span>
-        Constellation
-      </div>
       <div class="nav-item" data-panel="habits" id="nav-habits" role="button" tabindex="0">
         <span class="nav-item-icon">◎</span>
         Habits
       </div>
-      <div class="nav-item" data-panel="consolidation" id="nav-consolidation" role="button" tabindex="0">
-        <span class="nav-item-icon">◍</span>
-        Consolidation
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Think</div>
+      <div class="nav-item" data-panel="constellation" id="nav-constellation" role="button" tabindex="0">
+        <span class="nav-item-icon" aria-hidden="true">✧</span>
+        Constellation
+      </div>
+      <div class="nav-item" id="btn-mindmap" data-panel="mindmap" role="button" tabindex="0">
+        <span class="nav-item-icon">⬡</span>
+        Mind Map
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Focus &amp; review</div>
+      <div class="nav-item" data-panel="timedrift" id="nav-timedrift" role="button" tabindex="0">
+        <!-- Stillwater's mark: a still surface with one ring spreading from a
+             dropped point. The old ◌ was an empty circle shared with half the
+             icon set. -->
+        <span class="nav-item-icon nav-icon-stillwater" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.1">
+            <circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/>
+            <circle cx="8" cy="8" r="4" opacity=".7"/>
+            <circle cx="8" cy="8" r="6.6" opacity=".35"/>
+          </svg>
+        </span>
+        Stillwater
       </div>
       <div class="nav-item" data-panel="insights" id="nav-insights" role="button" tabindex="0">
         <span class="nav-item-icon">◈</span>
@@ -143,19 +167,6 @@
       <div class="nav-item" data-panel="drill" id="nav-drill" style="display:none" role="button" tabindex="0">
         <span class="nav-item-icon">◆</span>
         Drill
-      </div>
-      <div class="nav-item" data-panel="timedrift" id="nav-timedrift" role="button" tabindex="0">
-        <!-- Stillwater's mark: a still surface with one ring spreading from a
-             dropped point. The old ◌ was an empty circle shared with half the
-             icon set. -->
-        <span class="nav-item-icon nav-icon-stillwater" aria-hidden="true">
-          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.1">
-            <circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/>
-            <circle cx="8" cy="8" r="4" opacity=".7"/>
-            <circle cx="8" cy="8" r="6.6" opacity=".35"/>
-          </svg>
-        </span>
-        Stillwater
       </div>
     </div>
   </div>
@@ -180,9 +191,9 @@
         <span class="nav-item-icon">✦</span>
         Ask Cosmos
       </div>
-      <div class="nav-item" id="btn-mindmap" data-panel="mindmap" role="button" tabindex="0">
-        <span class="nav-item-icon">⬡</span>
-        Mind Map
+      <div class="nav-item" data-panel="consolidation" id="nav-consolidation" role="button" tabindex="0">
+        <span class="nav-item-icon">◍</span>
+        Consolidation
       </div>
       <div class="nav-item" id="btn-archived" data-panel="archived" role="button" tabindex="0">
         <span class="nav-item-icon">⊡</span>
@@ -995,6 +1006,11 @@
         </div>
         <div class="cst-tools" role="toolbar" aria-label="Constellation tools"><!-- built by initConstellation() --></div>
         <div class="cst-bar" role="toolbar" aria-label="Selection" hidden></div>
+        <div class="cst-find" role="search" hidden>
+          <input class="cst-input" type="text" autocomplete="off" spellcheck="false" placeholder="Search this map…" aria-label="Search this map">
+          <span class="cst-find-n" aria-live="polite"></span>
+          <button type="button" class="cst-x" data-close aria-label="Close search">×</button>
+        </div>
         <div class="cst-side" aria-label="Person"></div>
       </div>
     </div><!-- /panel-constellation -->

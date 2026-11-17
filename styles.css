@@ -8128,13 +8128,14 @@ textarea:focus-visible {
    dots (person, commitment). Priority is glow strength, never hue. The one
    surface is the right-click menu, which has to stay readable over lines. */
 #panel-constellation { flex:1; min-height:0; flex-direction:column; overflow:hidden; background:#000; }
-.cst-stage { position:relative; overflow:hidden; flex:1; min-height:0; background:#000; touch-action:none; cursor:grab; }
-.cst-stage:active { cursor:grabbing; }
+.cst-stage { position:relative; overflow:hidden; flex:1; min-height:0; background:#000; touch-action:none; cursor:default; }
 .cst-world { position:absolute; left:0; top:0; width:0; height:0; transform-origin:0 0; }
 .cst-lines { position:absolute; left:0; top:0; width:1px; height:1px; overflow:visible; pointer-events:none; }
 .cst-lines path { stroke:rgba(255,255,255,.16); stroke-width:1; fill:none; transition:stroke .25s; }
 .cst-lines path.hot { stroke:rgba(255,255,255,.34); }
 .cst-lines path.dim { stroke:rgba(255,255,255,.05); }
+.cst-lines path.pick { stroke:#fff; stroke-width:1.5; }
+.cst-lines path.hit { stroke:transparent; stroke-width:14; pointer-events:stroke; cursor:pointer; }   /* the wide, unseen twin that takes the click */
 .cst-layer { position:absolute; left:0; top:0; }
 .cst-node {
   position:absolute; display:flex; align-items:center; gap:6px; padding:6px 10px;
@@ -8162,6 +8163,13 @@ textarea:focus-visible {
 .cst-node.dim { opacity:.22; }
 .cst-node.cst-editing { visibility:hidden; }
 .cst-node:focus-visible { outline:1px solid rgba(255,255,255,.45); outline-offset:0; }
+/* The dot to drag a line from. It sits just outside the text and shows on hover or when selected. */
+.cst-h { position:absolute; right:-9px; top:50%; width:9px; height:9px; margin-top:-5px; box-sizing:border-box; border-radius:50%;
+  border:1px solid #fff; background:#000; box-shadow:0 0 8px rgba(255,255,255,.6); opacity:0; cursor:crosshair; transition:opacity .15s, background .15s; }
+.cst-h::after { content:''; position:absolute; inset:-8px; }   /* a bigger target than the dot itself */
+.cst-node:hover .cst-h, .cst-node.sel .cst-h { opacity:1; }
+.cst-h:hover { background:#fff; }
+.cst-marquee { position:absolute; border:1px dashed rgba(255,255,255,.55); background:rgba(255,255,255,.04); pointer-events:none; z-index:2; }
 .cst-inputwrap { position:absolute; transform:translate(-50%,-50%); width:240px; }
 .cst-input {
   width:100%; box-sizing:border-box; padding:4px 2px; border:0; border-bottom:1px solid rgba(255,255,255,.3);
@@ -8177,12 +8185,19 @@ textarea:focus-visible {
 .cst-ctl { position:absolute; right:20px; bottom:16px; display:flex; gap:6px; cursor:default; transition:right .25s ease; }
 .cst-ctl .btn-ghost { padding:4px 10px; font-size:var(--fs-small); }
 .cst-tools { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); display:flex; gap:6px; cursor:default; z-index:2; }
-.cst-tools .btn-ghost { padding:4px 10px; font-size:var(--fs-micro); color:var(--muted); border-color:rgba(255,255,255,.12); }
-.cst-tools .btn-ghost.on { color:#fff; border-color:#fff; }
-.cst-tools .btn-ghost.off { opacity:.45; }
-.cst-tools-sep { width:1px; margin:3px 2px; background:rgba(255,255,255,.14); }
-.cst-stage[data-tool="pan"], .cst-stage[data-tool="pan"] .cst-node { cursor:grab; }
-.cst-stage[data-tool="link"], .cst-stage[data-tool="link"] .cst-node { cursor:crosshair; }
+.cst-ib { display:inline-flex; align-items:center; justify-content:center; width:30px; height:28px; padding:0; color:var(--muted); border-color:rgba(255,255,255,.12); }
+.cst-ib svg { display:block; position:relative; }
+.cst-ib.on { color:#fff; border-color:#fff; }
+.cst-ib.off { opacity:.4; }
+.cst-tools-sep { width:1px; margin:4px 2px; background:rgba(255,255,255,.14); }
+.cst-stage[data-tool="pan"], .cst-stage[data-tool="pan"] .cst-node, .cst-stage[data-space], .cst-stage[data-space] .cst-node { cursor:grab; }
+.cst-stage[data-tool="pan"]:active, .cst-stage[data-space]:active { cursor:grabbing; }
+/* Floating bar over the selection: the one other surface besides the menu. */
+.cst-bar { position:absolute; display:flex; align-items:center; gap:4px; padding:4px; background:#0e0e0e; border:1px solid rgba(255,255,255,.16);
+  border-radius:var(--r-sm); box-shadow:0 10px 26px rgba(0,0,0,.7); cursor:default; z-index:4; white-space:nowrap; }
+.cst-bar[hidden] { display:none; }
+.cst-bar .cst-ib { border-color:transparent; color:#ddd; }
+.cst-bar-n { padding:0 8px 0 6px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
 @media (max-width:900px) {
   .cst-ctl { bottom:auto; top:48px; right:12px; }   /* below the eyebrow, which may wrap to two lines */
   .cst-eyebrow { white-space:normal; }
@@ -8221,8 +8236,6 @@ textarea:focus-visible {
 @media (max-width:700px) {
   .cst-side { left:0; top:auto; width:auto; height:50%; border-left:0; border-top:1px solid rgba(255,255,255,.12); transform:translateY(100%); }
   .cst-side.open { transform:none; }
-  .cst-tools { gap:3px; max-width:calc(100% - 12px); }
-  .cst-tools .btn-ghost { padding:4px 6px; letter-spacing:.04em; }
   .cst-stage.side-open .cst-tools { bottom:calc(50% + 12px); }   /* above the bottom sheet */
   .cst-stage.side-open .cst-hint { display:none; }
 }

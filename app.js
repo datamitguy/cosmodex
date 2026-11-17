@@ -483,8 +483,8 @@ function _showMainPanelPaint(name) {
   const orrPanel = document.getElementById('panel-orrery');
   if (orrPanel) orrPanel.style.display = name === 'orrery' ? 'flex' : 'none';
   const cstPanel = document.getElementById('panel-constellation');
-  if (cstPanel) cstPanel.style.display = name === 'constellation' ? 'flex' : 'none';
-  document.getElementById('panel-mindmap').style.display     = name === 'mindmap' ? 'flex' : 'none';
+  // The Mind Map page is the Constellation stage showing its own set of nodes.
+  if (cstPanel) cstPanel.style.display = (name === 'constellation' || name === 'mindmap') ? 'flex' : 'none';
   const dnPanel = document.getElementById('panel-dailynotes');
   if (dnPanel) dnPanel.style.display = name === 'dailynotes' ? 'flex' : 'none';
   const notesPanel = document.getElementById('panel-notes');
@@ -510,13 +510,12 @@ function _showMainPanelPaint(name) {
   // display flip above — a layout taken while display:none measures zero.
   if (name === 'orrery') { requestAnimationFrame(() => window.initOrrery?.()); }
   // Same reason as the orrery: the stage measures itself.
-  if (name === 'constellation') { requestAnimationFrame(() => window.initConstellation?.()); }
+  if (name === 'constellation' || name === 'mindmap') { requestAnimationFrame(() => window.initConstellation?.()); }
   if (name === 'drill') { renderDrill(); }
   const orbEl = document.getElementById('cosmodex-orb');
   if (orbEl) orbEl.style.display = name === 'timedrift' ? 'none' : '';
   if (name === 'timedrift') { startTimedrift(); }
   else { stopTimedrift(); }
-  if (name === 'mindmap') { window.initMindMap?.(); }
   if (name === 'notes') { window.initNotesCanvas?.(); }
   if (name === 'dailynotes') { window.initDailyNotes?.(); }
 }
@@ -12869,357 +12868,6 @@ setInterval(() => {
     }
   }
 }, 1000);
-/* ══ MIND MAP ENGINE ══════════════════════════════════════════════════════ */
-window.initMindMap = (function(){
-  let _init = false;
-  return function initMindMap() {
-    const canvas = document.getElementById('mm-canvas');
-    if (!canvas) return;
-    if (_init) { _mmResize(); return; }
-    _init = true;
-
-    const ctx = canvas.getContext('2d');
-    let nodes = [];      // { id, x, y, text, color }
-    let edges = [];      // { from, to }
-    let pan = { x: 0, y: 0 };
-    let zoom = 1;
-    let tool = 'select'; // 'select' | 'connect'
-    let drag = null;     // { nodeId, ox, oy }
-    let panDrag = null;  // { sx, sy, px, py }
-    let selected = null; // nodeId
-    let connectFrom = null;
-    let editing = null;  // nodeId being edited
-    let editEl = null;
-    const NODE_W = 140, NODE_H = 44, NODE_R = 10;
-    const COLORS = [
-      'rgba(61,184,255,0.18)','rgba(255,130,180,0.18)','rgba(224,85,85,0.18)',
-      'rgba(255,255,255,0.08)','rgba(100,200,140,0.15)'
-    ];
-    const STROKE_COLORS = [
-      'rgba(61,184,255,0.55)','rgba(255,130,180,0.55)','rgba(224,85,85,0.55)',
-      'rgba(255,255,255,0.28)','rgba(100,200,140,0.5)'
-    ];
-    let colorIdx = 0;
-
-    function _mmResize() {
-      const parent = canvas.parentElement;
-      canvas.width = parent.clientWidth;
-      canvas.height = parent.clientHeight;
-      draw();
-    }
-    window._mmResize = _mmResize;
-
-    function worldToScreen(wx, wy) {
-      return { x: wx * zoom + pan.x, y: wy * zoom + pan.y };
-    }
-    function screenToWorld(sx, sy) {
-      return { x: (sx - pan.x) / zoom, y: (sy - pan.y) / zoom };
-    }
-    function hitNode(wx, wy) {
-      for (let i = nodes.length - 1; i >= 0; i--) {
-        const n = nodes[i];
-        if (wx >= n.x - NODE_W/2 && wx <= n.x + NODE_W/2 &&
-            wy >= n.y - NODE_H/2 && wy <= n.y + NODE_H/2) return n;
-      }
-      return null;
-    }
-    function roundRect(ctx, x, y, w, h, r) {
-      ctx.beginPath();
-      ctx.moveTo(x+r, y);
-      ctx.lineTo(x+w-r, y);
-      ctx.arcTo(x+w, y, x+w, y+r, r);
-      ctx.lineTo(x+w, y+h-r);
-      ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
-      ctx.lineTo(x+r, y+h);
-      ctx.arcTo(x, y+h, x, y+h-r, r);
-      ctx.lineTo(x, y+r);
-      ctx.arcTo(x, y, x+r, y, r);
-      ctx.closePath();
-    }
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // Grid dots
-      ctx.save();
-      ctx.fillStyle = 'rgba(255,255,255,0.04)';
-      const gridSpacing = 32 * zoom;
-      const ox = ((pan.x % gridSpacing) + gridSpacing) % gridSpacing;
-      const oy = ((pan.y % gridSpacing) + gridSpacing) % gridSpacing;
-      for (let gx = ox; gx < canvas.width; gx += gridSpacing)
-        for (let gy = oy; gy < canvas.height; gy += gridSpacing)
-          { ctx.beginPath(); ctx.arc(gx, gy, 1, 0, Math.PI*2); ctx.fill(); }
-      ctx.restore();
-
-      ctx.save();
-      ctx.translate(pan.x, pan.y);
-      ctx.scale(zoom, zoom);
-
-      // Edges
-      edges.forEach(e => {
-        const a = nodes.find(n=>n.id===e.from);
-        const b = nodes.find(n=>n.id===e.to);
-        if (!a || !b) return;
-        ctx.beginPath();
-        const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
-        ctx.moveTo(a.x, a.y);
-        ctx.bezierCurveTo(mx, a.y, mx, b.y, b.x, b.y);
-        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-        ctx.lineWidth = 1.5 / zoom;
-        ctx.stroke();
-      });
-
-      // Connect-mode line preview handled via mousemove
-
-      // Nodes
-      nodes.forEach(n => {
-        const x = n.x - NODE_W/2, y = n.y - NODE_H/2;
-        const ci = n.colorIdx || 0;
-        // Backdrop blur simulation via layered fills
-        ctx.save();
-        roundRect(ctx, x, y, NODE_W, NODE_H, NODE_R);
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fill();
-        ctx.fillStyle = COLORS[ci % COLORS.length];
-        ctx.fill();
-        ctx.strokeStyle = selected === n.id ? 'rgba(255,255,255,0.65)' :
-                          connectFrom === n.id ? 'rgba(61,184,255,0.85)' :
-                          STROKE_COLORS[ci % STROKE_COLORS.length];
-        ctx.lineWidth = selected === n.id || connectFrom === n.id ? 1.5/zoom : 1/zoom;
-        ctx.stroke();
-        ctx.restore();
-
-        // Text
-        ctx.save();
-        ctx.font = `300 ${12/zoom > 14 ? 14 : 12}px 'Instrument Sans', sans-serif`;
-        ctx.fillStyle = 'rgba(255,255,255,0.88)';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const maxW = NODE_W - 20;
-        let label = n.text || '…';
-        if (ctx.measureText(label).width > maxW) {
-          while (label.length > 1 && ctx.measureText(label+'…').width > maxW) label = label.slice(0,-1);
-          label += '…';
-        }
-        ctx.fillText(label, n.x, n.y);
-        ctx.restore();
-      });
-
-      ctx.restore();
-    }
-
-    function addNode(wx, wy, text='') {
-      const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-      const node = { id, x: wx, y: wy, text, colorIdx: colorIdx % COLORS.length };
-      colorIdx++;
-      nodes.push(node);
-      selected = id;
-      draw();
-      if (!text) startEdit(node);
-      return node;
-    }
-
-    function deleteSelected() {
-      if (!selected) return;
-      nodes = nodes.filter(n => n.id !== selected);
-      edges = edges.filter(e => e.from !== selected && e.to !== selected);
-      selected = null;
-      connectFrom = null;
-      draw();
-    }
-
-    function startEdit(node) {
-      if (editing) finishEdit();
-      editing = node.id;
-      const sp = worldToScreen(node.x - NODE_W/2, node.y - NODE_H/2);
-      if (!editEl) {
-        editEl = document.createElement('input');
-        editEl.style.cssText = `position:absolute;background:rgba(0,0,0,0.82);border:1px solid rgba(255,255,255,0.35);color:#fff;border-radius:var(--r-sm);padding:4px 10px;font-family:'Instrument Sans',sans-serif;font-size:var(--fs-small);outline:none;z-index:10;box-sizing:border-box;`;
-        canvas.parentElement.appendChild(editEl);
-        editEl.addEventListener('keydown', e => {
-          if (e.key === 'Enter') { e.preventDefault(); finishEdit(); }
-          if (e.key === 'Escape') { cancelEdit(); }
-          e.stopPropagation();
-        });
-        editEl.addEventListener('blur', () => finishEdit());
-      }
-      editEl.value = node.text;
-      editEl.style.left = sp.x + 'px';
-      editEl.style.top = sp.y + 'px';
-      editEl.style.width = (NODE_W * zoom) + 'px';
-      editEl.style.height = (NODE_H * zoom) + 'px';
-      editEl.style.display = 'block';
-      editEl.style.lineHeight = (NODE_H * zoom) + 'px';
-      editEl.style.textAlign = 'center';
-      setTimeout(()=>{ editEl.focus(); editEl.select(); }, 10);
-    }
-
-    function finishEdit() {
-      if (!editing) return;
-      const node = nodes.find(n => n.id === editing);
-      if (node && editEl) node.text = editEl.value.trim() || '…';
-      editing = null;
-      if (editEl) editEl.style.display = 'none';
-      draw();
-    }
-
-    function cancelEdit() {
-      const node = nodes.find(n => n.id === editing);
-      // if node was just created with no text, remove it
-      if (node && !node.text) { nodes = nodes.filter(n=>n.id!==editing); selected=null; }
-      editing = null;
-      if (editEl) editEl.style.display = 'none';
-      draw();
-    }
-
-    function centerView() {
-      if (!nodes.length) { pan = { x: canvas.width/2, y: canvas.height/2 }; zoom = 1; draw(); return; }
-      const xs = nodes.map(n=>n.x), ys = nodes.map(n=>n.y);
-      const cx = (Math.min(...xs)+Math.max(...xs))/2;
-      const cy = (Math.min(...ys)+Math.max(...ys))/2;
-      pan = { x: canvas.width/2 - cx*zoom, y: canvas.height/2 - cy*zoom };
-      draw();
-    }
-
-    // ── Mouse / Touch ────────────────────────────────────
-    let connectPreview = null;
-    canvas.addEventListener('mousedown', e => {
-      if (editing) { finishEdit(); return; }
-      const rect = canvas.getBoundingClientRect();
-      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-      const w = screenToWorld(sx, sy);
-      const hit = hitNode(w.x, w.y);
-
-      if (tool === 'connect') {
-        if (hit) {
-          if (!connectFrom) { connectFrom = hit.id; draw(); }
-          else if (connectFrom !== hit.id) {
-            const exists = edges.find(ed=>(ed.from===connectFrom&&ed.to===hit.id)||(ed.from===hit.id&&ed.to===connectFrom));
-            if (!exists) edges.push({ from: connectFrom, to: hit.id });
-            connectFrom = null; draw();
-          }
-        } else { connectFrom = null; draw(); }
-        return;
-      }
-
-      // select tool
-      if (hit) {
-        selected = hit.id;
-        drag = { nodeId: hit.id, ox: w.x - hit.x, oy: w.y - hit.y };
-        draw();
-      } else {
-        selected = null;
-        panDrag = { sx, sy, px: pan.x, py: pan.y };
-        draw();
-      }
-    });
-
-    canvas.addEventListener('mousemove', e => {
-      const rect = canvas.getBoundingClientRect();
-      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-      const w = screenToWorld(sx, sy);
-
-      if (tool === 'connect' && connectFrom) {
-        connectPreview = { wx: w.x, wy: w.y };
-        // Redraw with preview line
-        draw();
-        ctx.save();
-        ctx.translate(pan.x, pan.y); ctx.scale(zoom, zoom);
-        const a = nodes.find(n=>n.id===connectFrom);
-        if (a) {
-          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(w.x, w.y);
-          ctx.strokeStyle = 'rgba(61,184,255,0.6)'; ctx.lineWidth = 1.5/zoom; ctx.setLineDash([4/zoom,4/zoom]); ctx.stroke(); ctx.setLineDash([]);
-        }
-        ctx.restore();
-        return;
-      }
-      connectPreview = null;
-
-      if (drag) {
-        const node = nodes.find(n=>n.id===drag.nodeId);
-        if (node) { node.x = w.x - drag.ox; node.y = w.y - drag.oy; draw(); }
-      } else if (panDrag) {
-        pan.x = panDrag.px + (sx - panDrag.sx);
-        pan.y = panDrag.py + (sy - panDrag.sy);
-        draw();
-      }
-
-      // cursor
-      const hit = hitNode(w.x, w.y);
-      canvas.style.cursor = hit ? (tool==='connect' ? 'crosshair' : 'grab') : (tool==='connect'?'crosshair':'default');
-    });
-
-    canvas.addEventListener('mouseup', () => {
-      drag = null; panDrag = null;
-    });
-
-    canvas.addEventListener('dblclick', e => {
-      if (editing) return;
-      const rect = canvas.getBoundingClientRect();
-      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-      const w = screenToWorld(sx, sy);
-      const hit = hitNode(w.x, w.y);
-      if (hit) { selected = hit.id; startEdit(hit); }
-      else { addNode(w.x, w.y); }
-    });
-
-    canvas.addEventListener('wheel', e => {
-      e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-      const delta = e.deltaY < 0 ? 1.12 : 1/1.12;
-      const newZoom = Math.min(4, Math.max(0.2, zoom * delta));
-      pan.x = mx - (mx - pan.x) * (newZoom/zoom);
-      pan.y = my - (my - pan.y) * (newZoom/zoom);
-      zoom = newZoom;
-      draw();
-    }, { passive: false });
-
-    // Keyboard
-    document.addEventListener('keydown', e => {
-      if (document.getElementById('panel-mindmap')?.style.display === 'none') return;
-      if (editing) return;
-      if (e.key === 'Delete' || e.key === 'Backspace') { if(selected) { e.preventDefault(); deleteSelected(); } }
-      if (e.key === ' ') { e.preventDefault(); centerView(); }
-      if (e.key === 'v' || e.key === 'V') setTool('select');
-      if (e.key === 'c' || e.key === 'C') setTool('connect');
-      if (e.key === 'a' || e.key === 'A') {
-        const w = screenToWorld(canvas.width/2, canvas.height/2);
-        addNode(w.x + (Math.random()-0.5)*80, w.y + (Math.random()-0.5)*80);
-      }
-    });
-
-    function setTool(t) {
-      tool = t;
-      connectFrom = null;
-      document.querySelectorAll('.mm-tool-btn[data-tool]').forEach(b => {
-        b.classList.toggle('active', b.dataset.tool === t);
-      });
-      draw();
-    }
-
-    // Toolbar buttons
-    document.getElementById('mm-tool-select')?.addEventListener('click', () => setTool('select'));
-    document.getElementById('mm-tool-connect')?.addEventListener('click', () => setTool('connect'));
-    document.getElementById('mm-btn-add')?.addEventListener('click', () => {
-      const w = screenToWorld(canvas.width/2, canvas.height/2);
-      addNode(w.x + (Math.random()-0.5)*100, w.y + (Math.random()-0.5)*100);
-    });
-    document.getElementById('mm-btn-delete')?.addEventListener('click', deleteSelected);
-    document.getElementById('mm-btn-center')?.addEventListener('click', centerView);
-    document.getElementById('mm-btn-clear')?.addEventListener('click', async () => {
-      if (nodes.length && !(await cdxConfirm('Clear every node on this map?',
-            { okLabel: 'Clear', okColor: '#e05555', okBg: 'rgba(224,85,85,0.18)', okBorder: 'rgba(224,85,85,0.4)' }))) return;
-      nodes=[]; edges=[]; selected=null; connectFrom=null; draw();
-    });
-
-    // Initial state — seed with a root node
-    pan = { x: canvas.width/2, y: canvas.height/2 };
-    addNode(0, 0, 'Central Idea');
-    selected = null;
-    draw();
-
-    new ResizeObserver(_mmResize).observe(canvas.parentElement);
-  };
-})();
 /* ══ DAILY BUSINESS COMMUNICATION DRILL ══ */
 // → future file: cosmodex-drill.js
 // Practice defending decisions, translating technical issues, and communicating
@@ -21242,7 +20890,10 @@ document.addEventListener('DOMContentLoaded', () => {
    the batch touched.
    ══════════════════════════════════════════════════════════════════════════ */
 
-let NODES_CST = [];
+let NODES_CST = [];              // the nodes of the map on screen
+let _cstAll = [];                // every node, both maps
+let _cstMap = 'constellation';   // 'constellation' | 'mindmap' — the Mind Map page is this same page with its own nodes
+const _cstHists = {};            // undo history, kept per map
 let _cstUnsub = null;
 let _cstWired = false;
 let _cstLoaded = false;          // first snapshot has arrived
@@ -21263,9 +20914,11 @@ let _cstViewTimer = null;
 let _cstDrag = false;            // a node is being dragged: a snapshot re-render waits
 let _cstDirty = false;           // …and runs once on release
 let _cstRefreshQ = 0;
-let _cstHist = { undo: [], redo: [], busy: false };   // see "Undo and redo"
+let _cstHist = _cstHists.constellation = { undo: [], redo: [], busy: false };   // see "Undo and redo"
 
-const _CST_VIEW_KEY = 'cdx_cst_view';
+const _cstViewKey = () => _cstMap === 'mindmap' ? 'cdx_cst_view_mindmap' : 'cdx_cst_view';
+const _cstOn = () => typeof _mainPanel !== 'undefined' && (_mainPanel === 'constellation' || _mainPanel === 'mindmap');
+const _cstMine = () => _cstAll.filter(n => (n.map || 'constellation') === _cstMap);
 // Line icons, one weight, drawn in the text colour. Paths on a 24 grid.
 const _CST_ICON = {
   select: 'M5 3l14 7-6 2-2 6z',
@@ -21296,7 +20949,18 @@ const _cstY = (n) => Number.isFinite(n.y) ? n.y : 0;
 // Where to put a node hung off (px,py): twelve points on a ring, take the one
 // farthest from everything already there. Ties go to the side facing away
 // from the middle of the whole map, so growth spreads outwards.
-function _cstPlace(px, py, others, radius = 150) {
+// How much room a node takes on the map (unscaled). Measured when it is on
+// screen, estimated from its text when it is not yet.
+function _cstSize(n) {
+  const el = n.id && _cstEl.layer?.querySelector(`[data-id="${CSS.escape(n.id)}"]`);
+  return { w: el?.offsetWidth || Math.min(260, 28 + (n.text || '').length * 7), h: el?.offsetHeight || 30 };
+}
+
+// A free spot near (px, py) for something `w` wide: tries a ring of twelve
+// directions, then wider rings, and takes the first ring with a spot whose
+// box touches nobody else's. Within a ring it prefers the emptiest side,
+// then the side facing away from the middle of the map.
+function _cstPlace(px, py, others, radius = 150, w = 240, h = 40) {
   let cx = px, cy = py;
   if (others.length) {
     cx = others.reduce((s, n) => s + _cstX(n), 0) / others.length;
@@ -21304,13 +20968,18 @@ function _cstPlace(px, py, others, radius = 150) {
   }
   let ax = px - cx, ay = py - cy;
   const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+  const boxes = others.map(n => ({ x: _cstX(n), y: _cstY(n), ..._cstSize(n) }));
+  const clear = (x, y) => !boxes.some(b => Math.abs(b.x - x) < (b.w + w) / 2 + 12 && Math.abs(b.y - y) < (b.h + h) / 2 + 8);
   let best = null;
-  for (let i = 0; i < 12; i++) {
-    const a = i * Math.PI / 6, dx = Math.cos(a), dy = Math.sin(a);
-    const x = px + dx * radius, y = py + dy * radius;
-    const d = others.length ? Math.min(...others.map(n => Math.hypot(_cstX(n) - x, _cstY(n) - y))) : radius;
-    const away = dx * ax + dy * ay;
-    if (!best || d > best.d + 0.5 || (Math.abs(d - best.d) <= 0.5 && away > best.away)) best = { x, y, d, away };
+  for (let ring = 0; ring < 5 && !best?.ok; ring++) {
+    const r = radius + ring * 90;
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6, dx = Math.cos(a), dy = Math.sin(a);
+      const x = px + dx * r, y = py + dy * r * 0.7;      // flatter than a circle: text is wide, not tall
+      const d = boxes.length ? Math.min(...boxes.map(b => Math.hypot(b.x - x, b.y - y))) : r;
+      const c = { x, y, d, away: dx * ax + dy * ay, ok: clear(x, y) };
+      if (!best || (c.ok && !best.ok) || (c.ok === best.ok && (c.d > best.d + 0.5 || (Math.abs(c.d - best.d) <= 0.5 && c.away > best.away)))) best = c;
+    }
   }
   return { x: Math.round(best.x), y: Math.round(best.y) };
 }
@@ -21404,7 +21073,7 @@ function _cstBatch() {
 }
 
 function _cstDoc(kind, text, pos, extra = {}) {
-  return { kind, text, x: pos.x, y: pos.y, priority: null, projectId: null, taskId: null, links: [],
+  return { kind, text, x: pos.x, y: pos.y, priority: null, projectId: null, taskId: null, links: [], map: _cstMap,
     createdAt: CDX_FB.serverTimestamp(), ...extra };
 }
 
@@ -21526,9 +21195,10 @@ const _cstRedo = () => _cstHistStep(1);
 
 function _cstLoadView() {
   try {
-    const v = JSON.parse(localStorage.getItem(_CST_VIEW_KEY));
+    const v = JSON.parse(localStorage.getItem(_cstViewKey()));
     if (v && [v.x, v.y, v.z].every(Number.isFinite)) { _cstView = { x: v.x, y: v.y, z: _cstClamp(v.z) }; return; }
   } catch (e) { /* storage blocked: start fitted */ }
+  _cstView = { x: 0, y: 0, z: 1 };
   _cstNeedFit = true;
 }
 
@@ -21537,7 +21207,8 @@ function _cstApplyView() {
   _cstEl.world.style.transform = `translate(${v.x}px,${v.y}px) scale(${v.z})`;
   _cstBar();
   clearTimeout(_cstViewTimer);
-  _cstViewTimer = setTimeout(() => { try { localStorage.setItem(_CST_VIEW_KEY, JSON.stringify(_cstView)); } catch (e) { /* fine */ } }, 300);
+  const key = _cstViewKey(), val = JSON.stringify(_cstView);
+  _cstViewTimer = setTimeout(() => { try { localStorage.setItem(key, val); } catch (e) { /* fine */ } }, 300);
 }
 
 function _cstZoomAt(factor, cx, cy) {
@@ -21604,7 +21275,7 @@ function _cstNodeHtml(n, counts) {
 }
 
 function _cstRender() {
-  if (typeof _mainPanel === 'undefined' || _mainPanel !== 'constellation' || !_cstEl.layer) return;
+  if (!_cstOn() || !_cstEl.layer) return;
   if (_cstDrag) { _cstDirty = true; return; }   // the dragged element must survive until release
   const kbd = document.activeElement?.closest?.('.cst-node')?.dataset.id;
   const counts = {};
@@ -21629,7 +21300,7 @@ function _cstRender() {
 
   const people = NODES_CST.filter(n => n.kind === 'person').length;
   const th = NODES_CST.length - people;
-  _cstEl.eyebrow.textContent = `CONSTELLATION · ${th} ${th === 1 ? 'THOUGHT' : 'THOUGHTS'} · ${people} ${people === 1 ? 'PERSON' : 'PEOPLE'}`;
+  _cstEl.eyebrow.textContent = `${_cstMap === 'mindmap' ? 'MIND MAP' : 'CONSTELLATION'} · ${th} ${th === 1 ? 'THOUGHT' : 'THOUGHTS'} · ${people} ${people === 1 ? 'PERSON' : 'PEOPLE'}`;
   _cstEl.empty.hidden = NODES_CST.length > 0 || !!_cstIn;
 
   if (_cstIn?.editId) _cstEl.layer.querySelector(`[data-id="${CSS.escape(_cstIn.editId)}"]`)?.classList.add('cst-editing');
@@ -22059,13 +21730,15 @@ function _cstThoughtMenu(id) {
   }));
   const commitment = () => {
     const list = projL();
-    if (!list.length) return [{ label: 'No commitments yet.', muted: true }];
+    const make = { label: 'New commitment from this thought', act: () => _cstNewCommitment(id) };
+    if (!list.length) return [{ label: 'No commitments yet.', muted: true }, make];
     const set = (pid) => async () => {
       if (!(await _cstSaveNode(id, { projectId: pid }, 'Commitment'))) return;
       if (task()) updateTask(n().taskId, { projectId: pid });
     };
     return [{ label: 'No commitment', check: !n()?.projectId, act: set(null) },
-      ...list.map(m => ({ label: m.title, dot: m.color, check: n()?.projectId === m.id, act: set(m.id) }))];
+      ...list.map(m => ({ label: m.title, dot: m.color, check: n()?.projectId === m.id, act: set(m.id) })),
+      { divider: true }, make];
   };
   const person = () => {
     const list = peopleL();
@@ -22098,6 +21771,23 @@ async function _cstTogglePerson(thoughtId, person) {
     if (!b.degree(pn.id)) b.del(pn.id);
   } else _cstAttachPerson(b, thoughtId, person);
   await b.commit('Person');
+}
+
+// The thought becomes a commitment of its own: three months from today, the
+// next colour not in use. The thought is then filed under it. Dates, cadence
+// and the rest are edited in Planning.
+async function _cstNewCommitment(id) {
+  const n = _cstById(id); if (!n || !(n.text || '').trim()) return;
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const start = new Date(), end = new Date(); end.setMonth(end.getMonth() + 3);
+  const used = new Set((typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : []).map(m => m.color));
+  const color = PROJECT_COLORS.find(c => !used.has(c)) || PROJECT_COLORS[0];
+  try {
+    const ref = await addMilestoneProject(n.text.trim(), iso(start), iso(end), color);
+    if (!(await _cstSaveNode(id, { projectId: ref.id }, 'Commitment'))) return;
+    if (_cstTaskFor(n)) updateTask(n.taskId, { projectId: ref.id });
+    showToast(`Commitment created · runs to ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}. Edit it in Planning.`);
+  } catch (e) { console.error(e); showToast('Could not save — try again', 'error'); }
 }
 
 async function _cstPromote(id) {
@@ -22307,7 +21997,7 @@ function _cstDblClick(e) {
 }
 
 function _cstKey(e) {
-  if (typeof _mainPanel === 'undefined' || _mainPanel !== 'constellation') return;
+  if (!_cstOn()) return;
   const t = e.target;
   if (t.closest?.('input,textarea,[contenteditable]') || e.altKey) return;
   if (document.querySelector('.overlay.open')) return;      // a dialog is up: the map keeps out of it
@@ -22406,9 +22096,23 @@ function initConstellation() {
       if (panel.style.display === 'none') { _cstMenuClose(); _cstInFlush(); }
     }).observe(panel, { attributes: true, attributeFilter: ['style'] });
   }
+  // Arriving from the other map's page: same stage, different nodes.
+  const want = _mainPanel === 'mindmap' ? 'mindmap' : 'constellation';
+  if (want !== _cstMap) {
+    _cstInFlush(); _cstMenuClose();
+    clearTimeout(_cstViewTimer);
+    try { localStorage.setItem(_cstViewKey(), JSON.stringify(_cstView)); } catch (e) { /* fine */ }
+    _cstMap = want;
+    _cstSel = null; _cstFocus = null; _cstMulti.clear(); _cstLine = null; _cstSeen = null;
+    _cstHist = _cstHists[want] || (_cstHists[want] = { undo: [], redo: [], busy: false });
+    NODES_CST = _cstMine();
+    _cstNeedFit = false; _cstLoadView(); _cstApplyView();
+    _cstHistUi();
+  }
   if (!_cstUnsub) {
     _cstUnsub = CDX_FB.onSnapshot(_uc('constellation'), snap => {
-      NODES_CST = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _cstAll = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      NODES_CST = _cstMine();
       _cstLoaded = true;
       _cstRender();
     });
@@ -22420,13 +22124,14 @@ window.initConstellation = initConstellation;
 function _cstReset() {
   if (_cstUnsub) { _cstUnsub(); _cstUnsub = null; }
   _cstInClose(true); _cstMenuClose();
-  NODES_CST = []; _cstLoaded = false; _cstSeen = null;
+  NODES_CST = []; _cstAll = []; _cstLoaded = false; _cstSeen = null;
   _cstSel = null; _cstFocus = null; _cstMulti.clear(); _cstLine = null;
-  _cstHist = { undo: [], redo: [], busy: false }; _cstHistUi();
+  Object.keys(_cstHists).forEach(k => delete _cstHists[k]);
+  _cstHist = _cstHists[_cstMap] = { undo: [], redo: [], busy: false }; _cstHistUi();
   if (_cstEl.layer) { _cstEl.layer.innerHTML = ''; _cstEl.lines.innerHTML = ''; _cstSide(); }
 }
 // TASKS, PEOPLE and commitments feed the map; a no-op until the page is showing.
 window._cstRefresh = () => {
-  if (_cstRefreshQ || !_cstEl.layer || _mainPanel !== 'constellation') return;
+  if (_cstRefreshQ || !_cstEl.layer || !_cstOn()) return;
   _cstRefreshQ = requestAnimationFrame(() => { _cstRefreshQ = 0; _cstRender(); });
 };

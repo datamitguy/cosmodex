@@ -1008,27 +1008,6 @@
       <section class="dn-view" id="dn-view"></section>
     </div><!-- /panel-dailynotes -->
 
-    <!-- Mind Map Panel -->
-    <div id="panel-mindmap" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:#000000;position:relative">
-      <!-- Toolbar -->
-      <div id="mm-toolbar" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;background:rgba(255,255,255,0.03)">
-        <button class="mm-tool-btn active" id="mm-tool-select" title="Select (V)" data-tool="select">↖</button>
-        <button class="mm-tool-btn" id="mm-tool-connect" title="Connect (C)" data-tool="connect">⌁</button>
-        <div style="width:1px;height:20px;background:rgba(255,255,255,0.12);margin:0 4px"></div>
-        <button class="mm-tool-btn" id="mm-btn-add" title="Add node (A)">＋</button>
-        <button class="mm-tool-btn" id="mm-btn-delete" title="Delete selected (Del)">⌫</button>
-        <div style="width:1px;height:20px;background:rgba(255,255,255,0.12);margin:0 4px"></div>
-        <button class="mm-tool-btn" id="mm-btn-center" title="Center view (Space)">⊕</button>
-        <button class="mm-tool-btn" id="mm-btn-clear" title="Clear all">⊘</button>
-        <div style="flex:1"></div>
-        <span style="font-family:var(--font-mono);font-size:var(--fs-micro);color:rgba(255,255,255,0.28);letter-spacing:0.06em">Double-click canvas to add · Drag to move · Connect mode to link</span>
-      </div>
-      <!-- Canvas -->
-      <!-- min-height:0 or flex:1 cannot shrink the canvas below its own height
-           attribute, and the panel overflows by exactly the toolbar's height. -->
-      <canvas id="mm-canvas" style="flex:1;min-height:0;display:block;cursor:default"></canvas>
-    </div>
-
     <!-- Notes Panel (scribble canvas — its own page) -->
     <div id="panel-notes" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:#000000">
       <div class="overlay-header" style="padding:10px 16px;gap:8px;flex-wrap:wrap;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.08)">

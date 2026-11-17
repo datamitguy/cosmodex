@@ -21260,6 +21260,7 @@ let _cstViewTimer = null;
 let _cstDrag = false;            // a node is being dragged: a snapshot re-render waits
 let _cstDirty = false;           // …and runs once on release
 let _cstRefreshQ = 0;
+let _cstHist = { undo: [], redo: [], busy: false };   // see "Undo and redo"
 
 const _CST_VIEW_KEY = 'cdx_cst_view';
 const _cstReduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -21358,25 +21359,23 @@ function _cstBatch() {
       b.del(id);
       near.forEach(n => { if (n.kind === 'person' && gone.kind === 'thought' && !b.degree(n.id)) b.del(n.id); });
     },
-    async commit() {
+    async commit(label) {
+      if (!ops.length) return true;
       try {
         const w = CDX_FB.writeBatch(window.CDX_DB);
         ops.forEach(f => f(w));
         await w.commit();
+        const bare = (n) => { if (!n) return null; const o = { ...n }; delete o.id; return o; };
+        const items = [];
+        touched.forEach((o, id) => items.push({ id, before: o, after: bare(local.get(id)) }));
+        staged.forEach((d, id) => { if (local.has(id)) items.push({ id, before: null, after: d }); });
+        _cstHistPush(label, items);
         return true;
       } catch (e) {
         console.error('constellation write failed:', e);
         showToast('Could not save — try again', 'error');
         return false;
       }
-    },
-    // Puts back the original of everything this batch touched.
-    revert() {
-      return async () => {
-        const w = CDX_FB.writeBatch(window.CDX_DB);
-        touched.forEach((o, id) => w.set(_ud('constellation', id), o));
-        await w.commit();
-      };
     },
   };
   return b;
@@ -21399,10 +21398,90 @@ function _cstAttachPerson(b, thoughtId, person) {
   b.link(thoughtId, pn.id);
 }
 
-async function _cstSaveNode(id, patch) {
-  try { await CDX_FB.updateDoc(_ud('constellation', id), patch); return true; }
-  catch (e) { console.error(e); showToast('Could not save — try again', 'error'); return false; }
+// `prev` is what the patched fields held before, for when the caller has
+// already changed the node in memory (a drag).
+async function _cstSaveNode(id, patch, label, prev) {
+  const n = _cstById(id);
+  const before = prev || (n ? Object.fromEntries(Object.keys(patch).map(k => [k, n[k] ?? null])) : null);
+  try {
+    await CDX_FB.updateDoc(_ud('constellation', id), patch);
+    if (before) _cstHistPush(label, [{ id, before, after: { ...patch } }]);
+    return true;
+  } catch (e) { console.error(e); showToast('Could not save — try again', 'error'); return false; }
 }
+
+/* ── Undo and redo ───────────────────────────────────────────────────────── *
+   Every change to the map is kept as a step: for each node it touched, what
+   the node was before and after (null = it did not exist). A whole node is
+   stored when it is created or deleted; otherwise only the fields that
+   changed, so undoing a step never overwrites anything else on the node.
+   Not covered: "Add to Tasks" (the task it creates is yours to keep) and a
+   person newly added to Settings while typing. */
+function _cstHistPush(label, items) {
+  if (!items.length) return;
+  _cstHist.undo.push({ label: label || 'Change', items });
+  if (_cstHist.undo.length > 100) _cstHist.undo.shift();
+  _cstHist.redo = [];
+  _cstHistUi();
+}
+
+function _cstHistUi() {
+  [['undo', _cstHist.undo], ['redo', _cstHist.redo]].forEach(([k, stack]) => {
+    const b = _cstEl.tools?.querySelector(`[data-tool="${k}"]`); if (!b) return;
+    b.classList.toggle('off', !stack.length);
+    b.setAttribute('aria-disabled', !stack.length);
+    const top = stack[stack.length - 1];
+    b.title = `${k === 'undo' ? 'Undo' : 'Redo'}${top ? ' · ' + top.label : ''} (${k === 'undo' ? '⌘Z' : '⇧⌘Z'})`;
+  });
+}
+
+async function _cstHistStep(dir) {            // -1 undo, +1 redo
+  const fromStack = dir < 0 ? _cstHist.undo : _cstHist.redo, toStack = dir < 0 ? _cstHist.redo : _cstHist.undo;
+  if (_cstHist.busy) return;
+  if (!fromStack.length) { showToast(dir < 0 ? 'Nothing to undo.' : 'Nothing to redo.'); return; }
+  _cstInFlush(); _cstMenuClose();
+  const step = fromStack[fromStack.length - 1];
+  const w = CDX_FB.writeBatch(window.CDX_DB), tasks = [];
+  let show = null, writes = 0;
+  step.items.forEach(({ id, before, after }) => {
+    const from = dir < 0 ? after : before, to = dir < 0 ? before : after, cur = _cstById(id);
+    if (!to) {
+      if (cur) { w.delete(_ud('constellation', id)); writes++; }
+      if (_cstSel === id) _cstSel = null;
+      if (_cstFocus === id) _cstFocus = null;
+      return;
+    }
+    if (!from) { w.set(_ud('constellation', id), to); writes++; show = id; return; }
+    if (!cur) return;                          // removed some other way since: leave it gone
+    const p = {};
+    Object.keys(to).forEach(k => { if (JSON.stringify(to[k]) !== JSON.stringify(from[k])) p[k] = to[k]; });
+    if (!Object.keys(p).length) return;
+    w.update(_ud('constellation', id), p); writes++; show = id;
+    // A thought that is also a task keeps the task in step, as the menu does.
+    if (cur.taskId && _cstTaskFor(cur)) {
+      const tp = {};
+      if (p.priority) tp.priority = p.priority;
+      if ('projectId' in p) tp.projectId = p.projectId;
+      if (Object.keys(tp).length) tasks.push([cur.taskId, tp]);
+    }
+  });
+  _cstHist.busy = true;
+  try {
+    if (writes) await w.commit();
+    tasks.forEach(([tid, tp]) => updateTask(tid, tp));
+    fromStack.pop(); toStack.push(step);
+    if (show) { _cstSel = show; if (_cstFocus !== show) _cstFocus = null; }
+    showToast(`${dir < 0 ? 'Undone' : 'Redone'} · ${step.label}`);
+    _cstRender();
+  } catch (e) {
+    console.error('constellation undo failed:', e);
+    showToast('Could not save — try again', 'error');
+  }
+  _cstHist.busy = false;
+  _cstHistUi();
+}
+const _cstUndo = () => _cstHistStep(-1);
+const _cstRedo = () => _cstHistStep(1);
 
 /* ── View ────────────────────────────────────────────────────────────────── */
 
@@ -21694,7 +21773,7 @@ async function _cstInCommit() {
       }
     });
     if (last) { _cstSel = last.id; _cstFocus = last.id; }
-    await b.commit();
+    await b.commit('Add person');
     return;
   }
   if (id) {
@@ -21708,7 +21787,7 @@ async function _cstInCommit() {
   }
   st.picked.forEach(p => _cstAttachPerson(b, id, p));
   _cstSel = id; _cstFocus = null;
-  await b.commit();
+  await b.commit(st.editId ? 'Edit' : 'Add thought');
 }
 
 /* ── Delete ──────────────────────────────────────────────────────────────── */
@@ -21717,11 +21796,12 @@ async function _cstDelete(id) {
   const n = _cstById(id); if (!n) return;
   const b = _cstBatch();
   b.remove(id);
-  if (!(await b.commit())) return;
+  if (!(await b.commit(n.kind === 'person' ? 'Remove person' : 'Delete'))) return;
+  const step = _cstHist.undo[_cstHist.undo.length - 1];
   if (_cstSel === id) _cstSel = null;
   if (_cstFocus === id) _cstFocus = null;
   const short = (n.text || '').length > 28 ? n.text.slice(0, 27) + '…' : (n.text || '');
-  showUndoToast(`${n.kind === 'person' ? 'Removed' : 'Deleted'} · ${short}`, b.revert());
+  showUndoToast(`${n.kind === 'person' ? 'Removed' : 'Deleted'} · ${short}`, () => { if (_cstHist.undo[_cstHist.undo.length - 1] === step) _cstUndo(); });
 }
 
 /* ── Right-click menu ────────────────────────────────────────────────────── *
@@ -21800,7 +21880,7 @@ function _cstThoughtMenu(id) {
   const priority = () => _CST_PRIO.map(([v, label]) => ({
     label, check: (n()?.priority || null) === v,
     act: async () => {
-      if (!(await _cstSaveNode(id, { priority: v }))) return;
+      if (!(await _cstSaveNode(id, { priority: v }, 'Priority'))) return;
       if (v && task()) updateTask(n().taskId, { priority: v });
     },
   }));
@@ -21808,7 +21888,7 @@ function _cstThoughtMenu(id) {
     const list = projL();
     if (!list.length) return [{ label: 'No commitments yet.', muted: true }];
     const set = (pid) => async () => {
-      if (!(await _cstSaveNode(id, { projectId: pid }))) return;
+      if (!(await _cstSaveNode(id, { projectId: pid }, 'Commitment'))) return;
       if (task()) updateTask(n().taskId, { projectId: pid });
     };
     return [{ label: 'No commitment', check: !n()?.projectId, act: set(null) },
@@ -21843,7 +21923,7 @@ async function _cstTogglePerson(thoughtId, person) {
     b.unlink(thoughtId, pn.id);
     if (!b.degree(pn.id)) b.del(pn.id);
   } else _cstAttachPerson(b, thoughtId, person);
-  await b.commit();
+  await b.commit('Person');
 }
 
 async function _cstPromote(id) {
@@ -21903,11 +21983,12 @@ async function _cstToggleLink(aId, bId) {
   const person = pe.kind === 'person' && th.kind === 'thought' && (typeof PEOPLE !== 'undefined' ? PEOPLE : []).find(p => p.id === pe.personId);
   if (person) return _cstTogglePerson(th.id, person);
   const b = _cstBatch();
-  if (b.linked(aId, bId)) {
+  const was = b.linked(aId, bId);
+  if (was) {
     b.unlink(aId, bId);
     [aId, bId].forEach(id => { if (b.get(id)?.kind === 'person' && !b.degree(id)) b.del(id); });
   } else b.link(aId, bId);
-  await b.commit();
+  await b.commit(was ? 'Unlink' : 'Link');
 }
 
 function _cstLinkClick(n) {
@@ -21978,7 +22059,7 @@ function _cstPointerDown(e) {
     window.removeEventListener('pointerup', up);
     window.removeEventListener('pointercancel', up);
     if (g.node && g.moved) {
-      _cstSaveNode(g.node.id, { x: g.node.x, y: g.node.y });
+      _cstSaveNode(g.node.id, { x: g.node.x, y: g.node.y }, 'Move', { x: g.nx, y: g.ny });
       const cur = _cstById(g.node.id);            // a snapshot may have replaced the object mid-drag
       if (cur) { cur.x = g.node.x; cur.y = g.node.y; }
     }
@@ -22013,8 +22094,13 @@ function _cstDblClick(e) {
 function _cstKey(e) {
   if (typeof _mainPanel === 'undefined' || _mainPanel !== 'constellation') return;
   const t = e.target;
-  if (t.closest?.('input,textarea,[contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (t.closest?.('input,textarea,[contenteditable]') || e.altKey) return;
   if (document.querySelector('.overlay.open')) return;      // a dialog is up: the map keeps out of it
+  if (e.metaKey || e.ctrlKey) {
+    const k = e.key.toLowerCase();
+    if (k === 'z' || k === 'y') { e.preventDefault(); (k === 'y' || e.shiftKey ? _cstRedo : _cstUndo)(); }
+    return;
+  }
   const sel = _cstSel && _cstById(_cstSel);
   if (e.key === 'Escape') {
     if (_cstMenu) _cstMenuClose();
@@ -22074,11 +22160,14 @@ function initConstellation() {
         let at = _cstToWorld(r.left + st.clientWidth / 2, r.top + st.clientHeight / 2);
         if (NODES_CST.some(n => Math.hypot(_cstX(n) - at.x, _cstY(n) - at.y) < 90)) at = _cstPlace(at.x, at.y, NODES_CST);
         _cstInOpen({ x: at.x, y: at.y }); }
+      else if (t === 'undo') _cstUndo();
+      else if (t === 'redo') _cstRedo();
       else if (t === 'delete') { if (_cstSel && _cstById(_cstSel)) _cstDelete(_cstSel); else showToast('Select something first.'); }
       else _cstSetTool(t);
       if (e.detail) e.target.closest('button')?.blur();
     });
     _cstSetTool('move');
+    _cstHistUi();
     _cstEl.side.addEventListener('click', e => {
       if (e.target.closest('[data-close]')) { _cstFocus = null; _cstSelect(null); return; }
       const th = e.target.closest('[data-thought]')?.dataset.thought;
@@ -22109,6 +22198,7 @@ function _cstReset() {
   _cstInClose(true); _cstMenuClose();
   NODES_CST = []; _cstLoaded = false; _cstSeen = null;
   _cstSel = null; _cstFocus = null; _cstArm = null;
+  _cstHist = { undo: [], redo: [], busy: false }; _cstHistUi();
   if (_cstEl.layer) { _cstEl.layer.innerHTML = ''; _cstEl.lines.innerHTML = ''; _cstSide(); }
 }
 // TASKS, PEOPLE and commitments feed the map; a no-op until the page is showing.

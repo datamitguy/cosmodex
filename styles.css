@@ -8180,6 +8180,7 @@ textarea:focus-visible {
 .cst-tools .btn-ghost { padding:4px 10px; font-size:var(--fs-micro); color:var(--muted); border-color:rgba(255,255,255,.12); }
 .cst-tools .btn-ghost.on { color:#fff; border-color:#fff; }
 .cst-tools .btn-ghost.off { opacity:.45; }
+.cst-tools-sep { width:1px; margin:3px 2px; background:rgba(255,255,255,.14); }
 .cst-stage[data-tool="pan"], .cst-stage[data-tool="pan"] .cst-node { cursor:grab; }
 .cst-stage[data-tool="link"], .cst-stage[data-tool="link"] .cst-node { cursor:crosshair; }
 @media (max-width:900px) {
@@ -8220,6 +8221,8 @@ textarea:focus-visible {
 @media (max-width:700px) {
   .cst-side { left:0; top:auto; width:auto; height:50%; border-left:0; border-top:1px solid rgba(255,255,255,.12); transform:translateY(100%); }
   .cst-side.open { transform:none; }
+  .cst-tools { gap:3px; max-width:calc(100% - 12px); }
+  .cst-tools .btn-ghost { padding:4px 6px; letter-spacing:.04em; }
   .cst-stage.side-open .cst-tools { bottom:calc(50% + 12px); }   /* above the bottom sheet */
   .cst-stage.side-open .cst-hint { display:none; }
 }

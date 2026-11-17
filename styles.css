@@ -8205,6 +8205,21 @@ textarea:focus-visible {
   border-radius:var(--r-sm); box-shadow:0 10px 26px rgba(0,0,0,.7); cursor:default; z-index:4; white-space:nowrap; }
 .cst-bar[hidden] { display:none; }
 .cst-bar .cst-ib { border-color:transparent; color:#ddd; }
+/* Hand drawing. The box around a stroke lets clicks through; only the ink itself can be picked up. */
+.cst-ink { display:block; padding:0; max-width:none; pointer-events:none; text-shadow:none; }
+.cst-ink svg { display:block; overflow:visible; }
+.cst-ink path { fill:none; stroke-linecap:round; stroke-linejoin:round; }
+.cst-ink path.ink { stroke:rgba(255,255,255,.88); filter:drop-shadow(0 0 3px rgba(255,255,255,.35)); transition:stroke .2s; }
+.cst-ink path.inkhit { stroke:transparent; stroke-width:16; pointer-events:stroke; }
+.cst-ink.sel { outline:1px dashed rgba(255,255,255,.45); outline-offset:2px; }
+.cst-ink.sel path.ink { stroke:#fff; filter:drop-shadow(0 0 6px #fff); }
+.cst-ink.gone { opacity:.15; }
+.cst-lines path.inkdraw { stroke:#fff; stroke-linecap:round; stroke-linejoin:round; }
+.cst-stage[data-tool="pen"], .cst-stage[data-tool="pen"] .cst-node { cursor:crosshair; }
+.cst-stage[data-tool="erase"], .cst-stage[data-tool="erase"] .cst-node, .cst-stage[data-tool="erase"] .cst-ink path.inkhit { cursor:cell; }
+.cst-penopts { display:flex; gap:4px; }
+.cst-stage:not([data-tool="pen"]) .cst-penopts { display:none; }
+.cst-pw i { display:block; position:relative; border-radius:50%; background:currentColor; }
 .cst-fold { flex:none; padding:1px 5px; border:1px solid rgba(255,255,255,.35); border-radius:8px; font-family:var(--font-mono); font-size:9px; letter-spacing:.04em; color:#fff; text-shadow:none; cursor:pointer; }
 .cst-fold:hover { background:#fff; color:#000; }
 .cst-mapbtn { pointer-events:auto; padding:3px 8px; margin:-3px 2px -3px -8px; background:none; border:1px solid transparent; border-radius:var(--r-xs); font:inherit; letter-spacing:inherit; text-transform:uppercase; color:#fff; cursor:pointer; }

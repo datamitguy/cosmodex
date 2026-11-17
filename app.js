@@ -20915,7 +20915,8 @@ let _cstSeen = null;             // ids drawn last render (null before the first
 let _cstIn = null;               // the open text input: { wrap, input, picked, parentId, editId, x, y, done }
 let _cstMenu = null;             // { el, stack, anchor }
 let _cstEl = {};
-let _cstTool = 'move';           // 'move' (select, drag, box-select) | 'pan'
+let _cstTool = 'move';           // 'move' (select, drag, box-select) | 'pan' | 'pen' | 'erase'
+let _cstPenW = 2;                // pen thickness, map units
 let _cstViewTimer = null;
 let _cstDrag = false;            // a node is being dragged: a snapshot re-render waits
 let _cstDirty = false;           // …and runs once on release
@@ -20945,6 +20946,8 @@ const _CST_ICON = {
   fold: 'M4 6h16M4 12h9M4 18h5M17 12l3 3 0-6z',
   tidy: 'M4 12h5M9 5v14M9 5h6M9 12h6M9 19h6',
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM16 16l4 4',
+  pen: 'M3 17c3-7 5-7 6-2s3 4 5-3 4-6 7-2',
+  erase: 'M9 20h11M5 15l9-9 5 5-9 9H8z',
   unlink: 'M3 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M15 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M10.5 16l3-8',
 };
 const _cstIcon = (k) => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${_CST_ICON[k]}"/></svg>`;
@@ -20982,6 +20985,7 @@ function _cstPlace(px, py, others, radius = 150, w = 240, h = 40) {
   }
   let ax = px - cx, ay = py - cy;
   const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+  others = others.filter(n => n.kind !== 'ink');      // a drawing is not in the way of text
   const boxes = others.map(n => ({ x: _cstX(n), y: _cstY(n), ..._cstSize(n) }));
   const clear = (x, y) => _cstClear(x, y, boxes, w, h);
   let best = null;
@@ -21360,7 +21364,8 @@ function _cstRender() {
     if (C?.kind === 'person' && A?.kind === 'thought') counts[c] = (counts[c] || 0) + 1;
   });
 
-  _cstEl.layer.innerHTML = shown.map(n => {
+  // Drawings first, so text always sits on top of ink.
+  _cstEl.layer.innerHTML = shown.filter(n => n.kind === 'ink').map(_cstInkHtml).join('') + shown.filter(n => n.kind !== 'ink').map(n => {
     const task = _cstTaskFor(n);
     const cls = n.kind === 'person' ? 'cst-person'
       : `cst-thought${n.priority ? ' p-' + n.priority : ''}${task?.done ? ' is-done' : ''}`;
@@ -21371,7 +21376,7 @@ function _cstRender() {
     `<g data-a="${escAttr(a)}" data-b="${escAttr(c)}">${_cstEdgeHtml(a, c)}</g>`).join('');
 
   const people = NODES_CST.filter(n => n.kind === 'person').length;
-  const th = NODES_CST.length - people;
+  const th = NODES_CST.filter(n => n.kind === 'thought').length;
   const tally = `${th} ${th === 1 ? 'THOUGHT' : 'THOUGHTS'} · ${people} ${people === 1 ? 'PERSON' : 'PEOPLE'}`;
   if (_cstMap === 'constellation') _cstEl.eyebrow.textContent = `CONSTELLATION · ${tally}`;
   else _cstEl.eyebrow.innerHTML = `<button type="button" class="cst-mapbtn" title="Your mind maps: switch, new, rename, save a copy, delete">${escHtml(_cstMapName(_cstMap))} <span aria-hidden="true">▾</span></button> · ${tally}`;
@@ -21510,7 +21515,7 @@ function _cstBar() {
     else if (one?.kind === 'thought') html = b('edit', 'edit', 'Edit (F2)') + b('child', 'child', 'Add a linked thought (Tab)')
       + '<span class="cst-tools-sep"></span>' + b('fold', 'fold', one.folded ? 'Unfold what hangs from it (.)' : 'Fold away what hangs from it (.)') + b('priority', 'flag', 'Priority') + b('person', 'person', 'Person') + b('commitment', 'target', 'Commitment')
       + b('task', 'task', _cstTaskFor(one) ? 'Open in Tasks' : 'Add to Tasks') + '<span class="cst-tools-sep"></span>' + b('delete', 'trash', 'Delete (Delete)');
-    else if (one) html = b('delete', 'trash', 'Remove from map (Delete)');
+    else if (one) html = b('delete', 'trash', one.kind === 'ink' ? 'Delete this drawing (Delete)' : 'Remove from map (Delete)');
     else html = `<span class="cst-bar-n">${nodes.length} selected</span>`
       + (nodes.length === 2 ? b('link', linked ? 'unlink' : 'link', linked ? 'Remove the line between them (L)' : 'Link them (L)') : '')
       + (thoughts.length ? b('priority', 'flag', 'Priority') : '') + b('delete', 'trash', 'Delete all (Delete)');
@@ -21668,7 +21673,7 @@ async function _cstTidy() {
   const trees = [];                                  // [root, Set of ids in the tree]
   if (sel) trees.push([sel, new Set([sel.id, ..._cstBranch(sel, adj)])]);
   else {
-    const left = new Set(NODES_CST.map(n => n.id));
+    const left = new Set(NODES_CST.filter(n => n.kind !== 'ink').map(n => n.id));   // drawings stay where they were drawn
     while (left.size) {
       const comp = new Set(), q = [left.values().next().value];
       comp.add(q[0]);
@@ -21900,9 +21905,9 @@ function _cstStep(dx, dy) {
   if (!from) {                                   // nothing selected: start from the middle of the view
     const c = _cstToWorld(_cstEl.stage.getBoundingClientRect().left + _cstEl.stage.clientWidth / 2,
       _cstEl.stage.getBoundingClientRect().top + _cstEl.stage.clientHeight / 2);
-    _cstVis().forEach(n => { const d = Math.hypot(_cstX(n) - c.x, _cstY(n) - c.y); if (!best || d < best.d) best = { n, d }; });
+    _cstVis().forEach(n => { if (n.kind === 'ink') return; const d = Math.hypot(_cstX(n) - c.x, _cstY(n) - c.y); if (!best || d < best.d) best = { n, d }; });
   } else _cstVis().forEach(n => {
-    if (n.id === from.id) return;
+    if (n.id === from.id || n.kind === 'ink') return;
     const vx = _cstX(n) - _cstX(from), vy = _cstY(n) - _cstY(from);
     const along = vx * dx + vy * dy, across = Math.abs(vx * dy) + Math.abs(vy * dx);
     if (along <= 0 || across > along * 2) return;
@@ -22036,7 +22041,7 @@ async function _cstDelete(id) {
   const step = _cstHist.undo[_cstHist.undo.length - 1];
   if (_cstSel === id) _cstSel = null;
   if (_cstFocus === id) _cstFocus = null;
-  const short = (n.text || '').length > 28 ? n.text.slice(0, 27) + '…' : (n.text || '');
+  const short = n.kind === 'ink' ? 'drawing' : (n.text || '').length > 28 ? n.text.slice(0, 27) + '…' : (n.text || '');
   showUndoToast(`${n.kind === 'person' ? 'Removed' : 'Deleted'} · ${short}`, () => { if (_cstHist.undo[_cstHist.undo.length - 1] === step) _cstUndo(); });
 }
 
@@ -22213,6 +22218,7 @@ function _cstNodeMenu(n, cx, cy) {
   if (!_cstMulti.has(n.id) || _cstMulti.size === 1) _cstSelect(n.id);
   if (_cstMulti.size > 1) { _cstMenuOpen(cx, cy, () => [{ label: `Delete ${_cstMulti.size} items`, act: () => _cstDeleteSel() }]); return; }
   if (n.kind === 'thought') _cstMenuOpen(cx, cy, _cstThoughtMenu(n.id).root);
+  else if (n.kind === 'ink') _cstMenuOpen(cx, cy, () => [{ label: 'Delete drawing', act: () => _cstDelete(n.id) }]);
   else _cstMenuOpen(cx, cy, () => [
     { label: 'Show links', act: () => _cstSelect(n.id) },
     { label: 'Remove from map', act: () => _cstDelete(n.id) },
@@ -22239,16 +22245,95 @@ function _cstContextMenu(e) {
 function _cstSetTool(t) {
   _cstTool = t;
   _cstEl.stage.dataset.tool = t;
-  _cstEl.tools.querySelectorAll('[data-tool="move"],[data-tool="pan"]').forEach(b => {
+  _cstEl.tools.querySelectorAll('[data-tool="move"],[data-tool="pan"],[data-tool="pen"],[data-tool="erase"]').forEach(b => {
     const on = b.dataset.tool === t;
     b.classList.toggle('on', on);
     b.setAttribute('aria-pressed', on);
   });
 }
 
+/* ── Drawing by hand ─────────────────────────────────────────────────────── *
+   A pen stroke is a node like any other (kind 'ink'), so it can be selected,
+   moved, deleted, undone and copied with the map. Its points are stored
+   relative to its own middle, which is what x and y hold. */
+function _cstInkPath(pts) {
+  if (pts.length < 4) return '';
+  let d = `M${pts[0]} ${pts[1]}`;
+  for (let i = 2; i < pts.length - 2; i += 2) d += ` Q${pts[i]} ${pts[i + 1]} ${((pts[i] + pts[i + 2]) / 2).toFixed(1)} ${((pts[i + 1] + pts[i + 3]) / 2).toFixed(1)}`;
+  return d + ` L${pts[pts.length - 2]} ${pts[pts.length - 1]}`;
+}
+function _cstInkHtml(n) {
+  const pts = n.pts || [], w = n.w || 2, pad = w + 6;
+  let hx = 1, hy = 1;
+  for (let i = 0; i < pts.length; i += 2) { hx = Math.max(hx, Math.abs(pts[i])); hy = Math.max(hy, Math.abs(pts[i + 1])); }
+  const W = (hx + pad) * 2, H = (hy + pad) * 2, d = _cstInkPath(pts);
+  return `<div class="cst-node cst-ink" data-id="${escAttr(n.id)}" aria-label="Drawing" style="left:${_cstX(n)}px;top:${_cstY(n)}px"><svg width="${W.toFixed(0)}" height="${H.toFixed(0)}" viewBox="${-W / 2} ${-H / 2} ${W} ${H}"><path class="ink" stroke-width="${w}" d="${d}"/><path class="inkhit" d="${d}"/></svg></div>`;
+}
+
+// Pen: the line follows the pointer and is saved when you let go.
+function _cstDraw(e) {
+  e.preventDefault();
+  _cstSelect(null);
+  const first = _cstToWorld(e.clientX, e.clientY), raw = [first.x, first.y], gap = 2.5 / _cstView.z;
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  line.setAttribute('class', 'inkdraw'); line.setAttribute('stroke-width', _cstPenW);
+  _cstEl.lines.appendChild(line);
+  _cstDrag = true;
+  const move = (ev) => {
+    const p = _cstToWorld(ev.clientX, ev.clientY), n = raw.length;
+    if (Math.hypot(p.x - raw[n - 2], p.y - raw[n - 1]) < gap) return;      // skip points too close to matter
+    raw.push(p.x, p.y);
+    line.setAttribute('d', _cstInkPath(raw));
+  };
+  const up = async (ev) => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    line.remove();
+    _cstDrag = false;
+    if (_cstDirty) { _cstDirty = false; _cstRender(); }
+    if (ev.type === 'pointercancel' || raw.length < 4) return;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let i = 0; i < raw.length; i += 2) { x0 = Math.min(x0, raw[i]); x1 = Math.max(x1, raw[i]); y0 = Math.min(y0, raw[i + 1]); y1 = Math.max(y1, raw[i + 1]); }
+    const cx = Math.round((x0 + x1) / 2), cy = Math.round((y0 + y1) / 2);
+    const pts = raw.map((v, i) => Math.round((v - (i % 2 ? cy : cx)) * 10) / 10);
+    const b = _cstBatch();
+    b.set(crypto.randomUUID(), _cstDoc('ink', '', { x: cx, y: cy }, { pts, w: _cstPenW }));
+    await b.commit('Draw');
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+
+// Eraser: every stroke the pointer passes over goes, as one step.
+function _cstErase(e) {
+  e.preventDefault();
+  const hit = new Set();
+  const at = (ev) => {
+    const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.cst-ink');
+    if (el && !hit.has(el.dataset.id)) { hit.add(el.dataset.id); el.classList.add('gone'); }
+  };
+  at(e);
+  _cstDrag = true;
+  const up = async () => {
+    window.removeEventListener('pointermove', at);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    _cstDrag = false;
+    const b = _cstBatch();
+    hit.forEach(id => { if (b.get(id)) b.del(id); });
+    if (hit.size) await b.commit(hit.size > 1 ? `Erase ${hit.size}` : 'Erase');
+    if (_cstDirty || !hit.size) { _cstDirty = false; _cstRender(); }
+  };
+  window.addEventListener('pointermove', at);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+
 // Flip the line between two nodes.
 async function _cstToggleLink(aId, bId) {
-  const A = _cstById(aId), B = _cstById(bId); if (!A || !B) return;
+  const A = _cstById(aId), B = _cstById(bId); if (!A || !B || A.kind === 'ink' || B.kind === 'ink') return;
   const th = A.kind === 'thought' ? A : B, pe = th === A ? B : A;
   const person = pe.kind === 'person' && th.kind === 'thought' && (typeof PEOPLE !== 'undefined' ? PEOPLE : []).find(p => p.id === pe.personId);
   if (person) return _cstTogglePerson(th.id, person);
@@ -22311,6 +22396,8 @@ function _cstPointerDown(e) {
   if ((e.button !== 0 && e.button !== 1) || e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-find,.cst-ask,.cst-mapbtn')) return;
   _cstMenuClose();
   const nodeEl = e.target.closest('.cst-node'), n = nodeEl && _cstById(nodeEl.dataset.id);
+  if (e.button === 0 && !_cstSpace && _cstTool === 'pen') { _cstDraw(e); return; }
+  if (e.button === 0 && !_cstSpace && _cstTool === 'erase') { _cstErase(e); return; }
   if (n && e.button === 0 && e.target.closest('.cst-fold')) { _cstFold(n.id); return; }
   if (n && e.button === 0 && e.target.closest('.cst-h')) { e.preventDefault(); _cstLinkDrag(e, n); return; }
   const lineEl = e.target.closest?.('.cst-lines g');
@@ -22400,6 +22487,7 @@ function _cstDblClick(e) {
   if (e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-h,.cst-fold,.cst-find,.cst-ask,.cst-mapbtn')) return;
   const ln = e.target.closest('.cst-lines g');
   if (ln) { _cstSelectLine(ln.dataset.a, ln.dataset.b); _cstLabelEdit(ln.dataset.a, ln.dataset.b); return; }
+  if (_cstTool === 'pen' || _cstTool === 'erase') return;
   const el = e.target.closest('.cst-node'), n = el && _cstById(el.dataset.id);
   if (n?.kind === 'thought') _cstInOpen({ x: _cstX(n), y: _cstY(n), editId: n.id, text: n.text || '' });
   else if (!n) { _cstSelect(null); _cstInOpen(_cstToWorld(e.clientX, e.clientY)); }
@@ -22421,6 +22509,7 @@ function _cstKey(e) {
   if (e.key === 'Escape') {
     if (_cstMenu) _cstMenuClose();
     else if (!_cstEl.find.hidden) _cstFindClose();
+    else if (_cstTool === 'pen' || _cstTool === 'erase') _cstSetTool('move');
     else { _cstFocus = null; _cstSelect(null); }
     return;
   }
@@ -22443,9 +22532,9 @@ function _cstKey(e) {
   else if (e.shiftKey && e.code === 'Digit2') { e.preventDefault(); if (_cstMulti.size) _cstFit(new Set(_cstMulti)); else showToast('Select something first.'); }
   else if (e.key === '/') { e.preventDefault(); _cstFindOpen(); }
   else if (e.key === '.' && sel?.kind === 'thought') { e.preventDefault(); _cstFold(sel.id); }
-  else if (e.key === 'v' || e.key === 'h') { e.preventDefault(); _cstSetTool(e.key === 'v' ? 'move' : 'pan'); }
+  else if ('vhpx'.includes(e.key) && e.key.length === 1) { e.preventDefault(); _cstSetTool({ v: 'move', h: 'pan', p: 'pen', x: 'erase' }[e.key]); }
   else if (e.key === 'l' && _cstMulti.size === 2) { e.preventDefault(); const [a, c] = [..._cstMulti]; _cstToggleLink(a, c); }
-  else if (e.key === 'Tab' && sel) { e.preventDefault(); _cstAddChild(sel); }
+  else if (e.key === 'Tab' && sel && sel.kind !== 'ink') { e.preventDefault(); _cstAddChild(sel); }
   else if (e.key === 'Enter' && sel?.kind === 'thought') { e.preventDefault(); _cstAddSibling(sel); }
   else if ((e.key === 'F2' || e.key === 'e') && sel?.kind === 'thought') { e.preventDefault(); _cstInOpen({ x: _cstX(sel), y: _cstY(sel), editId: sel.id, text: sel.text || '' }); }
   else if (e.key.startsWith('Arrow') && !e.shiftKey) {
@@ -22467,6 +22556,9 @@ function initConstellation() {
       eyebrow: q('.cst-eyebrow'), hint: q('.cst-hint'), tools: q('.cst-tools'), bar: q('.cst-bar'), empty: q('.cst-empty'), side: q('.cst-side') };
     const sep = '<span class="cst-tools-sep" aria-hidden="true"></span>';
     _cstEl.tools.innerHTML = _cstIb('data-tool="move" aria-pressed="true"', 'select', 'Select and move (V)') + _cstIb('data-tool="pan" aria-pressed="false"', 'pan', 'Pan (H, or hold Space)')
+      + sep + _cstIb('data-tool="pen" aria-pressed="false"', 'pen', 'Draw by hand (P)') + _cstIb('data-tool="erase" aria-pressed="false"', 'erase', 'Erase drawings (X)')
+      + '<span class="cst-penopts">' + [[1.2, 'Fine'], [2, 'Medium'], [4, 'Thick']].map(([w, name]) =>
+        `<button type="button" class="btn-ghost cst-ib cst-pw${w === _cstPenW ? ' on' : ''}" data-pw="${w}" title="${name} line" aria-label="${name} line"><i style="width:${w * 2 + 2}px;height:${w * 2 + 2}px"></i></button>`).join('') + '</span>'
       + sep + _cstIb('data-tool="add"', 'add', 'Add a thought (double-click)') + _cstIb('data-tool="delete" aria-disabled="true"', 'trash', 'Delete selected (Delete)', ' off')
       + sep + _cstIb('data-tool="tidy"', 'tidy', 'Tidy: lay out as a tree (the selected branch, or everything)') + _cstIb('data-tool="find"', 'search', 'Search (/ or ⌘F)')
       + sep + _cstIb('data-tool="undo" aria-disabled="true"', 'undo', 'Undo (⌘Z)', ' off') + _cstIb('data-tool="redo" aria-disabled="true"', 'redo', 'Redo (⇧⌘Z)', ' off');
@@ -22496,6 +22588,8 @@ function initConstellation() {
       if (e.detail) e.target.closest('button')?.blur();   // a mouse click must not strand the map's keys on the button
     });
     _cstEl.tools.addEventListener('click', e => {
+      const pw = e.target.closest('[data-pw]');
+      if (pw) { _cstPenW = +pw.dataset.pw; _cstEl.tools.querySelectorAll('[data-pw]').forEach(b => b.classList.toggle('on', b === pw)); if (e.detail) pw.blur(); return; }
       const t = e.target.closest('[data-tool]')?.dataset.tool; if (!t) return;
       if (t === 'add') { const r = st.getBoundingClientRect(); _cstSelect(null);
         // The centre may already hold a thought: step to free space beside it.

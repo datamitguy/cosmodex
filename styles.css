@@ -8123,6 +8123,94 @@ textarea:focus-visible {
   .dn-list { max-height:30vh; }
 }
 
+/* ══ CONSTELLATION ═══════════════════════════════════════════════════════
+   Thoughts are bare glowing text on black; colour appears only as the small
+   dots (person, commitment). Priority is glow strength, never hue. The one
+   surface is the right-click menu, which has to stay readable over lines. */
+#panel-constellation { flex:1; min-height:0; flex-direction:column; overflow:hidden; background:#000; }
+.cst-stage { position:relative; overflow:hidden; flex:1; min-height:0; background:#000; touch-action:none; cursor:grab; }
+.cst-stage:active { cursor:grabbing; }
+.cst-world { position:absolute; left:0; top:0; width:0; height:0; transform-origin:0 0; }
+.cst-lines { position:absolute; left:0; top:0; width:1px; height:1px; overflow:visible; pointer-events:none; }
+.cst-lines path { stroke:rgba(255,255,255,.16); stroke-width:1; fill:none; transition:stroke .25s; }
+.cst-lines path.hot { stroke:rgba(255,255,255,.34); }
+.cst-lines path.dim { stroke:rgba(255,255,255,.05); }
+.cst-layer { position:absolute; left:0; top:0; }
+.cst-node {
+  position:absolute; display:flex; align-items:center; gap:6px; padding:6px 10px;
+  transform:translate(-50%,-50%); max-width:260px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+  color:#fff; cursor:default; user-select:none; outline:none;
+  text-shadow:0 0 10px rgba(255,255,255,.55), 0 0 2px rgba(255,255,255,.8);
+  transition:opacity .25s, text-shadow .2s;
+}
+.cst-thought { font-family:var(--font-body); font-size:13px; }
+.cst-t { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.cst-thought.p-high { font-weight:500; text-shadow:0 0 16px rgba(255,255,255,.85), 0 0 5px rgba(255,255,255,.95), 0 0 2px #fff; }
+.cst-thought.p-low { opacity:.55; text-shadow:0 0 6px rgba(255,255,255,.3), 0 0 1px rgba(255,255,255,.5); }
+.cst-thought.is-done { opacity:.4; }
+.cst-thought.is-done .cst-t { text-decoration:line-through; }
+.cst-person { font-family:var(--font-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+.cst-pn.cst-gone { color:var(--muted); }
+.cst-dot { flex:none; width:6px; height:6px; border-radius:50%; }
+.cst-person .cst-dot { width:8px; height:8px; }
+.cst-suf, .cst-cnt { flex:none; color:var(--muted); font-size:10px; text-shadow:none; }
+.cst-cnt { font-family:var(--font-mono); }
+.cst-node:hover { text-shadow:0 0 14px rgba(255,255,255,.8), 0 0 3px #fff; }
+.cst-node.sel { text-shadow:0 0 18px rgba(255,255,255,.95), 0 0 6px #fff, 0 0 2px #fff; }
+.cst-node.dim { opacity:.22; }
+.cst-node.cst-editing { visibility:hidden; }
+.cst-inputwrap { position:absolute; transform:translate(-50%,-50%); width:240px; }
+.cst-input {
+  width:100%; box-sizing:border-box; padding:4px 2px; border:0; border-bottom:1px solid rgba(255,255,255,.3);
+  border-radius:0; background:transparent; outline:none; text-align:center;
+  font-family:var(--font-body); font-size:13px; color:#fff;
+  text-shadow:0 0 10px rgba(255,255,255,.55), 0 0 2px rgba(255,255,255,.8);
+}
+.cst-input::placeholder { color:var(--muted); text-shadow:none; }
+.cst-picked { margin-top:4px; text-align:center; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.08em; color:var(--muted); }
+.cst-eyebrow { position:absolute; left:20px; top:16px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; color:var(--muted); pointer-events:none; }
+.cst-hint { position:absolute; left:20px; bottom:16px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.06em; color:var(--muted); pointer-events:none; }
+.cst-empty { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-family:var(--font-display); font-size:var(--fs-body); color:var(--muted); pointer-events:none; text-align:center; }
+.cst-ctl { position:absolute; right:20px; bottom:16px; display:flex; gap:6px; cursor:default; }
+.cst-ctl .btn-ghost { padding:4px 10px; font-size:var(--fs-small); }
+.cst-side {
+  position:absolute; right:0; top:0; bottom:0; width:300px; box-sizing:border-box; padding:18px 18px 14px;
+  overflow-y:auto; background:#000; border-left:1px solid rgba(255,255,255,.12); cursor:default;
+  transform:translateX(100%); transition:transform .25s ease; z-index:3;
+}
+.cst-side.open { transform:none; }
+.cst-side-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+.cst-side-h .cst-dot { width:8px; height:8px; }
+.cst-side-name { flex:1; font-family:var(--font-display); font-size:var(--fs-body); color:#fff; }
+.cst-x { background:none; border:0; color:var(--muted); font-size:18px; line-height:1; cursor:pointer; padding:2px 6px; }
+.cst-x:hover { color:#fff; }
+.cst-sec { margin:14px 0 6px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; color:var(--muted); }
+.cst-row { display:flex; align-items:center; gap:8px; width:100%; padding:7px 6px; background:none; border:0; border-radius:var(--r-xs); text-align:left; font-family:var(--font-body); font-size:var(--fs-small); color:var(--cream); cursor:pointer; }
+.cst-row:hover, .cst-row:focus-visible { background:rgba(255,255,255,.08); outline:none; }
+.cst-row-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cst-prio { display:flex; gap:2px; flex:none; }
+.cst-none { color:var(--muted); font-size:var(--fs-small); }
+.cst-side-f { margin-top:18px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.08em; color:var(--muted); }
+.cst-menu {
+  position:fixed; z-index:2000; min-width:190px; padding:4px; background:#0e0e0e;
+  border:1px solid rgba(255,255,255,.16); border-radius:var(--r-sm); box-shadow:0 14px 34px rgba(0,0,0,.7);
+}
+.cst-menu button { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; padding:7px 10px; background:none; border:0; border-radius:var(--r-xs); text-align:left; font-family:var(--font-body); font-size:var(--fs-small); color:#fff; cursor:pointer; }
+.cst-menu button:hover, .cst-menu button:focus { background:rgba(255,255,255,.1); outline:none; }
+.cst-ml { display:flex; align-items:center; gap:8px; min-width:0; }
+.cst-chk { color:var(--muted); }
+.cst-mr { color:var(--muted); max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cst-mdiv { height:1px; margin:4px 6px; background:rgba(255,255,255,.12); }
+.cst-mnote { padding:7px 10px; max-width:230px; font-size:var(--fs-small); color:var(--muted); }
+@media (max-width:700px) {
+  .cst-side { left:0; top:auto; width:auto; height:50%; border-left:0; border-top:1px solid rgba(255,255,255,.12); transform:translateY(100%); }
+  .cst-side.open { transform:none; }
+  .cst-hint { right:150px; white-space:normal; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cst-node, .cst-lines path, .cst-side { transition:none; }
+}
+
 /* ══ SWEEP FILL ═══════════════════════════════════════════════════════════
    One motion for every button in the app: a circle of pure white, larger than
    the button and clipped by it, travels upward — in from below on hover, out

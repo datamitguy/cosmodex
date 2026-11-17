@@ -118,6 +118,10 @@
         </span>
         Orrery
       </div>
+      <div class="nav-item" data-panel="constellation" id="nav-constellation" role="button" tabindex="0">
+        <span class="nav-item-icon" aria-hidden="true">✧</span>
+        Constellation
+      </div>
       <div class="nav-item" data-panel="habits" id="nav-habits" role="button" tabindex="0">
         <span class="nav-item-icon">◎</span>
         Habits
@@ -973,6 +977,25 @@
       <div id="orr-main" class="orr-main"></div>
       <div id="orr-ticker" class="orr-ticker" hidden></div>
     </div><!-- /panel-orrery -->
+
+    <!-- Constellation — thoughts and people as points of light; src/31-constellation.js. -->
+    <div id="panel-constellation" style="display:none">
+      <div class="cst-stage">
+        <div class="cst-world">
+          <svg class="cst-lines" width="1" height="1"></svg>
+          <div class="cst-layer"></div>
+        </div>
+        <div class="cst-eyebrow"></div>
+        <div class="cst-empty" hidden>Double-click anywhere to set down a thought.</div>
+        <div class="cst-hint">Double-click to add · Tab adds a linked thought · @ links a person · Right-click for more</div>
+        <div class="cst-ctl">
+          <button type="button" class="btn-ghost" data-act="out" aria-label="Zoom out">−</button>
+          <button type="button" class="btn-ghost" data-act="fit">Fit</button>
+          <button type="button" class="btn-ghost" data-act="in" aria-label="Zoom in">+</button>
+        </div>
+        <div class="cst-side" aria-label="Person"></div>
+      </div>
+    </div><!-- /panel-constellation -->
 
     <!-- Daily notes — every day's dashboard note; filled by src/30-daily-notes.js. -->
     <div id="panel-dailynotes" class="dn-panel" style="display:none">

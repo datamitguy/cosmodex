@@ -360,6 +360,13 @@ document.querySelectorAll('.nav-item[data-panel]').forEach(item => {
       showMainPanel('orrery');
       return;
     }
+    // Constellation → full page
+    if (panel === 'constellation') {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      showMainPanel('constellation');
+      return;
+    }
     // Timedrift → full screen panel
     if (panel === 'timedrift') {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -475,12 +482,14 @@ function _showMainPanelPaint(name) {
   document.getElementById('panel-timedrift').style.display   = name === 'timedrift' ? 'flex' : 'none';
   const orrPanel = document.getElementById('panel-orrery');
   if (orrPanel) orrPanel.style.display = name === 'orrery' ? 'flex' : 'none';
+  const cstPanel = document.getElementById('panel-constellation');
+  if (cstPanel) cstPanel.style.display = name === 'constellation' ? 'flex' : 'none';
   document.getElementById('panel-mindmap').style.display     = name === 'mindmap' ? 'flex' : 'none';
   const dnPanel = document.getElementById('panel-dailynotes');
   if (dnPanel) dnPanel.style.display = name === 'dailynotes' ? 'flex' : 'none';
   const notesPanel = document.getElementById('panel-notes');
   if (notesPanel) notesPanel.style.display = name === 'notes' ? 'flex' : 'none';
-  const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Stillwater', orrery:'Orrery', mindmap:'Mind Map', notes:'Notes', dailynotes:'Daily notes' };
+  const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Stillwater', orrery:'Orrery', constellation:'Constellation', mindmap:'Mind Map', notes:'Notes', dailynotes:'Daily notes' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = (name === 'timedrift' && _tdSessionOpen) ? 'Focus' : (titles[name] || 'Today');
   if (name === 'default') { window.renderDashboardBoard?.(); }
@@ -500,6 +509,8 @@ function _showMainPanelPaint(name) {
   // The field reads its size from the panel, so it has to render after the
   // display flip above — a layout taken while display:none measures zero.
   if (name === 'orrery') { requestAnimationFrame(() => window.initOrrery?.()); }
+  // Same reason as the orrery: the stage measures itself.
+  if (name === 'constellation') { requestAnimationFrame(() => window.initConstellation?.()); }
   if (name === 'drill') { renderDrill(); }
   const orbEl = document.getElementById('cosmodex-orb');
   if (orbEl) orbEl.style.display = name === 'timedrift' ? 'none' : '';
@@ -21204,3 +21215,714 @@ document.addEventListener('DOMContentLoaded', () => {
     if (b) _dnOpen(b.dataset.dn);
   });
 });
+/* ══════════════════════════════════════════════════════════════════════════
+   CONSTELLATION — thoughts as points of light, joined by lines
+   ──────────────────────────────────────────────────────────────────────────
+   A thought that is going to turn into a task usually starts as a half
+   sentence and a person's name. A list is the wrong shape for that stage, so
+   this page is an open black field: double-click, type, and the thought is
+   just there, glowing. Tab from a thought opens a linked one next to it, so
+   a chain or a fan grows at the speed of typing. "@" links a person, the same
+   picker as everywhere else; the person becomes a node of their own and
+   every thought that mentions them hangs off it.
+
+   Nothing is a task until you say so (right-click → Add to Tasks). From then
+   on the thought carries a small → so you can see which half-formed things
+   have already become real.
+
+   One document per node in the user's `constellation` collection. An edge
+   exists if either node lists the other in `links`; new edges are written on
+   the newer node. Deleting a node scrubs it from its neighbours' `links` and
+   takes a person node with it if that was its last line. The undo for that is
+   the same generic trick every time: put back the original of every document
+   the batch touched.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let NODES_CST = [];
+let _cstUnsub = null;
+let _cstWired = false;
+let _cstLoaded = false;          // first snapshot has arrived
+let _cstNeedFit = false;         // no saved view: fit once the first snapshot is in
+let _cstView = { x: 0, y: 0, z: 1 };
+let _cstSel = null;              // selected node id
+let _cstFocus = null;            // person node id whose links are lit
+let _cstSeen = null;             // ids drawn last render (null before the first)
+let _cstIn = null;               // the open text input: { wrap, input, picked, parentId, editId, x, y, done }
+let _cstMenu = null;             // { el, stack, anchor }
+let _cstEl = {};
+let _cstViewTimer = null;
+
+const _CST_VIEW_KEY = 'cdx_cst_view';
+const _cstReduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const _cstClamp = (z) => Math.min(2.5, Math.max(0.3, z));
+const _cstById = (id) => NODES_CST.find(n => n.id === id);
+const _cstX = (n) => Number.isFinite(n.x) ? n.x : 0;
+const _cstY = (n) => Number.isFinite(n.y) ? n.y : 0;
+
+/* ── Pure geometry ───────────────────────────────────────────────────────── */
+
+// Where to put a node hung off (px,py): twelve points on a ring, take the one
+// farthest from everything already there. Ties go to the side facing away
+// from the middle of the whole map, so growth spreads outwards.
+function _cstPlace(px, py, others, radius = 150) {
+  let cx = px, cy = py;
+  if (others.length) {
+    cx = others.reduce((s, n) => s + _cstX(n), 0) / others.length;
+    cy = others.reduce((s, n) => s + _cstY(n), 0) / others.length;
+  }
+  let ax = px - cx, ay = py - cy;
+  const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+  let best = null;
+  for (let i = 0; i < 12; i++) {
+    const a = i * Math.PI / 6, dx = Math.cos(a), dy = Math.sin(a);
+    const x = px + dx * radius, y = py + dy * radius;
+    const d = others.length ? Math.min(...others.map(n => Math.hypot(_cstX(n) - x, _cstY(n) - y))) : radius;
+    const away = dx * ax + dy * ay;
+    if (!best || d > best.d + 0.5 || (Math.abs(d - best.d) <= 0.5 && away > best.away)) best = { x, y, d, away };
+  }
+  return { x: Math.round(best.x), y: Math.round(best.y) };
+}
+
+// Pan and zoom that put every box inside a W×H stage with `pad` to spare.
+function _cstFitView(boxes, W, H, pad = 60) {
+  if (!boxes.length) return { x: W / 2, y: H / 2, z: 1 };
+  const x0 = Math.min(...boxes.map(b => b.x0)), x1 = Math.max(...boxes.map(b => b.x1));
+  const y0 = Math.min(...boxes.map(b => b.y0)), y1 = Math.max(...boxes.map(b => b.y1));
+  const z = _cstClamp(Math.min(1.2, (W - pad * 2) / Math.max(1, x1 - x0), (H - pad * 2) / Math.max(1, y1 - y0)));
+  return { x: W / 2 - (x0 + x1) / 2 * z, y: H / 2 - (y0 + y1) / 2 * z, z };
+}
+
+function _cstEdgePath(a, b) {
+  const ax = _cstX(a), ay = _cstY(a), bx = _cstX(b), by = _cstY(b);
+  const mx = (ax + bx) / 2 - (by - ay) * 0.1, my = (ay + by) / 2 + (bx - ax) * 0.1;
+  return `M${ax} ${ay}Q${mx} ${my} ${bx} ${by}`;
+}
+
+/* ── Writes ──────────────────────────────────────────────────────────────── *
+   A batch works on a private copy of the map, so several steps (new thought,
+   new person, two links) read each other's results and land as one commit. */
+function _cstBatch() {
+  const local = new Map(NODES_CST.map(n => [n.id, { ...n, links: [...(n.links || [])] }]));
+  const ops = [], staged = new Map(), order = [], touched = new Map();
+  const touch = (id) => {
+    const n = NODES_CST.find(x => x.id === id);
+    if (n && !touched.has(id)) { const o = { ...n, links: [...(n.links || [])] }; delete o.id; touched.set(id, o); }
+  };
+  const b = {
+    get: (id) => local.get(id),
+    nodes: () => [...local.values()],
+    personNode: (pid) => [...local.values()].find(n => n.kind === 'person' && n.personId === pid),
+    linked: (a, c) => !!(local.get(a)?.links.includes(c) || local.get(c)?.links.includes(a)),
+    degree: (id) => [...local.values()].filter(n => n.id !== id && (n.links.includes(id) || local.get(id)?.links.includes(n.id))).length,
+    set(id, data) {
+      staged.set(id, data); order.push(id);
+      local.set(id, { id, ...data, links: [...(data.links || [])] });
+      ops.push(w => w.set(_ud('constellation', id), staged.get(id)));
+    },
+    patch(id, p) {
+      const n = local.get(id); if (!n) return;
+      Object.assign(n, p);
+      if (staged.has(id)) { Object.assign(staged.get(id), p); return; }
+      touch(id);
+      ops.push(w => w.update(_ud('constellation', id), p));
+    },
+    del(id) {
+      touch(id); local.delete(id);
+      ops.push(w => w.delete(_ud('constellation', id)));
+    },
+    link(x, y) {                    // written on whichever is newer
+      if (b.linked(x, y)) return;
+      const newer = order.indexOf(y) > order.indexOf(x) ? y : x, other = newer === x ? y : x;
+      b.patch(newer, { links: [...local.get(newer).links, other] });
+    },
+    unlink(x, y) {
+      [[x, y], [y, x]].forEach(([p, q]) => {
+        const n = local.get(p);
+        if (n?.links.includes(q)) b.patch(p, { links: n.links.filter(i => i !== q) });
+      });
+    },
+    // Remove a node and its lines. A person left with no lines goes too.
+    remove(id) {
+      const gone = local.get(id); if (!gone) return;
+      const near = [...local.values()].filter(n => n.id !== id && (n.links.includes(id) || gone.links.includes(n.id)));
+      near.forEach(n => b.unlink(n.id, id));
+      b.del(id);
+      near.forEach(n => { if (n.kind === 'person' && gone.kind === 'thought' && !b.degree(n.id)) b.del(n.id); });
+    },
+    async commit() {
+      try {
+        const w = CDX_FB.writeBatch(window.CDX_DB);
+        ops.forEach(f => f(w));
+        await w.commit();
+        return true;
+      } catch (e) {
+        console.error('constellation write failed:', e);
+        showToast('Could not save — try again', 'error');
+        return false;
+      }
+    },
+    // Puts back the original of everything this batch touched.
+    revert() {
+      return async () => {
+        const w = CDX_FB.writeBatch(window.CDX_DB);
+        touched.forEach((o, id) => w.set(_ud('constellation', id), o));
+        await w.commit();
+      };
+    },
+  };
+  return b;
+}
+
+function _cstDoc(kind, text, pos, extra = {}) {
+  return { kind, text, x: pos.x, y: pos.y, priority: null, projectId: null, taskId: null, links: [],
+    createdAt: CDX_FB.serverTimestamp(), ...extra };
+}
+
+// Find the person's node or set one down beside the thought, then link them.
+function _cstAttachPerson(b, thoughtId, person) {
+  let pn = b.personNode(person.id);
+  if (!pn) {
+    const t = b.get(thoughtId), id = crypto.randomUUID();
+    b.set(id, _cstDoc('person', person.name, _cstPlace(_cstX(t), _cstY(t), b.nodes()), { personId: person.id }));
+    pn = b.get(id);
+  }
+  b.link(thoughtId, pn.id);
+}
+
+async function _cstSaveNode(id, patch) {
+  try { await CDX_FB.updateDoc(_ud('constellation', id), patch); return true; }
+  catch (e) { console.error(e); showToast('Could not save — try again', 'error'); return false; }
+}
+
+/* ── View ────────────────────────────────────────────────────────────────── */
+
+function _cstLoadView() {
+  try {
+    const v = JSON.parse(localStorage.getItem(_CST_VIEW_KEY));
+    if (v && [v.x, v.y, v.z].every(Number.isFinite)) { _cstView = { x: v.x, y: v.y, z: _cstClamp(v.z) }; return; }
+  } catch (e) { /* storage blocked: start fitted */ }
+  _cstNeedFit = true;
+}
+
+function _cstApplyView() {
+  const v = _cstView;
+  _cstEl.world.style.transform = `translate(${v.x}px,${v.y}px) scale(${v.z})`;
+  clearTimeout(_cstViewTimer);
+  _cstViewTimer = setTimeout(() => { try { localStorage.setItem(_CST_VIEW_KEY, JSON.stringify(_cstView)); } catch (e) { /* fine */ } }, 300);
+}
+
+function _cstZoomAt(factor, cx, cy) {
+  const z = _cstClamp(_cstView.z * factor), k = z / _cstView.z;
+  _cstView = { x: cx - (cx - _cstView.x) * k, y: cy - (cy - _cstView.y) * k, z };
+  _cstMenuClose();
+  _cstApplyView();
+}
+
+function _cstFit() {
+  const boxes = [];
+  _cstEl.layer.querySelectorAll('.cst-node').forEach(el => {
+    const n = _cstById(el.dataset.id); if (!n) return;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    boxes.push({ x0: _cstX(n) - w / 2, x1: _cstX(n) + w / 2, y0: _cstY(n) - h / 2, y1: _cstY(n) + h / 2 });
+  });
+  _cstView = _cstFitView(boxes, _cstEl.stage.clientWidth, _cstEl.stage.clientHeight);
+  _cstApplyView();
+}
+
+function _cstToWorld(clientX, clientY) {
+  const r = _cstEl.stage.getBoundingClientRect(), v = _cstView;
+  return { x: Math.round((clientX - r.left - v.x) / v.z), y: Math.round((clientY - r.top - v.y) / v.z) };
+}
+
+function _cstPanTo(id) {
+  const n = _cstById(id); if (!n) return;
+  _cstView.x = _cstEl.stage.clientWidth / 2 - _cstX(n) * _cstView.z;
+  _cstView.y = _cstEl.stage.clientHeight / 2 - _cstY(n) * _cstView.z;
+  _cstApplyView();
+}
+
+/* ── Render ──────────────────────────────────────────────────────────────── */
+
+function _cstEdges() {
+  const ids = new Set(NODES_CST.map(n => n.id)), seen = new Set(), out = [];
+  NODES_CST.forEach(n => (n.links || []).forEach(o => {
+    if (!ids.has(o) || o === n.id) return;
+    const key = [n.id, o].sort().join('|');
+    if (!seen.has(key)) { seen.add(key); out.push([n.id, o]); }
+  }));
+  return out;
+}
+
+function _cstNeighbours(id) {
+  return new Set(_cstEdges().filter(e => e.includes(id)).map(e => e[0] === id ? e[1] : e[0]));
+}
+
+function _cstTaskFor(n) { return n.taskId ? (typeof TASKS !== 'undefined' ? TASKS : []).find(t => t.id === n.taskId) : null; }
+
+function _cstNodeHtml(n, counts) {
+  if (n.kind === 'person') {
+    const p = (typeof PEOPLE !== 'undefined' ? PEOPLE : []).find(x => x.id === n.personId);
+    const cnt = counts[n.id] ? `<span class="cst-cnt">${counts[n.id]}</span>` : '';
+    return p
+      ? `<span class="cst-dot" style="background:${escAttr(p.color)}"></span><span class="cst-pn">@${escHtml(p.name)}</span>${cnt}`
+      : `<span class="cst-pn cst-gone">@${escHtml(n.text || '')}</span>${cnt}`;
+  }
+  const proj = n.projectId ? (typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : []).find(m => m.id === n.projectId) : null;
+  const dot = proj ? `<span class="cst-dot" title="${escAttr(proj.title)}" style="background:${escAttr(proj.color)}"></span>` : '';
+  const task = _cstTaskFor(n);
+  const suffix = task ? (task.done ? '<span class="cst-suf">✓</span>' : '<span class="cst-suf" title="In your Tasks list">→</span>') : '';
+  return `${dot}<span class="cst-t">${escHtml(n.text || '')}</span>${suffix}`;
+}
+
+function _cstRender() {
+  if (typeof _mainPanel === 'undefined' || _mainPanel !== 'constellation' || !_cstEl.layer) return;
+  const counts = {};
+  _cstEdges().forEach(([a, c]) => {
+    const A = _cstById(a), C = _cstById(c);
+    if (A?.kind === 'person' && C?.kind === 'thought') counts[a] = (counts[a] || 0) + 1;
+    if (C?.kind === 'person' && A?.kind === 'thought') counts[c] = (counts[c] || 0) + 1;
+  });
+
+  _cstEl.layer.innerHTML = NODES_CST.map(n => {
+    const task = _cstTaskFor(n);
+    const cls = n.kind === 'person' ? 'cst-person'
+      : `cst-thought${n.priority ? ' p-' + n.priority : ''}${task?.done ? ' is-done' : ''}`;
+    return `<div class="cst-node ${cls}" data-id="${escAttr(n.id)}" style="left:${_cstX(n)}px;top:${_cstY(n)}px" title="${escAttr(n.text || '')}">${_cstNodeHtml(n, counts)}</div>`;
+  }).join('');
+  _cstEl.lines.innerHTML = _cstEdges().map(([a, c]) =>
+    `<path data-a="${escAttr(a)}" data-b="${escAttr(c)}" d="${_cstEdgePath(_cstById(a), _cstById(c))}"/>`).join('');
+
+  const people = NODES_CST.filter(n => n.kind === 'person').length;
+  _cstEl.eyebrow.textContent = `CONSTELLATION · ${NODES_CST.length - people} THOUGHTS · ${people} PEOPLE`;
+  _cstEl.empty.hidden = NODES_CST.length > 0 || !!_cstIn;
+
+  if (_cstIn?.editId) _cstEl.layer.querySelector(`[data-id="${CSS.escape(_cstIn.editId)}"]`)?.classList.add('cst-editing');
+  if (_cstFocus && !_cstById(_cstFocus)) _cstFocus = null;
+  if (_cstSel && !_cstById(_cstSel)) _cstSel = null;
+
+  if (_cstNeedFit && _cstEl.stage.clientWidth) { _cstFit(); _cstNeedFit = false; }
+  _cstPaint();
+  _cstSide();
+  if (_cstSeen && !_cstReduced()) _cstAnimateNew();
+  _cstSeen = new Set(NODES_CST.map(n => n.id));
+}
+
+// Selection and focus change often; they only toggle classes so the fades run.
+function _cstPaint() {
+  const lit = _cstFocus ? new Set([_cstFocus, ..._cstNeighbours(_cstFocus)]) : null;
+  _cstEl.layer.querySelectorAll('.cst-node').forEach(el => {
+    el.classList.toggle('sel', el.dataset.id === _cstSel);
+    el.classList.toggle('dim', !!lit && !lit.has(el.dataset.id));
+  });
+  _cstEl.lines.querySelectorAll('path').forEach(p => {
+    const a = p.dataset.a, c = p.dataset.b;
+    p.classList.toggle('hot', !!_cstSel && (a === _cstSel || c === _cstSel));
+    p.classList.toggle('dim', !!_cstFocus && a !== _cstFocus && c !== _cstFocus);
+  });
+}
+
+function _cstAnimateNew() {
+  const ease = 'cubic-bezier(.2,.9,.25,1.15)';
+  NODES_CST.forEach(n => {
+    if (_cstSeen.has(n.id)) return;
+    const el = _cstEl.layer.querySelector(`[data-id="${CSS.escape(n.id)}"]`); if (!el) return;
+    const parent = [..._cstNeighbours(n.id)].map(_cstById).find(p => p && _cstSeen.has(p.id));
+    const from = parent ? `translate(${_cstX(parent) - _cstX(n)}px,${_cstY(parent) - _cstY(n)}px) scale(.6)` : 'scale(.6)';
+    el.animate([{ transform: `translate(-50%,-50%) ${from}`, opacity: 0 }, { transform: 'translate(-50%,-50%)', opacity: 1 }], { duration: 420, easing: ease });
+    _cstEl.lines.querySelectorAll(`path[data-a="${CSS.escape(n.id)}"],path[data-b="${CSS.escape(n.id)}"]`).forEach(p => {
+      const len = p.getTotalLength?.() || 0;
+      if (len) p.animate([{ strokeDasharray: len, strokeDashoffset: len }, { strokeDasharray: len, strokeDashoffset: 0 }], { duration: 420, easing: 'ease-out' });
+    });
+  });
+}
+
+/* ── Selection ───────────────────────────────────────────────────────────── */
+
+function _cstSelect(id, keepFocus) {
+  _cstSel = id;
+  if (!keepFocus) _cstFocus = (id && _cstById(id)?.kind === 'person') ? id : null;
+  _cstPaint();
+  _cstSide();
+}
+
+/* ── Side panel (a person's links) ───────────────────────────────────────── */
+
+function _cstOpenTask(taskId) {
+  showMainPanel('alltasks');
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  document.getElementById('nav-alltasks')?.classList.add('active');
+  openAtkDetail(taskId);
+}
+
+function _cstSide() {
+  const side = _cstEl.side, pn = _cstFocus && _cstById(_cstFocus);
+  side.classList.toggle('open', !!pn);
+  if (!pn) return;
+  const person = (typeof PEOPLE !== 'undefined' ? PEOPLE : []).find(p => p.id === pn.personId);
+  const name = person ? person.name : (pn.text || '');
+  const thoughts = [..._cstNeighbours(pn.id)].map(_cstById).filter(n => n?.kind === 'thought');
+  const tasks = person ? (typeof TASKS !== 'undefined' ? TASKS : []).filter(t => !t.done && (t.people || []).includes(person.id)) : [];
+  const projs = typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : [];
+
+  const rows = thoughts.map(n => {
+    const pr = projs.find(m => m.id === n.projectId);
+    return `<button type="button" class="cst-row" data-thought="${escAttr(n.id)}">
+      ${pr ? `<span class="cst-dot" style="background:${escAttr(pr.color)}"></span>` : ''}
+      <span class="cst-row-t">${escHtml(n.text || '')}</span>
+      ${n.priority ? `<span class="cst-prio">${_atkPrioDots(n.priority)}</span>` : ''}</button>`;
+  }).join('');
+  const taskRows = tasks.map(t => `<button type="button" class="cst-row" data-task="${escAttr(t.id)}"><span class="cst-row-t">${escHtml(t.title || '')}</span></button>`).join('');
+  const open = thoughts.filter(n => !_cstTaskFor(n)).length + tasks.length;
+
+  side.innerHTML = `
+    <div class="cst-side-h">
+      ${person ? `<span class="cst-dot" style="background:${escAttr(person.color)}"></span>` : ''}
+      <span class="cst-side-name">${escHtml(name)}</span>
+      <button type="button" class="cst-x" data-close aria-label="Close">×</button>
+    </div>
+    ${thoughts.length ? `<div class="cst-sec">ON THIS MAP · ${thoughts.length}</div>${rows}` : ''}
+    ${tasks.length ? `<div class="cst-sec">IN TASKS · ${tasks.length}</div>${taskRows}` : ''}
+    ${!thoughts.length && !tasks.length ? `<div class="cst-none">Nothing linked to ${escHtml(name)} yet.</div>` : ''}
+    <div class="cst-side-f">${open} open in total</div>`;
+}
+
+/* ── Text input (new thought / edit) ─────────────────────────────────────── */
+
+function _cstInOpen({ x, y, parentId = null, editId = null, text = '' }) {
+  _cstInClose(true);
+  _cstMenuClose();
+  const wrap = document.createElement('div');
+  wrap.className = 'cst-inputwrap';
+  wrap.style.left = x + 'px'; wrap.style.top = y + 'px';
+  wrap.innerHTML = '<input class="cst-input" type="text" autocomplete="off" spellcheck="false" placeholder="A thought…  @ for a person"><div class="cst-picked"></div>';
+  _cstEl.world.appendChild(wrap);
+  const input = wrap.querySelector('input');
+  input.value = text;
+  const st = _cstIn = { wrap, input, picked: [], parentId, editId, x, y, done: false };
+  _cstEl.empty.hidden = true;
+  if (editId) _cstEl.layer.querySelector(`[data-id="${CSS.escape(editId)}"]`)?.classList.add('cst-editing');
+
+  attachMentions(input, {
+    onPick(p) {
+      if (st.picked.some(q => q.id === p.id)) return;
+      st.picked.push(p);
+      wrap.querySelector('.cst-picked').textContent = st.picked.map(q => '@' + q.name).join('  ');
+    },
+    taken: () => st.picked.map(p => p.id),
+  });
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); _cstInCommit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); _cstInClose(true); }
+    else if (e.key === 'Tab') e.preventDefault();
+  });
+  input.addEventListener('blur', () => setTimeout(() => { if (!st.done) _cstInCommit(); }, 120));
+  input.focus();
+  input.select();
+}
+
+function _cstInClose(cancel) {
+  const st = _cstIn; if (!st) return;
+  st.done = true; _cstIn = null;
+  st.wrap.remove();
+  if (typeof _mnClose === 'function') _mnClose();
+  _cstEl.layer?.querySelectorAll('.cst-editing').forEach(el => el.classList.remove('cst-editing'));
+  if (cancel) _cstEl.empty.hidden = NODES_CST.length > 0;
+}
+
+async function _cstInCommit() {
+  const st = _cstIn; if (!st || st.done) return;
+  const text = st.input.value.trim();
+  _cstInClose(true);
+  if (!text) return;
+  const b = _cstBatch();
+  let id = st.editId;
+  if (id) {
+    if (b.get(id) && b.get(id).text !== text) b.patch(id, { text });
+  } else {
+    id = crypto.randomUUID();
+    const parent = st.parentId && b.get(st.parentId);
+    const pos = parent ? _cstPlace(_cstX(parent), _cstY(parent), b.nodes()) : { x: st.x, y: st.y };
+    b.set(id, _cstDoc('thought', text, pos));
+    if (parent) b.link(id, parent.id);
+  }
+  st.picked.forEach(p => _cstAttachPerson(b, id, p));
+  _cstSel = id; _cstFocus = null;
+  await b.commit();
+}
+
+/* ── Delete ──────────────────────────────────────────────────────────────── */
+
+async function _cstDelete(id) {
+  const n = _cstById(id); if (!n) return;
+  const b = _cstBatch();
+  b.remove(id);
+  if (!(await b.commit())) return;
+  if (_cstSel === id) _cstSel = null;
+  if (_cstFocus === id) _cstFocus = null;
+  const short = (n.text || '').length > 28 ? n.text.slice(0, 27) + '…' : (n.text || '');
+  showUndoToast(`${n.kind === 'person' ? 'Removed' : 'Deleted'} · ${short}`, b.revert());
+}
+
+/* ── Right-click menu ────────────────────────────────────────────────────── *
+   One level at a time: the root lists categories, a category replaces the
+   menu with its choices and a Back row. Levels are functions so a choice
+   that stays open (toggling a person) can redraw itself with fresh state. */
+
+function _cstMenuClose() {
+  if (!_cstMenu) return;
+  _cstMenu.el.remove(); _cstMenu = null;
+}
+
+function _cstMenuOpen(cx, cy, root) {
+  _cstMenuClose();
+  const el = document.createElement('div');
+  el.className = 'cst-menu';
+  el.setAttribute('role', 'menu');
+  document.body.appendChild(el);
+  _cstMenu = { el, stack: [root], cx, cy, items: [] };
+  el.addEventListener('mousedown', e => e.stopPropagation());
+  el.addEventListener('click', e => {
+    const i = e.target.closest('[data-i]')?.dataset.i;
+    const it = i != null && _cstMenu.items[+i];
+    if (!it) return;
+    if (it.go) { _cstMenu.stack.push(it.go); _cstMenuDraw(true); }
+    else if (it.back) _cstMenuBack();
+    else if (it.act) { const keep = it.keep; if (!keep) _cstMenuClose(); Promise.resolve(it.act()).then(() => { if (keep && _cstMenu) _cstMenuDraw(false); }); }
+  });
+  el.addEventListener('keydown', e => {
+    const btns = [...el.querySelectorAll('button')], i = btns.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') btns[(i + 1) % btns.length]?.focus();
+    else if (e.key === 'ArrowUp') btns[(i - 1 + btns.length) % btns.length]?.focus();
+    else if ((e.key === 'ArrowLeft' || e.key === 'Backspace') && _cstMenu.stack.length > 1) _cstMenuBack();
+    else return;
+    e.preventDefault(); e.stopPropagation();
+  });
+  _cstMenuDraw(true);
+}
+
+function _cstMenuBack() { _cstMenu.stack.pop(); _cstMenuDraw(true); }
+
+function _cstMenuDraw(focusFirst) {
+  const m = _cstMenu;
+  const items = m.stack[m.stack.length - 1]();
+  if (m.stack.length > 1) items.unshift({ label: '‹ Back', back: true });
+  m.items = items;
+  m.el.innerHTML = items.map((it, i) => {
+    if (it.divider) return '<div class="cst-mdiv"></div>';
+    if (it.muted) return `<div class="cst-mnote">${escHtml(it.label)}</div>`;
+    return `<button type="button" role="menuitem" data-i="${i}">
+      <span class="cst-ml">${it.dot ? `<span class="cst-dot" style="background:${escAttr(it.dot)}"></span>` : ''}<span>${escHtml(it.label)}</span>${it.check ? '<span class="cst-chk">✓</span>' : ''}</span>
+      ${it.right ? `<span class="cst-mr">${escHtml(it.right)}</span>` : (it.go ? '<span class="cst-mr">›</span>' : '')}</button>`;
+  }).join('');
+  const r = m.el.getBoundingClientRect();
+  m.el.style.left = Math.max(4, Math.min(m.cx, innerWidth - r.width - 4)) + 'px';
+  m.el.style.top = Math.max(4, Math.min(m.cy, innerHeight - r.height - 4)) + 'px';
+  if (focusFirst) m.el.querySelector('button')?.focus();
+}
+
+const _CST_PRIO = [['high', 'High'], ['med', 'Medium'], ['low', 'Low'], [null, 'None']];
+
+function _cstThoughtMenu(id) {
+  const n = () => _cstById(id);
+  const peopleL = () => typeof PEOPLE !== 'undefined' ? PEOPLE : [];
+  const projL = () => (typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : []).filter(m => !m.isArchived);
+  const task = () => _cstTaskFor(n());
+  const prioName = () => (_CST_PRIO.find(p => p[0] === (n()?.priority || null)) || _CST_PRIO[3])[1];
+
+  const priority = () => _CST_PRIO.map(([v, label]) => ({
+    label, check: (n()?.priority || null) === v,
+    act: async () => {
+      if (!(await _cstSaveNode(id, { priority: v }))) return;
+      if (v && task()) updateTask(n().taskId, { priority: v });
+    },
+  }));
+  const commitment = () => {
+    const list = projL();
+    if (!list.length) return [{ label: 'No commitments yet.', muted: true }];
+    const set = (pid) => async () => {
+      if (!(await _cstSaveNode(id, { projectId: pid }))) return;
+      if (task()) updateTask(n().taskId, { projectId: pid });
+    };
+    return [{ label: 'No commitment', check: !n()?.projectId, act: set(null) },
+      ...list.map(m => ({ label: m.title, dot: m.color, check: n()?.projectId === m.id, act: set(m.id) }))];
+  };
+  const person = () => {
+    const list = peopleL();
+    if (!list.length) return [{ label: 'Add people in Settings, or type @ while writing.', muted: true }];
+    return list.map(p => {
+      const pn = NODES_CST.find(x => x.kind === 'person' && x.personId === p.id);
+      return { label: p.name, dot: p.color, check: !!pn && _cstEdges().some(e => e.includes(id) && e.includes(pn.id)), keep: true, act: () => _cstTogglePerson(id, p) };
+    });
+  };
+
+  return () => {
+    const cur = n(); if (!cur) return [];
+    const proj = (typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : []).find(m => m.id === cur.projectId);
+    return [
+      { label: 'Priority', right: prioName(), go: priority },
+      { label: 'Commitment', right: proj ? proj.title : '', go: commitment },
+      { label: 'Person', go: person },
+      { divider: true },
+      task() ? { label: 'Open in Tasks', act: () => _cstOpenTask(cur.taskId) } : { label: 'Add to Tasks', act: () => _cstPromote(id) },
+      { label: 'Delete', act: () => _cstDelete(id) },
+    ];
+  };
+}
+
+async function _cstTogglePerson(thoughtId, person) {
+  const b = _cstBatch(), pn = b.personNode(person.id);
+  if (pn && b.linked(thoughtId, pn.id)) {
+    b.unlink(thoughtId, pn.id);
+    if (!b.degree(pn.id)) b.del(pn.id);
+  } else _cstAttachPerson(b, thoughtId, person);
+  await b.commit();
+}
+
+async function _cstPromote(id) {
+  const n = _cstById(id); if (!n) return;
+  const ids = [..._cstNeighbours(id)].map(_cstById).filter(x => x?.kind === 'person' && x.personId).map(x => x.personId);
+  try {
+    const ref = await CDX_FB.addDoc(_uc('tasks'), newTaskDoc({ title: n.text, priority: n.priority || 'med', projectId: n.projectId || null, people: ids.length ? ids : null }));
+    await CDX_FB.updateDoc(_ud('constellation', id), { taskId: ref.id });
+    showToast('Added to Tasks');
+  } catch (e) { console.error(e); showToast('Could not save — try again', 'error'); }
+}
+
+function _cstContextMenu(e) {
+  e.preventDefault();
+  if (e.target.closest('.cst-side,.cst-menu')) return;
+  const nodeEl = e.target.closest('.cst-node'), at = _cstToWorld(e.clientX, e.clientY);
+  const n = nodeEl && _cstById(nodeEl.dataset.id);
+  if (n?.kind === 'thought') { _cstSelect(n.id); _cstMenuOpen(e.clientX, e.clientY, _cstThoughtMenu(n.id)); }
+  else if (n) {
+    _cstSelect(n.id);
+    _cstMenuOpen(e.clientX, e.clientY, () => [
+      { label: 'Show links', act: () => _cstSelect(n.id) },
+      { label: 'Remove from map', act: () => _cstDelete(n.id) },
+    ]);
+  } else {
+    _cstMenuOpen(e.clientX, e.clientY, () => [
+      { label: 'New thought here', act: () => _cstInOpen(at) },
+      { label: 'Fit everything', act: () => _cstFit() },
+    ]);
+  }
+}
+
+/* ── Pointer and keys ────────────────────────────────────────────────────── */
+
+function _cstPointerDown(e) {
+  if (e.button !== 0 || e.target.closest('.cst-side,.cst-ctl,.cst-menu,.cst-inputwrap')) return;
+  _cstMenuClose();
+  const nodeEl = e.target.closest('.cst-node'), n = nodeEl && _cstById(nodeEl.dataset.id);
+  const g = { sx: e.clientX, sy: e.clientY, moved: false, node: n, el: nodeEl, vx: _cstView.x, vy: _cstView.y,
+    nx: n ? _cstX(n) : 0, ny: n ? _cstY(n) : 0 };
+  const move = (ev) => {
+    const dx = ev.clientX - g.sx, dy = ev.clientY - g.sy;
+    if (!g.moved && Math.hypot(dx, dy) < 5) return;
+    g.moved = true;
+    if (g.node) {
+      g.node.x = Math.round(g.nx + dx / _cstView.z); g.node.y = Math.round(g.ny + dy / _cstView.z);
+      g.el.style.left = g.node.x + 'px'; g.el.style.top = g.node.y + 'px';
+      _cstEl.lines.querySelectorAll(`path[data-a="${CSS.escape(g.node.id)}"],path[data-b="${CSS.escape(g.node.id)}"]`).forEach(p => {
+        p.setAttribute('d', _cstEdgePath(_cstById(p.dataset.a), _cstById(p.dataset.b)));
+      });
+    } else {
+      _cstView.x = g.vx + dx; _cstView.y = g.vy + dy;
+      _cstApplyView();
+    }
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    if (g.node && g.moved) _cstSaveNode(g.node.id, { x: g.node.x, y: g.node.y });
+    else if (g.node) _cstSelect(g.node.id);
+    else if (!g.moved) _cstSelect(null);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+
+function _cstWheel(e) {
+  e.preventDefault();
+  const r = _cstEl.stage.getBoundingClientRect();
+  // ctrl = a trackpad pinch. A plain wheel notch (whole, large steps) also
+  // zooms; the fine-grained two-finger scroll of a trackpad pans.
+  const notch = e.deltaMode === 1 || (e.deltaX === 0 && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 50);
+  if (e.ctrlKey || notch) _cstZoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX - r.left, e.clientY - r.top);
+  else { _cstMenuClose(); _cstView.x -= e.deltaX; _cstView.y -= e.deltaY; _cstApplyView(); }
+}
+
+function _cstDblClick(e) {
+  if (e.target.closest('.cst-side,.cst-ctl,.cst-menu,.cst-inputwrap')) return;
+  const el = e.target.closest('.cst-node'), n = el && _cstById(el.dataset.id);
+  if (n?.kind === 'thought') _cstInOpen({ x: _cstX(n), y: _cstY(n), editId: n.id, text: n.text || '' });
+  else if (!n) { _cstSelect(null); _cstInOpen(_cstToWorld(e.clientX, e.clientY)); }
+}
+
+function _cstKey(e) {
+  if (typeof _mainPanel === 'undefined' || _mainPanel !== 'constellation') return;
+  const t = e.target;
+  if (t.closest?.('input,textarea,[contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
+  const sel = _cstSel && _cstById(_cstSel);
+  if (e.key === 'Escape') {
+    if (_cstMenu) _cstMenuClose();
+    else { _cstFocus = null; _cstSelect(null); }
+    return;
+  }
+  if (_cstMenu) return;
+  if (e.key === 'f') { e.preventDefault(); _cstFit(); }
+  else if (e.key === 'Tab' && sel) { e.preventDefault(); const p = _cstPlace(_cstX(sel), _cstY(sel), NODES_CST); _cstInOpen({ x: p.x, y: p.y, parentId: sel.id }); }
+  else if (e.key === 'Enter' && sel?.kind === 'thought') { e.preventDefault(); _cstInOpen({ x: _cstX(sel), y: _cstY(sel), editId: sel.id, text: sel.text || '' }); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); _cstDelete(sel.id); }
+}
+
+/* ── Init ────────────────────────────────────────────────────────────────── */
+
+function initConstellation() {
+  const panel = document.getElementById('panel-constellation');
+  if (!panel || !window.CDX_USER?.uid) return;
+  if (!_cstWired) {
+    _cstWired = true;
+    const q = (s) => panel.querySelector(s);
+    _cstEl = { panel, stage: q('.cst-stage'), world: q('.cst-world'), lines: q('.cst-lines'), layer: q('.cst-layer'),
+      eyebrow: q('.cst-eyebrow'), empty: q('.cst-empty'), side: q('.cst-side') };
+    _cstLoadView();
+    _cstApplyView();
+    const st = _cstEl.stage;
+    st.addEventListener('pointerdown', _cstPointerDown);
+    st.addEventListener('dblclick', _cstDblClick);
+    st.addEventListener('contextmenu', _cstContextMenu);
+    st.addEventListener('wheel', _cstWheel, { passive: false });
+    q('.cst-ctl').addEventListener('click', e => {
+      const a = e.target.closest('[data-act]')?.dataset.act; if (!a) return;
+      const cx = st.clientWidth / 2, cy = st.clientHeight / 2;
+      if (a === 'in') _cstZoomAt(1.25, cx, cy); else if (a === 'out') _cstZoomAt(0.8, cx, cy); else _cstFit();
+    });
+    _cstEl.side.addEventListener('click', e => {
+      if (e.target.closest('[data-close]')) { _cstFocus = null; _cstSelect(null); return; }
+      const th = e.target.closest('[data-thought]')?.dataset.thought;
+      if (th) { _cstSelect(th, true); _cstPanTo(th); return; }
+      const tk = e.target.closest('[data-task]')?.dataset.task;
+      if (tk) _cstOpenTask(tk);
+    });
+    document.addEventListener('keydown', _cstKey);
+    document.addEventListener('mousedown', e => { if (_cstMenu && !_cstMenu.el.contains(e.target)) _cstMenuClose(); }, true);
+    // Leaving the page (display:none) must not strand the menu or the picker.
+    new MutationObserver(() => {
+      if (panel.style.display === 'none') { _cstMenuClose(); _cstInClose(true); }
+    }).observe(panel, { attributes: true, attributeFilter: ['style'] });
+  }
+  if (!_cstUnsub) {
+    _cstUnsub = CDX_FB.onSnapshot(_uc('constellation'), snap => {
+      NODES_CST = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _cstLoaded = true;
+      _cstRender();
+    });
+  }
+  if (_cstLoaded) _cstRender();
+}
+window.initConstellation = initConstellation;
+window._cstRefresh = () => { if (_mainPanel === 'constellation') _cstRender(); };

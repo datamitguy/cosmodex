@@ -21822,7 +21822,7 @@ function _cstSetTool(t) {
     b.classList.toggle('on', on);
     b.setAttribute('aria-pressed', on);
   });
-  _cstEl.hint.textContent = t === 'link' ? 'Click a thought, then another to link or unlink them · Esc to finish' : _cstEl.hintText;
+  _cstEl.hint.textContent = t === 'link' ? 'Click a thought, then another — or drag from one to the other — to link or unlink · Esc to finish' : _cstEl.hintText;
 }
 
 // Two nodes picked in LINK mode: flip the line between them.
@@ -21845,13 +21845,45 @@ function _cstLinkClick(n) {
   else { const a = _cstArm; _cstArm = null; _cstSelect(n.id, true); _cstToggleLink(a, n.id); }
 }
 
+// LINK mode takes either gesture: click one thought then another, or drag
+// from one onto the other. A drag shows the line it is about to make.
+function _cstLinkDrag(e, n) {
+  const sx = e.clientX, sy = e.clientY;
+  let line = null;
+  const move = (ev) => {
+    if (!line && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+    if (!line) {
+      line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      line.setAttribute('class', 'hot');
+      _cstEl.lines.appendChild(line);
+      _cstArm = null; _cstSelect(n.id, true);
+    }
+    const w = _cstToWorld(ev.clientX, ev.clientY);
+    line.setAttribute('d', `M${_cstX(n)} ${_cstY(n)} L${w.x} ${w.y}`);
+  };
+  const up = (ev) => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    if (!line) { _cstLinkClick(n); return; }
+    line.remove();
+    const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.cst-node');
+    const to = el && _cstById(el.dataset.id);
+    if (to && to.id !== n.id) { _cstSelect(to.id, true); _cstToggleLink(n.id, to.id); }
+    else _cstSelect(null);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+
 /* ── Pointer and keys ────────────────────────────────────────────────────── */
 
 function _cstPointerDown(e) {
   if (e.button !== 0 || e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-menu,.cst-inputwrap')) return;
   _cstMenuClose();
   const nodeEl = e.target.closest('.cst-node'), n = nodeEl && _cstById(nodeEl.dataset.id);
-  if (_cstTool === 'link' && n) { _cstLinkClick(n); return; }
+  if (_cstTool === 'link' && n) { _cstLinkDrag(e, n); return; }
   const g = { sx: e.clientX, sy: e.clientY, moved: false, node: _cstTool === 'move' ? n : null, el: nodeEl, vx: _cstView.x, vy: _cstView.y,
     nx: n ? _cstX(n) : 0, ny: n ? _cstY(n) : 0 };
   const move = (ev) => {

@@ -20934,6 +20934,7 @@ const _CST_ICON = {
   target: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
   task: 'M4 4h16v16H4zM8 12l3 3 5-6',
   link: 'M3 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M15 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M9 12h6',
+  arrow: 'M4 12h15M13 6l6 6-6 6',
   unlink: 'M3 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M15 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M10.5 16l3-8',
 };
 const _cstIcon = (k) => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${_CST_ICON[k]}"/></svg>`;
@@ -21002,6 +21003,61 @@ function _cstEdgePath(a, b) {
   return `M${ax} ${ay}Q${mx} ${my} ${bx} ${by}`;
 }
 
+/* ── Lines: arrowheads and labels ────────────────────────────────────────── *
+   What a line carries is stored beside the link, on the node that lists it:
+   `edges[otherId] = { label, ends }`, where ends is 'out' (arrowhead at the
+   other node), 'in' (at this one) or 'both'. Read here from either side. */
+function _cstEdgeHolder(a, b) {
+  const A = _cstById(a), B = _cstById(b); if (!A || !B) return null;
+  if (A.edges?.[b]) return [A, B];
+  if (B.edges?.[a]) return [B, A];
+  return (A.links || []).includes(b) ? [A, B] : (B.links || []).includes(a) ? [B, A] : null;
+}
+function _cstEdgeInfo(a, b) {
+  const h = _cstEdgeHolder(a, b), m = h && h[0].edges?.[h[1].id];
+  const ends = m?.ends || null, atOther = ends === 'out' || ends === 'both', atHolder = ends === 'in' || ends === 'both';
+  return { label: m?.label || '', headA: !!h && (h[0].id === a ? atHolder : atOther), headB: !!h && (h[0].id === b ? atHolder : atOther) };
+}
+async function _cstEdgeSet(a, b, change, label) {
+  const h = _cstEdgeHolder(a, b); if (!h) return;
+  const [H, O] = h, cur = _cstEdgeInfo(a, b);
+  const next = { label: cur.label, headA: cur.headA, headB: cur.headB, ...change };
+  const atH = H.id === a ? next.headA : next.headB, atO = H.id === a ? next.headB : next.headA;
+  const edges = { ...(H.edges || {}) };
+  if (!next.label && !atH && !atO) delete edges[O.id];
+  else edges[O.id] = { label: next.label || '', ends: atH && atO ? 'both' : atO ? 'out' : atH ? 'in' : null };
+  await _cstSaveNode(H.id, { edges }, label);
+}
+
+// Point and direction on the curve between two nodes, at t (0 = a, 1 = b).
+function _cstCurve(a, b, t) {
+  const ax = _cstX(a), ay = _cstY(a), bx = _cstX(b), by = _cstY(b);
+  const mx = (ax + bx) / 2 - (by - ay) * 0.1, my = (ay + by) / 2 + (bx - ax) * 0.1, u = 1 - t;
+  return { x: u * u * ax + 2 * u * t * mx + t * t * bx, y: u * u * ay + 2 * u * t * my + t * t * by,
+    dx: 2 * u * (mx - ax) + 2 * t * (bx - mx), dy: 2 * u * (my - ay) + 2 * t * (by - my) };
+}
+// An arrowhead where the curve meets the edge of node `at`'s text, pointing into it.
+function _cstArrow(a, b, atB) {
+  const n = atB ? b : a, sz = _cstSize(n), hw = sz.w / 2 + 4, hh = sz.h / 2 + 2;
+  let p = null;
+  for (let i = 0; i <= 50; i++) {
+    const t = atB ? 1 - i / 50 : i / 50, q = _cstCurve(a, b, t);
+    if (Math.abs(q.x - _cstX(n)) > hw || Math.abs(q.y - _cstY(n)) > hh) { p = q; break; }
+  }
+  if (!p) return '';
+  const len = Math.hypot(p.dx, p.dy) || 1, s = atB ? 1 : -1, ux = p.dx / len * s, uy = p.dy / len * s;   // unit vector pointing at the node
+  const wing = (ang) => { const c = Math.cos(ang), k = Math.sin(ang); return `${(p.x - 8 * (ux * c - uy * k)).toFixed(1)} ${(p.y - 8 * (ux * k + uy * c)).toFixed(1)}`; };
+  return `<path class="arr" d="M${wing(0.45)} L${p.x.toFixed(1)} ${p.y.toFixed(1)} L${wing(-0.45)}"/>`;
+}
+// Everything drawn for one line: the thin line you see, a wide unseen one to
+// click, its arrowheads and its label.
+function _cstEdgeHtml(a, c) {
+  const A = _cstById(a), C = _cstById(c); if (!A || !C) return '';
+  const d = _cstEdgePath(A, C), info = _cstEdgeInfo(a, c), mid = _cstCurve(A, C, 0.5);
+  return `<path class="ln" d="${d}"/><path class="hit" d="${d}"/>${info.headA ? _cstArrow(A, C, false) : ''}${info.headB ? _cstArrow(A, C, true) : ''}`
+    + (info.label ? `<text x="${mid.x.toFixed(1)}" y="${mid.y.toFixed(1)}">${escHtml(info.label)}</text>` : '');
+}
+
 /* ── Writes ──────────────────────────────────────────────────────────────── *
    A batch works on a private copy of the map, so several steps (new thought,
    new person, two links) read each other's results and land as one commit. */
@@ -21042,7 +21098,11 @@ function _cstBatch() {
     unlink(x, y) {
       [[x, y], [y, x]].forEach(([p, q]) => {
         const n = local.get(p);
-        if (n?.links.includes(q)) b.patch(p, { links: n.links.filter(i => i !== q) });
+        if (!n) return;
+        const p2 = {};
+        if (n.links.includes(q)) p2.links = n.links.filter(i => i !== q);
+        if (n.edges?.[q]) { p2.edges = { ...n.edges }; delete p2.edges[q]; }   // the line's label and arrow go with it
+        if (Object.keys(p2).length) b.patch(p, p2);
       });
     },
     // Remove a node and its lines. A person left with no lines goes too.
@@ -21295,11 +21355,8 @@ function _cstRender() {
     const who = n.kind === 'person' ? (PEOPLE.find(x => x.id === n.personId)?.name || n.text || '') : (n.text || '');
     return `<div class="cst-node ${cls}" data-id="${escAttr(n.id)}" tabindex="0" role="button" aria-label="${escAttr(who)}" style="left:${_cstX(n)}px;top:${_cstY(n)}px" title="${escAttr(n.text || '')}">${_cstNodeHtml(n, counts)}<span class="cst-h" aria-hidden="true"></span></div>`;
   }).join('');
-  // Each line is drawn twice: the thin one you see and a wide invisible one to click.
-  _cstEl.lines.innerHTML = _cstEdges().map(([a, c]) => {
-    const at = `data-a="${escAttr(a)}" data-b="${escAttr(c)}" d="${_cstEdgePath(_cstById(a), _cstById(c))}"`;
-    return `<path ${at}/><path class="hit" ${at}/>`;
-  }).join('');
+  _cstEl.lines.innerHTML = _cstEdges().map(([a, c]) =>
+    `<g data-a="${escAttr(a)}" data-b="${escAttr(c)}">${_cstEdgeHtml(a, c)}</g>`).join('');
 
   const people = NODES_CST.filter(n => n.kind === 'person').length;
   const th = NODES_CST.length - people;
@@ -21332,7 +21389,7 @@ function _cstPaint() {
     el.classList.toggle('sel', _cstMulti.has(el.dataset.id));
     el.classList.toggle('dim', !!lit && !lit.has(el.dataset.id));
   });
-  _cstEl.lines.querySelectorAll('path').forEach(p => {
+  _cstEl.lines.querySelectorAll('g').forEach(p => {
     const a = p.dataset.a, c = p.dataset.b;
     p.classList.toggle('hot', _cstMulti.has(a) || _cstMulti.has(c));
     p.classList.toggle('dim', !!_cstFocus && a !== _cstFocus && c !== _cstFocus);
@@ -21352,7 +21409,7 @@ function _cstAnimateNew() {
     const parent = [..._cstNeighbours(n.id)].map(_cstById).find(p => p && _cstSeen.has(p.id));
     const from = parent ? `translate(${_cstX(parent) - _cstX(n)}px,${_cstY(parent) - _cstY(n)}px) scale(.6)` : 'scale(.6)';
     el.animate([{ transform: `translate(-50%,-50%) ${from}`, opacity: 0 }, { transform: 'translate(-50%,-50%)', opacity: 1 }], { duration: 420, easing: ease });
-    _cstEl.lines.querySelectorAll(`path[data-a="${CSS.escape(n.id)}"],path[data-b="${CSS.escape(n.id)}"]`).forEach(p => {
+    _cstEl.lines.querySelectorAll(`g[data-a="${CSS.escape(n.id)}"] path.ln,g[data-b="${CSS.escape(n.id)}"] path.ln`).forEach(p => {
       const len = p.getTotalLength?.() || 0;
       if (len) p.animate([{ strokeDasharray: len, strokeDashoffset: len }, { strokeDasharray: len, strokeDashoffset: 0 }], { duration: 420, easing: 'ease-out' });
     });
@@ -21387,6 +21444,33 @@ function _cstSelectLine(a, b) {
   _cstSide();
 }
 
+// A small box on the middle of a line to name it. Enter or clicking away
+// keeps the text, Esc drops it, and an empty box clears the label.
+function _cstLabelEdit(a, b) {
+  const A = _cstById(a), B = _cstById(b); if (!A || !B) return;
+  _cstInFlush(); _cstMenuClose();
+  const mid = _cstCurve(A, B, 0.5), wrap = document.createElement('div');
+  wrap.className = 'cst-inputwrap cst-labelwrap';
+  wrap.style.left = mid.x + 'px'; wrap.style.top = mid.y + 'px';
+  wrap.innerHTML = '<input class="cst-input" type="text" maxlength="60" autocomplete="off" spellcheck="false" placeholder="Label…">';
+  _cstEl.world.appendChild(wrap);
+  const input = wrap.querySelector('input'), was = _cstEdgeInfo(a, b).label;
+  input.value = was;
+  let done = false;
+  const close = (keep) => {
+    if (done) return; done = true; wrap.remove();
+    const v = input.value.trim();
+    if (keep && v !== was) _cstEdgeSet(a, b, { label: v }, 'Line label');
+  };
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); close(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(false); }
+  });
+  input.addEventListener('blur', () => setTimeout(() => close(true), 120));
+  input.focus({ preventScroll: true }); input.select();
+}
+
 /* ── Floating bar ────────────────────────────────────────────────────────── *
    Sits just above whatever is selected and offers what can be done to it, so
    nothing depends on a right-click. Redrawn only when the selection changes;
@@ -21404,7 +21488,7 @@ function _cstBar() {
     _cstBarSig = sig;
     const b = (act, icon, label) => _cstIb(`data-bar="${act}"`, icon, label);
     let html;
-    if (_cstLine) html = b('unlink', 'unlink', 'Remove this line (Delete)');
+    if (_cstLine) html = b('label', 'edit', 'Label this line (double-click it)') + b('arrow', 'arrow', 'Arrow') + '<span class="cst-tools-sep"></span>' + b('unlink', 'unlink', 'Remove this line (Delete)');
     else if (one?.kind === 'thought') html = b('edit', 'edit', 'Edit (F2)') + b('child', 'child', 'Add a linked thought (Tab)')
       + '<span class="cst-tools-sep"></span>' + b('priority', 'flag', 'Priority') + b('person', 'person', 'Person') + b('commitment', 'target', 'Commitment')
       + b('task', 'task', _cstTaskFor(one) ? 'Open in Tasks' : 'Add to Tasks') + '<span class="cst-tools-sep"></span>' + b('delete', 'trash', 'Delete (Delete)');
@@ -21442,6 +21526,13 @@ function _cstBarClick(e) {
   const r = btn.getBoundingClientRect(), menu = (root) => _cstMenuOpen(r.left, r.bottom + 6, root);
   if (e.detail) btn.blur();
   if (act === 'unlink' && _cstLine) _cstToggleLink(_cstLine[0], _cstLine[1]);
+  else if (act === 'label' && _cstLine) _cstLabelEdit(_cstLine[0], _cstLine[1]);
+  else if (act === 'arrow' && _cstLine) {
+    const [a, c] = _cstLine, name = (id) => { const t = _cstById(id)?.text || ''; return t.length > 22 ? t.slice(0, 21) + '…' : t; };
+    const opt = (label, headA, headB) => { const i = _cstEdgeInfo(a, c);
+      return { label, check: i.headA === headA && i.headB === headB, act: () => _cstEdgeSet(a, c, { headA, headB }, 'Arrow') }; };
+    menu(() => [opt('No arrow', false, false), opt(`Towards “${name(c)}”`, false, true), opt(`Towards “${name(a)}”`, true, false), opt('Both ways', true, true)]);
+  }
   else if (act === 'delete') _cstDeleteSel();
   else if (act === 'link' && nodes.length === 2) _cstToggleLink(nodes[0].id, nodes[1].id);
   else if (act === 'priority' && !one) {
@@ -21972,7 +22063,7 @@ function _cstPointerDown(e) {
   _cstMenuClose();
   const nodeEl = e.target.closest('.cst-node'), n = nodeEl && _cstById(nodeEl.dataset.id);
   if (n && e.button === 0 && e.target.closest('.cst-h')) { e.preventDefault(); _cstLinkDrag(e, n); return; }
-  const lineEl = e.target.closest?.('path.hit');
+  const lineEl = e.target.closest?.('.cst-lines g');
   const add = e.shiftKey || e.metaKey;
   const pan = _cstTool === 'pan' || e.button === 1 || _cstSpace || (!n && e.pointerType === 'touch');
   const mode = pan ? 'pan' : n ? 'node' : 'box';
@@ -22000,8 +22091,8 @@ function _cstPointerDown(e) {
       group.forEach(g => {
         g.n.x = Math.round(g.x + dx / _cstView.z); g.n.y = Math.round(g.y + dy / _cstView.z);
         if (g.el) { g.el.style.left = g.n.x + 'px'; g.el.style.top = g.n.y + 'px'; }
-        _cstEl.lines.querySelectorAll(`path[data-a="${CSS.escape(g.n.id)}"],path[data-b="${CSS.escape(g.n.id)}"]`).forEach(p => {
-          p.setAttribute('d', _cstEdgePath(_cstById(p.dataset.a), _cstById(p.dataset.b)));
+        _cstEl.lines.querySelectorAll(`g[data-a="${CSS.escape(g.n.id)}"],g[data-b="${CSS.escape(g.n.id)}"]`).forEach(p => {
+          p.innerHTML = _cstEdgeHtml(p.dataset.a, p.dataset.b);
         });
       });
     } else if (mode === 'box') {
@@ -22056,7 +22147,9 @@ function _cstWheel(e) {
 }
 
 function _cstDblClick(e) {
-  if (e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-h,path.hit')) return;
+  if (e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-h')) return;
+  const ln = e.target.closest('.cst-lines g');
+  if (ln) { _cstSelectLine(ln.dataset.a, ln.dataset.b); _cstLabelEdit(ln.dataset.a, ln.dataset.b); return; }
   const el = e.target.closest('.cst-node'), n = el && _cstById(el.dataset.id);
   if (n?.kind === 'thought') _cstInOpen({ x: _cstX(n), y: _cstY(n), editId: n.id, text: n.text || '' });
   else if (!n) { _cstSelect(null); _cstInOpen(_cstToWorld(e.clientX, e.clientY)); }

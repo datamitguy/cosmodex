@@ -8132,10 +8132,18 @@ textarea:focus-visible {
 .cst-world { position:absolute; left:0; top:0; width:0; height:0; transform-origin:0 0; }
 .cst-lines { position:absolute; left:0; top:0; width:1px; height:1px; overflow:visible; pointer-events:none; }
 .cst-lines path { stroke:rgba(255,255,255,.16); stroke-width:1; fill:none; transition:stroke .25s; }
-.cst-lines path.hot { stroke:rgba(255,255,255,.34); }
-.cst-lines path.dim { stroke:rgba(255,255,255,.05); }
-.cst-lines path.pick { stroke:#fff; stroke-width:1.5; }
-.cst-lines path.hit { stroke:transparent; stroke-width:14; pointer-events:stroke; cursor:pointer; }   /* the wide, unseen twin that takes the click */
+.cst-lines path.arr { stroke:rgba(255,255,255,.5); stroke-linecap:round; stroke-linejoin:round; }
+.cst-lines path.hot, .cst-lines g.hot path { stroke:rgba(255,255,255,.34); }      /* path.hot alone is the line being dragged out */
+.cst-lines g.hot path.arr { stroke:rgba(255,255,255,.8); }
+.cst-lines g.dim path { stroke:rgba(255,255,255,.05); }
+.cst-lines g.pick path { stroke:#fff; stroke-width:1.5; }
+.cst-lines g path.hit { stroke:transparent; stroke-width:14; pointer-events:stroke; cursor:pointer; }   /* the wide, unseen twin that takes the click */
+.cst-lines text { font-family:var(--font-mono); font-size:10px; letter-spacing:.06em; fill:rgba(255,255,255,.62); stroke:#000; stroke-width:6px; paint-order:stroke;
+  text-anchor:middle; dominant-baseline:middle; pointer-events:auto; cursor:pointer; user-select:none; transition:fill .25s, opacity .25s; }
+.cst-lines g.hot text, .cst-lines g.pick text { fill:#fff; }
+.cst-lines g.dim text { opacity:.25; }
+.cst-labelwrap { width:150px; }
+.cst-labelwrap .cst-input { background:#000; font-family:var(--font-mono); font-size:10px; letter-spacing:.06em; text-shadow:none; }
 .cst-layer { position:absolute; left:0; top:0; }
 .cst-node {
   position:absolute; display:flex; align-items:center; gap:6px; padding:6px 10px;

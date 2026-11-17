@@ -21801,18 +21801,33 @@ function _cstSide() {
   const person = (typeof PEOPLE !== 'undefined' ? PEOPLE : []).find(p => p.id === pn.personId);
   const name = person ? person.name : (pn.text || '');
   const thoughts = [..._cstNeighbours(pn.id)].map(_cstById).filter(n => n?.kind === 'thought');
-  const tasks = person ? (typeof TASKS !== 'undefined' ? TASKS : []).filter(t => !t.done && (t.people || []).includes(person.id)) : [];
+  // A thought already sent to Tasks is listed once, as the thought (marked "In Tasks").
+  const onMap = new Set(thoughts.map(n => n.taskId).filter(Boolean));
+  const tasks = person ? (typeof TASKS !== 'undefined' ? TASKS : []).filter(t => !t.done && !onMap.has(t.id) && (t.people || []).includes(person.id)) : [];
   const projs = typeof MILESTONE_PROJECTS !== 'undefined' ? MILESTONE_PROJECTS : [];
 
+  // One row shape for both lists: a mark that says what it is (a point of
+  // light for a thought, a box for a task), the text in full, then a small
+  // line of facts under it.
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = (d) => {
+    if (!d) return '';
+    const dt = new Date(String(d).slice(0, 10) + 'T00:00'); if (isNaN(dt)) return '';
+    const days = Math.round((dt - today) / 864e5);
+    const when = days === 0 ? 'today' : days === 1 ? 'tomorrow' : dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return days < 0 ? `<span class="cst-late">Overdue · ${when}</span>` : `Due ${when}`;
+  };
+  const row = (attr, mark, text, prio, facts) => `<button type="button" class="cst-row" ${attr}>
+      <span class="cst-mark ${mark}"></span>
+      <span class="cst-row-b"><span class="cst-row-t">${escHtml(text)}</span>${facts.filter(Boolean).length ? `<span class="cst-row-m">${facts.filter(Boolean).join(' · ')}</span>` : ''}</span>
+      ${prio ? `<span class="cst-prio">${_atkPrioDots(prio)}</span>` : ''}</button>`;
+  const projName = (id) => { const pr = projs.find(m => m.id === id); return pr ? escHtml(pr.title) : ''; };
   const rows = thoughts.map(n => {
-    const pr = projs.find(m => m.id === n.projectId);
-    return `<button type="button" class="cst-row" data-thought="${escAttr(n.id)}">
-      ${pr ? `<span class="cst-dot" style="background:${escAttr(pr.color)}"></span>` : ''}
-      <span class="cst-row-t">${escHtml(n.text || '')}</span>
-      ${n.priority ? `<span class="cst-prio">${_atkPrioDots(n.priority)}</span>` : ''}</button>`;
+    const t = _cstTaskFor(n);
+    return row(`data-thought="${escAttr(n.id)}"`, 'th', n.text || '', n.priority, [projName(n.projectId), t ? (t.done ? 'Task done' : 'In Tasks') : '']);
   }).join('');
-  const taskRows = tasks.map(t => `<button type="button" class="cst-row" data-task="${escAttr(t.id)}"><span class="cst-row-t">${escHtml(t.title || '')}</span></button>`).join('');
-  const open = thoughts.filter(n => !_cstTaskFor(n)).length + tasks.length;
+  const taskRows = tasks.map(t => row(`data-task="${escAttr(t.id)}"`, 'tk', t.title || '', t.priority, [due(t.dueDate), projName(t.projectId)])).join('');
+  const open = thoughts.filter(n => !_cstTaskFor(n)?.done).length + tasks.length;
 
   side.innerHTML = `
     <div class="cst-side-h">
@@ -21821,7 +21836,7 @@ function _cstSide() {
       <button type="button" class="cst-x" data-close aria-label="Close">×</button>
     </div>
     ${thoughts.length ? `<div class="cst-sec">ON THIS MAP · ${thoughts.length}</div>${rows}` : ''}
-    ${tasks.length ? `<div class="cst-sec">IN TASKS · ${tasks.length}</div>${taskRows}` : ''}
+    ${tasks.length ? `<div class="cst-sec">${thoughts.length ? 'OTHER TASKS' : 'IN TASKS'} · ${tasks.length}</div>${taskRows}` : ''}
     ${!thoughts.length && !tasks.length ? `<div class="cst-none">Nothing linked to ${escHtml(name)} yet.</div>` : ''}
     <div class="cst-side-f">${open} open in total</div>`;
 }

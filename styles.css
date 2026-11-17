@@ -8215,11 +8215,17 @@ textarea:focus-visible {
 .cst-side-name { flex:1; font-family:var(--font-display); font-size:var(--fs-body); color:#fff; }
 .cst-x { background:none; border:0; color:var(--muted); font-size:18px; line-height:1; cursor:pointer; padding:2px 6px; }
 .cst-x:hover { color:#fff; }
-.cst-sec { margin:14px 0 6px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; color:var(--muted); }
-.cst-row { display:flex; align-items:center; gap:8px; width:100%; padding:7px 6px; background:none; border:0; border-radius:var(--r-xs); text-align:left; font-family:var(--font-body); font-size:var(--fs-small); color:var(--cream); cursor:pointer; }
+.cst-sec { margin:20px 0 4px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,.12); font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; color:var(--muted); }
+.cst-row { display:flex; align-items:flex-start; gap:10px; width:100%; padding:10px 6px; background:none; border:0; border-bottom:1px solid rgba(255,255,255,.06); border-radius:0; text-align:left; font-family:var(--font-body); font-size:var(--fs-small); line-height:1.4; color:#fff; cursor:pointer; }
 .cst-row:hover, .cst-row:focus-visible { background:rgba(255,255,255,.08); outline:none; }
-.cst-row-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cst-prio { display:flex; gap:2px; flex:none; }
+.cst-mark { flex:none; width:9px; height:9px; margin-top:5px; box-sizing:border-box; }
+.cst-mark.th { width:5px; height:5px; margin:7px 2px 0; border-radius:50%; background:#fff; box-shadow:0 0 8px #fff; }   /* a thought: a point of light */
+.cst-mark.tk { border:1px solid rgba(255,255,255,.7); border-radius:2px; }                                          /* a task: an empty box */
+.cst-row-b { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.cst-row-t { overflow-wrap:anywhere; }
+.cst-row-m { font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.cst-late { color:#fff; }
+.cst-prio { display:flex; gap:2px; flex:none; margin-top:6px; }
 .cst-none { color:var(--muted); font-size:var(--fs-small); }
 .cst-side-f { margin-top:18px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.08em; color:var(--muted); }
 .cst-menu {

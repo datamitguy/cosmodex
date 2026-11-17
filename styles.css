@@ -8205,6 +8205,29 @@ textarea:focus-visible {
   border-radius:var(--r-sm); box-shadow:0 10px 26px rgba(0,0,0,.7); cursor:default; z-index:4; white-space:nowrap; }
 .cst-bar[hidden] { display:none; }
 .cst-bar .cst-ib { border-color:transparent; color:#ddd; }
+/* Frames. The frame lets clicks through to what is inside; its name and corner are the handles. */
+.cst-group { display:block; padding:0; max-width:none; box-sizing:border-box; pointer-events:none; text-shadow:none; white-space:nowrap; border:1px dashed rgba(255,255,255,.3); border-radius:10px; transition:border-color .2s, opacity .25s; }
+.cst-group.sel { border-color:#fff; }
+.cst-gl { position:absolute; left:12px; top:-8px; max-width:calc(100% - 40px); padding:0 6px; overflow:hidden; text-overflow:ellipsis; background:#000; pointer-events:auto; cursor:default;
+  font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.12em; text-transform:uppercase; line-height:16px; color:var(--muted); }
+.cst-group.sel .cst-gl, .cst-gl:hover { color:#fff; }
+.cst-gr { position:absolute; right:-4px; bottom:-4px; width:14px; height:14px; border-right:1px solid #fff; border-bottom:1px solid #fff; border-bottom-right-radius:10px; pointer-events:auto; cursor:nwse-resize; opacity:0; transition:opacity .15s; }
+.cst-group.sel .cst-gr, .cst-gr:hover { opacity:1; }
+/* Outline panel */
+.cst-outline { position:absolute; left:0; top:0; bottom:0; width:280px; box-sizing:border-box; padding:44px 12px 14px; display:flex; flex-direction:column; background:#000; border-right:1px solid rgba(255,255,255,.12); cursor:default; z-index:3; }
+.cst-outline[hidden] { display:none; }
+.cst-ol-h { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; color:var(--muted); }
+.cst-ol-h span { flex:1; }
+.cst-ol-h .btn-ghost { padding:3px 9px; font-size:var(--fs-micro); }
+.cst-ol-list { flex:1; min-height:0; overflow-y:auto; }
+.cst-ol-row { display:flex; align-items:flex-start; gap:8px; width:100%; padding:5px 6px; background:none; border:0; border-radius:var(--r-xs); text-align:left; font-family:var(--font-body); font-size:var(--fs-small); line-height:1.4; color:#ddd; cursor:pointer; }
+.cst-ol-row:hover, .cst-ol-row:focus-visible, .cst-ol-row.on { background:rgba(255,255,255,.08); color:#fff; outline:none; }
+.cst-ol-row.done { opacity:.45; text-decoration:line-through; }
+.cst-ol-row span:last-child { overflow-wrap:anywhere; }
+.cst-mark.pe { width:6px; height:6px; margin:6px 1px 0; border:1px solid #fff; border-radius:50%; }
+.cst-stage.ol-open .cst-eyebrow, .cst-stage.ol-open .cst-hint { left:300px; }
+@media (min-width:701px) { .cst-stage.ol-open .cst-tools { left:calc(50% + 140px); } }
+@media (max-width:700px) { .cst-outline { width:auto; right:0; bottom:50%; border-right:0; border-bottom:1px solid rgba(255,255,255,.12); } .cst-stage.ol-open .cst-eyebrow, .cst-stage.ol-open .cst-hint { left:20px; } }
 /* Hand drawing. The box around a stroke lets clicks through; only the ink itself can be picked up. */
 .cst-ink { display:block; padding:0; max-width:none; pointer-events:none; text-shadow:none; }
 .cst-ink svg { display:block; overflow:visible; }

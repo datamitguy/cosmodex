@@ -20926,6 +20926,7 @@ let _cstHist = _cstHists.constellation = { undo: [], redo: [], busy: false };   
 const _cstViewKey = () => _cstMap === 'constellation' ? 'cdx_cst_view' : 'cdx_cst_view_' + _cstMap;
 const _cstOn = () => typeof _mainPanel !== 'undefined' && (_mainPanel === 'constellation' || _mainPanel === 'mindmap');
 const _cstMine = () => _cstAll.filter(n => n.kind !== 'map' && (n.map || 'constellation') === _cstMap);
+const _cstMark = (n) => n.kind === 'ink' || n.kind === 'group';   // drawings and frames: on the map, but not part of its tree
 const _cstVis = () => NODES_CST.filter(n => !_cstHidden.has(n.id));
 // Line icons, one weight, drawn in the text colour. Paths on a 24 grid.
 const _CST_ICON = {
@@ -20948,6 +20949,8 @@ const _CST_ICON = {
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM16 16l4 4',
   pen: 'M3 17c3-7 5-7 6-2s3 4 5-3 4-6 7-2',
   erase: 'M9 20h11M5 15l9-9 5 5-9 9H8z',
+  more: 'M5 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM19 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z',
+  group: 'M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4',
   unlink: 'M3 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M15 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0M10.5 16l3-8',
 };
 const _cstIcon = (k) => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${_CST_ICON[k]}"/></svg>`;
@@ -20985,7 +20988,7 @@ function _cstPlace(px, py, others, radius = 150, w = 240, h = 40) {
   }
   let ax = px - cx, ay = py - cy;
   const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
-  others = others.filter(n => n.kind !== 'ink');      // a drawing is not in the way of text
+  others = others.filter(n => !_cstMark(n));          // a drawing or a frame is not in the way of text
   const boxes = others.map(n => ({ x: _cstX(n), y: _cstY(n), ..._cstSize(n) }));
   const clear = (x, y) => _cstClear(x, y, boxes, w, h);
   let best = null;
@@ -21365,7 +21368,7 @@ function _cstRender() {
   });
 
   // Drawings first, so text always sits on top of ink.
-  _cstEl.layer.innerHTML = shown.filter(n => n.kind === 'ink').map(_cstInkHtml).join('') + shown.filter(n => n.kind !== 'ink').map(n => {
+  _cstEl.layer.innerHTML = shown.filter(n => n.kind === 'group').map(_cstGroupHtml).join('') + shown.filter(n => n.kind === 'ink').map(_cstInkHtml).join('') + shown.filter(n => !_cstMark(n)).map(n => {
     const task = _cstTaskFor(n);
     const cls = n.kind === 'person' ? 'cst-person'
       : `cst-thought${n.priority ? ' p-' + n.priority : ''}${task?.done ? ' is-done' : ''}`;
@@ -21392,6 +21395,7 @@ function _cstRender() {
   _cstPaint();
   _cstSide();
   if (kbd) _cstEl.layer.querySelector(`[data-id="${CSS.escape(kbd)}"]`)?.focus({ preventScroll: true });
+  if (_cstEl.outline && !_cstEl.outline.hidden) _cstOutlineDraw();
   if (_cstSeen && !_cstReduced()) _cstAnimateNew();
   _cstSeen = new Set(NODES_CST.map(n => n.id));
 }
@@ -21515,10 +21519,11 @@ function _cstBar() {
     else if (one?.kind === 'thought') html = b('edit', 'edit', 'Edit (F2)') + b('child', 'child', 'Add a linked thought (Tab)')
       + '<span class="cst-tools-sep"></span>' + b('fold', 'fold', one.folded ? 'Unfold what hangs from it (.)' : 'Fold away what hangs from it (.)') + b('priority', 'flag', 'Priority') + b('person', 'person', 'Person') + b('commitment', 'target', 'Commitment')
       + b('task', 'task', _cstTaskFor(one) ? 'Open in Tasks' : 'Add to Tasks') + '<span class="cst-tools-sep"></span>' + b('delete', 'trash', 'Delete (Delete)');
+    else if (one?.kind === 'group') html = b('rename', 'edit', 'Rename this frame (F2)') + b('delete', 'trash', 'Remove the frame (what is inside stays)');
     else if (one) html = b('delete', 'trash', one.kind === 'ink' ? 'Delete this drawing (Delete)' : 'Remove from map (Delete)');
     else html = `<span class="cst-bar-n">${nodes.length} selected</span>`
       + (nodes.length === 2 ? b('link', linked ? 'unlink' : 'link', linked ? 'Remove the line between them (L)' : 'Link them (L)') : '')
-      + (thoughts.length ? b('priority', 'flag', 'Priority') : '') + b('delete', 'trash', 'Delete all (Delete)');
+      + (thoughts.length ? b('priority', 'flag', 'Priority') : '') + b('group', 'group', 'Put a frame around these (⌘G)') + b('delete', 'trash', 'Delete all (Delete)');
     bar.innerHTML = html;
   }
   bar.hidden = false;
@@ -21557,6 +21562,8 @@ function _cstBarClick(e) {
     menu(() => [opt('No arrow', false, false), opt(`Towards “${name(c)}”`, false, true), opt(`Towards “${name(a)}”`, true, false), opt('Both ways', true, true)]);
   }
   else if (act === 'delete') _cstDeleteSel();
+  else if (act === 'group') _cstGroupSel();
+  else if (act === 'rename' && one?.kind === 'group') _cstGroupRename(one.id);
   else if (act === 'link' && nodes.length === 2) _cstToggleLink(nodes[0].id, nodes[1].id);
   else if (act === 'priority' && !one) {
     const ths = nodes.filter(n => n.kind === 'thought');
@@ -21673,7 +21680,7 @@ async function _cstTidy() {
   const trees = [];                                  // [root, Set of ids in the tree]
   if (sel) trees.push([sel, new Set([sel.id, ..._cstBranch(sel, adj)])]);
   else {
-    const left = new Set(NODES_CST.filter(n => n.kind !== 'ink').map(n => n.id));   // drawings stay where they were drawn
+    const left = new Set(NODES_CST.filter(n => !_cstMark(n)).map(n => n.id));   // drawings and frames stay where they are
     while (left.size) {
       const comp = new Set(), q = [left.values().next().value];
       comp.add(q[0]);
@@ -21905,9 +21912,9 @@ function _cstStep(dx, dy) {
   if (!from) {                                   // nothing selected: start from the middle of the view
     const c = _cstToWorld(_cstEl.stage.getBoundingClientRect().left + _cstEl.stage.clientWidth / 2,
       _cstEl.stage.getBoundingClientRect().top + _cstEl.stage.clientHeight / 2);
-    _cstVis().forEach(n => { if (n.kind === 'ink') return; const d = Math.hypot(_cstX(n) - c.x, _cstY(n) - c.y); if (!best || d < best.d) best = { n, d }; });
+    _cstVis().forEach(n => { if (_cstMark(n)) return; const d = Math.hypot(_cstX(n) - c.x, _cstY(n) - c.y); if (!best || d < best.d) best = { n, d }; });
   } else _cstVis().forEach(n => {
-    if (n.id === from.id || n.kind === 'ink') return;
+    if (n.id === from.id || _cstMark(n)) return;
     const vx = _cstX(n) - _cstX(from), vy = _cstY(n) - _cstY(from);
     const along = vx * dx + vy * dy, across = Math.abs(vx * dy) + Math.abs(vy * dx);
     if (along <= 0 || across > along * 2) return;
@@ -22041,7 +22048,7 @@ async function _cstDelete(id) {
   const step = _cstHist.undo[_cstHist.undo.length - 1];
   if (_cstSel === id) _cstSel = null;
   if (_cstFocus === id) _cstFocus = null;
-  const short = n.kind === 'ink' ? 'drawing' : (n.text || '').length > 28 ? n.text.slice(0, 27) + '…' : (n.text || '');
+  const short = n.kind === 'ink' ? 'drawing' : n.kind === 'group' ? 'frame · ' + (n.text || '') : (n.text || '').length > 28 ? n.text.slice(0, 27) + '…' : (n.text || '');
   showUndoToast(`${n.kind === 'person' ? 'Removed' : 'Deleted'} · ${short}`, () => { if (_cstHist.undo[_cstHist.undo.length - 1] === step) _cstUndo(); });
 }
 
@@ -22219,6 +22226,7 @@ function _cstNodeMenu(n, cx, cy) {
   if (_cstMulti.size > 1) { _cstMenuOpen(cx, cy, () => [{ label: `Delete ${_cstMulti.size} items`, act: () => _cstDeleteSel() }]); return; }
   if (n.kind === 'thought') _cstMenuOpen(cx, cy, _cstThoughtMenu(n.id).root);
   else if (n.kind === 'ink') _cstMenuOpen(cx, cy, () => [{ label: 'Delete drawing', act: () => _cstDelete(n.id) }]);
+  else if (n.kind === 'group') _cstMenuOpen(cx, cy, () => [{ label: 'Rename frame', act: () => _cstGroupRename(n.id) }, { label: 'Remove frame', act: () => _cstDelete(n.id) }]);
   else _cstMenuOpen(cx, cy, () => [
     { label: 'Show links', act: () => _cstSelect(n.id) },
     { label: 'Remove from map', act: () => _cstDelete(n.id) },
@@ -22250,6 +22258,203 @@ function _cstSetTool(t) {
     b.classList.toggle('on', on);
     b.setAttribute('aria-pressed', on);
   });
+}
+
+/* ── Frames (groups) ─────────────────────────────────────────────────────── *
+   A named, dashed frame around a cluster. It is a node of kind 'group' with
+   a width and height; what belongs to it is simply what sits inside it, so
+   dragging a thought in or out is all it takes. Moving the frame carries its
+   contents. Only its name and its corner can be grabbed, so everything
+   inside stays clickable. */
+const _cstIn2 = (n, g) => n.id !== g.id && Math.abs(_cstX(n) - _cstX(g)) <= (g.gw || 0) / 2 && Math.abs(_cstY(n) - _cstY(g)) <= (g.gh || 0) / 2;
+function _cstGroupHtml(n) {
+  return `<div class="cst-node cst-group" data-id="${escAttr(n.id)}" aria-label="Frame: ${escAttr(n.text || '')}" style="left:${_cstX(n)}px;top:${_cstY(n)}px;width:${n.gw || 200}px;height:${n.gh || 120}px"><span class="cst-gl">${escHtml(n.text || 'Group')}</span><span class="cst-gr" aria-hidden="true"></span></div>`;
+}
+async function _cstGroupSel() {
+  const nodes = [..._cstMulti].map(_cstById).filter(n => n && n.kind !== 'group');
+  if (!nodes.length) { showToast('Select what the frame should go around first.'); return; }
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  nodes.forEach(n => { const z = _cstSize(n); x0 = Math.min(x0, _cstX(n) - z.w / 2); x1 = Math.max(x1, _cstX(n) + z.w / 2); y0 = Math.min(y0, _cstY(n) - z.h / 2); y1 = Math.max(y1, _cstY(n) + z.h / 2); });
+  x0 -= 26; x1 += 26; y0 -= 34; y1 += 22;
+  const id = crypto.randomUUID(), b = _cstBatch();
+  b.set(id, _cstDoc('group', 'Group', { x: Math.round((x0 + x1) / 2), y: Math.round((y0 + y1) / 2) }, { gw: Math.round(x1 - x0), gh: Math.round(y1 - y0) }));
+  _cstSel = id; _cstFocus = null;
+  if (!(await b.commit('Frame'))) return;
+  for (let i = 0; i < 20 && !_cstById(id); i++) await new Promise(r => setTimeout(r, 25));
+  _cstGroupRename(id);
+}
+function _cstGroupRename(id) {
+  const g = _cstById(id); if (!g) return;
+  _cstInFlush(); _cstMenuClose();
+  const wrap = document.createElement('div');
+  wrap.className = 'cst-inputwrap cst-labelwrap';
+  wrap.style.left = (_cstX(g) - (g.gw || 0) / 2 + 85) + 'px'; wrap.style.top = (_cstY(g) - (g.gh || 0) / 2) + 'px';
+  wrap.innerHTML = '<input class="cst-input" type="text" maxlength="60" autocomplete="off" spellcheck="false" placeholder="Name this frame…">';
+  _cstEl.world.appendChild(wrap);
+  const input = wrap.querySelector('input'), was = g.text || '';
+  input.value = was;
+  let done = false;
+  const close = (keep) => {
+    if (done) return; done = true; wrap.remove();
+    const v = input.value.trim();
+    if (keep && v && v !== was) _cstSaveNode(id, { text: v }, 'Rename frame');
+  };
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); close(true); } else if (e.key === 'Escape') { e.preventDefault(); close(false); }
+  });
+  input.addEventListener('blur', () => setTimeout(() => close(true), 120));
+  input.focus({ preventScroll: true }); input.select();
+}
+// Drag the frame's bottom-right corner: the top-left stays put.
+function _cstGroupResize(e, g) {
+  e.preventDefault();
+  const el = _cstEl.layer.querySelector(`[data-id="${CSS.escape(g.id)}"]`), sx = e.clientX, sy = e.clientY;
+  const o = { x: _cstX(g), y: _cstY(g), gw: g.gw || 200, gh: g.gh || 120 };
+  let cur = null;
+  _cstSelect(g.id); _cstDrag = true; _cstBar();
+  const move = (ev) => {
+    const gw = Math.max(80, Math.round(o.gw + (ev.clientX - sx) / _cstView.z)), gh = Math.max(60, Math.round(o.gh + (ev.clientY - sy) / _cstView.z));
+    cur = { x: Math.round(o.x + (gw - o.gw) / 2), y: Math.round(o.y + (gh - o.gh) / 2), gw, gh };
+    Object.assign(el.style, { left: cur.x + 'px', top: cur.y + 'px', width: gw + 'px', height: gh + 'px' });
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    _cstDrag = false;
+    if (cur) { const n = _cstById(g.id); if (n) Object.assign(n, cur); _cstSaveNode(g.id, cur, 'Resize frame', o); }
+    if (_cstDirty) { _cstDirty = false; _cstRender(); } else _cstBar();
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+
+/* ── Outline and export ──────────────────────────────────────────────────── *
+   The same map read as a tree: each thought that hangs from nothing starts a
+   list, and what hangs from it is indented beneath. Drawings and frames are
+   left out. Used by the outline panel and by the text export. */
+function _cstForest() {
+  const adj = _cstAdj(), nodes = NODES_CST.filter(n => !_cstMark(n)), left = new Set(nodes.map(n => n.id)), rows = [];
+  const comps = [];
+  while (left.size) {
+    const comp = new Set(), q = [left.values().next().value];
+    comp.add(q[0]);
+    while (q.length) (adj.get(q.shift()) || []).forEach(id => { if (left.has(id) && !comp.has(id)) { comp.add(id); q.push(id); } });
+    comp.forEach(id => left.delete(id));
+    const list = [...comp].map(_cstById), tops = list.filter(n => n.kind === 'thought' && !_cstParent(n));
+    comps.push([(tops.length ? tops : list).sort((a, b) => adj.get(b.id).length - adj.get(a.id).length || _cstX(a) - _cstX(b))[0], comp]);
+  }
+  comps.sort((a, b) => _cstY(a[0]) - _cstY(b[0]) || _cstX(a[0]) - _cstX(b[0]));
+  comps.forEach(([root, comp]) => {
+    const seen = new Set([root.id]);
+    const walk = (n, depth) => {
+      rows.push({ n, depth });
+      (adj.get(n.id) || []).filter(id => comp.has(id) && !seen.has(id)).map(_cstById).sort((a, b) => _cstY(a) - _cstY(b) || _cstX(a) - _cstX(b))
+        .forEach(c => { if (seen.has(c.id)) return; seen.add(c.id); walk(c, depth + 1); });
+    };
+    walk(root, 0);
+  });
+  return rows;
+}
+const _cstLabel = (n) => n.kind === 'person' ? '@' + ((typeof PEOPLE !== 'undefined' ? PEOPLE : []).find(p => p.id === n.personId)?.name || n.text || '') : (n.text || '');
+const _cstTitle = () => _cstMap === 'constellation' ? 'Constellation' : _cstMapName(_cstMap);
+const _cstOutlineText = () => `# ${_cstTitle()}\n\n` + _cstForest().map(r => `${'  '.repeat(r.depth)}- ${_cstLabel(r.n)}`).join('\n') + '\n';
+
+function _cstOutlineDraw() {
+  const rows = _cstForest();
+  _cstEl.outline.querySelector('.cst-ol-list').innerHTML = rows.length ? rows.map(r =>
+    `<button type="button" class="cst-ol-row${r.n.id === _cstSel ? ' on' : ''}${_cstTaskFor(r.n)?.done ? ' done' : ''}" data-id="${escAttr(r.n.id)}" style="padding-left:${8 + r.depth * 16}px"><span class="cst-mark ${r.n.kind === 'person' ? 'pe' : 'th'}"></span><span>${escHtml(_cstLabel(r.n))}</span></button>`).join('')
+    : '<div class="cst-none">Nothing on this map yet.</div>';
+}
+function _cstOutlineToggle(show) {
+  const ol = _cstEl.outline;
+  ol.hidden = show === undefined ? !ol.hidden : !show;
+  _cstEl.stage.classList.toggle('ol-open', !ol.hidden);
+  if (!ol.hidden) _cstOutlineDraw();
+}
+
+function _cstDownload(name, data, type) {
+  const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+const _cstFile = (ext) => `${_cstTitle().replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'map'}-${new Date().toLocaleDateString('en-CA')}.${ext}`;
+
+// Obsidian's open Canvas format: cards, frames and arrows. Drawings have no place in it and are left out.
+function _cstExportCanvas() {
+  const nodes = NODES_CST.filter(n => n.kind !== 'ink').map(n => {
+    const z = n.kind === 'group' ? { w: n.gw || 200, h: n.gh || 120 } : _cstSize(n);
+    const base = { id: n.id, x: Math.round(_cstX(n) - z.w / 2), y: Math.round(_cstY(n) - z.h / 2), width: Math.round(z.w), height: Math.round(z.h) };
+    return n.kind === 'group' ? { ...base, type: 'group', label: n.text || '' } : { ...base, type: 'text', text: _cstLabel(n) };
+  });
+  const edges = _cstEdges().map(([a, c]) => {
+    const i = _cstEdgeInfo(a, c), flip = i.headA && !i.headB;      // a one-way arrow is written pointing at its "to" end
+    const e = flip ? { id: `${a}-${c}`, fromNode: c, toNode: a, fromEnd: 'none', toEnd: 'arrow' }
+      : { id: `${a}-${c}`, fromNode: a, toNode: c, fromEnd: i.headA ? 'arrow' : 'none', toEnd: i.headB ? 'arrow' : 'none' };
+    if (i.label) e.label = i.label;
+    return e;
+  });
+  _cstDownload(_cstFile('canvas'), JSON.stringify({ nodes, edges }, null, 2), 'application/json');
+}
+
+// The map as a picture: what is on screen now (folded branches stay folded), drawn again as plain shapes.
+function _cstExportSvg() {
+  const shown = _cstVis(), esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  if (!shown.length) return null;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const size = new Map(shown.map(n => [n.id, n.kind === 'group' ? { w: n.gw || 200, h: n.gh || 120 } : _cstSize(n)]));
+  shown.forEach(n => { const z = size.get(n.id); x0 = Math.min(x0, _cstX(n) - z.w / 2); x1 = Math.max(x1, _cstX(n) + z.w / 2); y0 = Math.min(y0, _cstY(n) - z.h / 2); y1 = Math.max(y1, _cstY(n) + z.h / 2); });
+  x0 -= 50; y0 -= 50; x1 += 50; y1 += 50;
+  const W = Math.ceil(x1 - x0), H = Math.ceil(y1 - y0), out = [];
+  const wrap = (t, max) => { const lines = ['']; t.split(/\s+/).forEach(w => { const l = lines[lines.length - 1]; if (l && (l + ' ' + w).length > max) lines.push(w); else lines[lines.length - 1] = l ? l + ' ' + w : w; }); return lines; };
+  shown.filter(n => n.kind === 'group').forEach(n => {
+    const z = size.get(n.id), gx = _cstX(n) - z.w / 2, gy = _cstY(n) - z.h / 2;
+    out.push(`<rect x="${gx}" y="${gy}" width="${z.w}" height="${z.h}" rx="10" fill="none" stroke="#fff" stroke-opacity=".35" stroke-dasharray="4 4"/>`
+      + `<text x="${gx + 16}" y="${gy + 4}" font-family="Menlo,monospace" font-size="10" letter-spacing="1" fill="#aaa" stroke="#000" stroke-width="6" paint-order="stroke">${esc((n.text || '').toUpperCase())}</text>`);
+  });
+  shown.filter(n => n.kind === 'ink').forEach(n => out.push(`<path transform="translate(${_cstX(n)} ${_cstY(n)})" d="${_cstInkPath(n.pts || [])}" fill="none" stroke="#fff" stroke-width="${n.w || 2}" stroke-linecap="round" stroke-linejoin="round"/>`));
+  out.push('<g fill="none" stroke="#fff" stroke-opacity=".45" stroke-linecap="round" stroke-linejoin="round">');
+  const vis = new Set(shown.map(n => n.id)), labels = [];
+  _cstEdges().filter(([a, c]) => vis.has(a) && vis.has(c)).forEach(([a, c]) => {
+    const A = _cstById(a), C = _cstById(c), i = _cstEdgeInfo(a, c), m = _cstCurve(A, C, 0.5);
+    out.push(`<path d="${_cstEdgePath(A, C)}"/>${i.headA ? _cstArrow(A, C, false) : ''}${i.headB ? _cstArrow(A, C, true) : ''}`);
+    if (i.label) labels.push(`<text x="${m.x.toFixed(1)}" y="${(m.y + 3).toFixed(1)}" text-anchor="middle" font-family="Menlo,monospace" font-size="10" fill="#bbb" stroke="#000" stroke-width="6" paint-order="stroke">${esc(i.label)}</text>`);
+  });
+  out.push('</g>', ...labels);
+  shown.filter(n => !_cstMark(n)).forEach(n => {
+    const person = n.kind === 'person', lines = wrap(person ? _cstLabel(n).toUpperCase() : (n.text || ''), 36), fs = person ? 11 : 13, lh = fs + 5;
+    const top = _cstY(n) - (lines.length - 1) * lh / 2 + fs / 3;
+    out.push(`<text text-anchor="middle" font-family="${person ? 'Menlo,monospace' : 'Helvetica Neue,Arial,sans-serif'}" font-size="${fs}" fill="#fff" fill-opacity="${n.priority === 'low' || _cstTaskFor(n)?.done ? .55 : 1}" font-weight="${n.priority === 'high' ? 600 : 400}" stroke="#000" stroke-width="5" paint-order="stroke">`
+      + lines.map((l, k) => `<tspan x="${_cstX(n)}" y="${(top + k * lh).toFixed(1)}">${esc(l)}</tspan>`).join('') + '</text>');
+  });
+  return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="${x0} ${y0} ${W} ${H}"><rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#000"/>${out.join('')}</svg>` };
+}
+function _cstExportPng() {
+  const pic = _cstExportSvg();
+  if (!pic) { showToast('Nothing on this map to export.'); return; }
+  const scale = Math.min(2, 6000 / Math.max(pic.W, pic.H)), img = new Image();
+  img.onload = () => {
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(pic.W * scale); cv.height = Math.round(pic.H * scale);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    cv.toBlob(b => { if (b) _cstDownload(_cstFile('png'), b); else _cstDownload(_cstFile('svg'), pic.svg, 'image/svg+xml'); }, 'image/png');
+  };
+  img.onerror = () => _cstDownload(_cstFile('svg'), pic.svg, 'image/svg+xml');     // the browser would not draw it: hand over the drawing itself
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(pic.svg);
+}
+function _cstMoreMenu(btn) {
+  const r = btn.getBoundingClientRect();
+  _cstMenuOpen(r.left, r.top - 190, () => [
+    { label: _cstEl.outline.hidden ? 'Show outline' : 'Hide outline', right: 'O', act: () => _cstOutlineToggle() },
+    { label: 'Frame around the selection', right: '⌘G', act: () => _cstGroupSel() },
+    { divider: true },
+    { label: 'Export picture (.png)', act: _cstExportPng },
+    { label: 'Export text outline (.md)', act: () => _cstDownload(_cstFile('md'), _cstOutlineText(), 'text/markdown') },
+    { label: 'Export for Obsidian (.canvas)', act: _cstExportCanvas },
+  ]);
 }
 
 /* ── Drawing by hand ─────────────────────────────────────────────────────── *
@@ -22333,7 +22538,7 @@ function _cstErase(e) {
 
 // Flip the line between two nodes.
 async function _cstToggleLink(aId, bId) {
-  const A = _cstById(aId), B = _cstById(bId); if (!A || !B || A.kind === 'ink' || B.kind === 'ink') return;
+  const A = _cstById(aId), B = _cstById(bId); if (!A || !B || _cstMark(A) || _cstMark(B)) return;
   const th = A.kind === 'thought' ? A : B, pe = th === A ? B : A;
   const person = pe.kind === 'person' && th.kind === 'thought' && (typeof PEOPLE !== 'undefined' ? PEOPLE : []).find(p => p.id === pe.personId);
   if (person) return _cstTogglePerson(th.id, person);
@@ -22393,11 +22598,12 @@ function _cstLinkDrag(e, n) {
    With the Pan tool, Space held, the middle button, or a finger: slide the map. */
 
 function _cstPointerDown(e) {
-  if ((e.button !== 0 && e.button !== 1) || e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-find,.cst-ask,.cst-mapbtn')) return;
+  if ((e.button !== 0 && e.button !== 1) || e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-find,.cst-ask,.cst-mapbtn,.cst-outline')) return;
   _cstMenuClose();
   const nodeEl = e.target.closest('.cst-node'), n = nodeEl && _cstById(nodeEl.dataset.id);
   if (e.button === 0 && !_cstSpace && _cstTool === 'pen') { _cstDraw(e); return; }
   if (e.button === 0 && !_cstSpace && _cstTool === 'erase') { _cstErase(e); return; }
+  if (n?.kind === 'group' && e.button === 0 && e.target.closest('.cst-gr')) { _cstGroupResize(e, n); return; }
   if (n && e.button === 0 && e.target.closest('.cst-fold')) { _cstFold(n.id); return; }
   if (n && e.button === 0 && e.target.closest('.cst-h')) { e.preventDefault(); _cstLinkDrag(e, n); return; }
   const lineEl = e.target.closest?.('.cst-lines g');
@@ -22416,7 +22622,13 @@ function _cstPointerDown(e) {
       if (mode === 'node') {
         // Dragging something outside the selection selects it first.
         if (!_cstMulti.has(n.id)) { if (add) _cstSelectMany([..._cstMulti, n.id]); else _cstSelect(n.id, true); }
-        group = [..._cstMulti].map(_cstById).filter(Boolean).map(g => ({ n: g, x: _cstX(g), y: _cstY(g),
+        // A frame carries whatever sits inside it, frames within frames included.
+        const ids = new Set(_cstMulti);
+        for (let grew = true; grew;) {
+          grew = false;
+          [...ids].map(_cstById).filter(g => g?.kind === 'group').forEach(g => NODES_CST.forEach(m => { if (!ids.has(m.id) && _cstIn2(m, g)) { ids.add(m.id); grew = true; } }));
+        }
+        group = [...ids].map(_cstById).filter(Boolean).map(g => ({ n: g, x: _cstX(g), y: _cstY(g),
           el: _cstEl.layer.querySelector(`[data-id="${CSS.escape(g.id)}"]`) }));
         _cstDrag = true; _cstBar();
       } else if (mode === 'box') {
@@ -22460,6 +22672,7 @@ function _cstPointerDown(e) {
       const m = box.getBoundingClientRect(); box.remove();
       const hit = [..._cstEl.layer.querySelectorAll('.cst-node')].filter(el => {
         const r = el.getBoundingClientRect();
+        if (el.classList.contains('cst-group')) return r.left >= m.left && r.right <= m.right && r.top >= m.top && r.bottom <= m.bottom;   // a frame only when the box takes in all of it
         return r.left < m.right && r.right > m.left && r.top < m.bottom && r.bottom > m.top;
       }).map(el => el.dataset.id);
       _cstSelectMany(add ? [...new Set([..._cstMulti, ...hit])] : hit);
@@ -22473,7 +22686,7 @@ function _cstPointerDown(e) {
 }
 
 function _cstWheel(e) {
-  if (e.target.closest('.cst-side,.cst-menu')) return;   // let the panel's list scroll
+  if (e.target.closest('.cst-side,.cst-menu,.cst-outline')) return;   // let the panel's list scroll
   e.preventDefault();
   const r = _cstEl.stage.getBoundingClientRect();
   // ctrl = a trackpad pinch. A plain wheel notch (whole, large steps) also
@@ -22484,12 +22697,13 @@ function _cstWheel(e) {
 }
 
 function _cstDblClick(e) {
-  if (e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-h,.cst-fold,.cst-find,.cst-ask,.cst-mapbtn')) return;
+  if (e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-h,.cst-fold,.cst-find,.cst-ask,.cst-mapbtn,.cst-outline')) return;
   const ln = e.target.closest('.cst-lines g');
   if (ln) { _cstSelectLine(ln.dataset.a, ln.dataset.b); _cstLabelEdit(ln.dataset.a, ln.dataset.b); return; }
   if (_cstTool === 'pen' || _cstTool === 'erase') return;
   const el = e.target.closest('.cst-node'), n = el && _cstById(el.dataset.id);
   if (n?.kind === 'thought') _cstInOpen({ x: _cstX(n), y: _cstY(n), editId: n.id, text: n.text || '' });
+  else if (n?.kind === 'group') _cstGroupRename(n.id);
   else if (!n) { _cstSelect(null); _cstInOpen(_cstToWorld(e.clientX, e.clientY)); }
 }
 
@@ -22503,6 +22717,7 @@ function _cstKey(e) {
     if (k === 'z' || k === 'y') { e.preventDefault(); (k === 'y' || e.shiftKey ? _cstRedo : _cstUndo)(); }
     else if (k === 'a') { e.preventDefault(); _cstSelectMany(_cstVis().map(n => n.id)); }
     else if (k === 'f') { e.preventDefault(); _cstFindOpen(); }
+    else if (k === 'g') { e.preventDefault(); _cstGroupSel(); }
     return;
   }
   const sel = _cstMulti.size === 1 ? _cstById(_cstSel) : null;   // Tab and Enter act on one node only
@@ -22531,10 +22746,12 @@ function _cstKey(e) {
   if (e.key === 'f' || (e.shiftKey && e.code === 'Digit1')) { e.preventDefault(); _cstFit(); }
   else if (e.shiftKey && e.code === 'Digit2') { e.preventDefault(); if (_cstMulti.size) _cstFit(new Set(_cstMulti)); else showToast('Select something first.'); }
   else if (e.key === '/') { e.preventDefault(); _cstFindOpen(); }
+  else if (e.key === 'o') { e.preventDefault(); _cstOutlineToggle(); }
+  else if ((e.key === 'F2' || e.key === 'e') && sel?.kind === 'group') { e.preventDefault(); _cstGroupRename(sel.id); }
   else if (e.key === '.' && sel?.kind === 'thought') { e.preventDefault(); _cstFold(sel.id); }
   else if ('vhpx'.includes(e.key) && e.key.length === 1) { e.preventDefault(); _cstSetTool({ v: 'move', h: 'pan', p: 'pen', x: 'erase' }[e.key]); }
   else if (e.key === 'l' && _cstMulti.size === 2) { e.preventDefault(); const [a, c] = [..._cstMulti]; _cstToggleLink(a, c); }
-  else if (e.key === 'Tab' && sel && sel.kind !== 'ink') { e.preventDefault(); _cstAddChild(sel); }
+  else if (e.key === 'Tab' && sel && !_cstMark(sel)) { e.preventDefault(); _cstAddChild(sel); }
   else if (e.key === 'Enter' && sel?.kind === 'thought') { e.preventDefault(); _cstAddSibling(sel); }
   else if ((e.key === 'F2' || e.key === 'e') && sel?.kind === 'thought') { e.preventDefault(); _cstInOpen({ x: _cstX(sel), y: _cstY(sel), editId: sel.id, text: sel.text || '' }); }
   else if (e.key.startsWith('Arrow') && !e.shiftKey) {
@@ -22560,9 +22777,20 @@ function initConstellation() {
       + '<span class="cst-penopts">' + [[1.2, 'Fine'], [2, 'Medium'], [4, 'Thick']].map(([w, name]) =>
         `<button type="button" class="btn-ghost cst-ib cst-pw${w === _cstPenW ? ' on' : ''}" data-pw="${w}" title="${name} line" aria-label="${name} line"><i style="width:${w * 2 + 2}px;height:${w * 2 + 2}px"></i></button>`).join('') + '</span>'
       + sep + _cstIb('data-tool="add"', 'add', 'Add a thought (double-click)') + _cstIb('data-tool="delete" aria-disabled="true"', 'trash', 'Delete selected (Delete)', ' off')
-      + sep + _cstIb('data-tool="tidy"', 'tidy', 'Tidy: lay out as a tree (the selected branch, or everything)') + _cstIb('data-tool="find"', 'search', 'Search (/ or ⌘F)')
+      + sep + _cstIb('data-tool="tidy"', 'tidy', 'Tidy: lay out as a tree (the selected branch, or everything)') + _cstIb('data-tool="find"', 'search', 'Search (/ or ⌘F)') + _cstIb('data-tool="more"', 'more', 'More: outline, frame, export')
       + sep + _cstIb('data-tool="undo" aria-disabled="true"', 'undo', 'Undo (⌘Z)', ' off') + _cstIb('data-tool="redo" aria-disabled="true"', 'redo', 'Redo (⇧⌘Z)', ' off');
     _cstEl.bar.addEventListener('click', _cstBarClick);
+    _cstEl.outline = q('.cst-outline');
+    _cstEl.outline.addEventListener('click', e => {
+      if (e.target.closest('[data-close]')) { _cstOutlineToggle(false); return; }
+      if (e.target.closest('[data-copy]')) { navigator.clipboard?.writeText(_cstOutlineText()).then(() => showToast('Outline copied.'), () => showToast('Could not copy.', 'error')); return; }
+      const id = e.target.closest('[data-id]')?.dataset.id;
+      if (id && _cstById(id)) {
+        // A folded-away thought has to be brought out before it can be shown.
+        if (_cstHidden.has(id)) { showToast('That thought is folded away — unfold its branch to see it.'); return; }
+        _cstSelect(id, true); _cstPanTo(id); _cstOutlineDraw();
+      }
+    });
     _cstEl.find = q('.cst-find');
     const fi = _cstEl.find.querySelector('input');
     fi.addEventListener('input', () => _cstFindRun(fi.value));
@@ -22598,6 +22826,7 @@ function initConstellation() {
         _cstInOpen({ x: at.x, y: at.y }); }
       else if (t === 'tidy') _cstTidy();
       else if (t === 'find') _cstFindOpen();
+      else if (t === 'more') _cstMoreMenu(e.target.closest('button'));
       else if (t === 'undo') _cstUndo();
       else if (t === 'redo') _cstRedo();
       else if (t === 'delete') _cstDeleteSel();

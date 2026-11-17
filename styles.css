@@ -1279,26 +1279,6 @@ body::after {
   cursor: pointer; transition: var(--ease-fast); white-space: nowrap; flex-shrink: 0;
 }
 .task-add-confirm:hover { background: var(--gold-hover); }
-/* ── Notes / Scribble canvas ───────────────────────────── */
-.scribble-btn {
-  background: none; border: 1px solid var(--border); border-radius:var(--r-xs);
-  color: var(--muted); padding: 3px 9px; cursor: pointer;
-  font-family: var(--font-mono); font-size:var(--fs-micro); letter-spacing: 0.07em;
-  min-height: 24px; transition: var(--ease-fast);
-}
-.scribble-btn:hover { border-color: var(--gold); color: var(--cream); }
-.scribble-btn.active { border-color: var(--gold); color: var(--gold); }
-.scribble-swatch {
-  width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--border);
-  cursor: pointer; flex-shrink: 0; transition: border-color .15s;
-}
-.scribble-swatch.active { border-color: var(--gold); }
-.pen-size-btn {
-  background: none; border: 1px solid var(--border); border-radius:var(--r-xs);
-  color: var(--muted); cursor: pointer; min-height: 24px; min-width: 24px;
-  display: flex; align-items: center; justify-content: center; transition: var(--ease-fast);
-}
-.pen-size-btn:hover, .pen-size-btn.active { border-color: var(--gold); color: var(--gold); }
 /* ── Floating Pomodoro Panel ── */
 #td-pomo-float {
   position: relative; z-index: 40;
@@ -1415,7 +1395,6 @@ body::after {
 .pomo-cosmo-date  { font-family: var(--font-mono); font-size:var(--fs-micro); color: var(--muted); letter-spacing: 0.05em; }
 #pomo-cosmo-canvas { flex: 1; display: block; }
 .pomo-cosmo-next-label { font-family: var(--font-mono); font-size:var(--fs-micro); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-#notes-canvas { display: block; touch-action: none; cursor: crosshair; }
 #pomo-lock-msg {
   position: absolute; inset: 0; display: none; flex-direction: column;
   align-items: center; justify-content: center; gap: 14px; z-index: 10;
@@ -8242,6 +8221,15 @@ textarea:focus-visible {
 .cst-stage[data-tool="erase"], .cst-stage[data-tool="erase"] .cst-node, .cst-stage[data-tool="erase"] .cst-ink path.inkhit { cursor:cell; }
 .cst-penopts { display:flex; gap:4px; }
 .cst-stage:not([data-tool="pen"]) .cst-penopts { display:none; }
+/* Fingers need bigger targets than a mouse pointer. */
+@media (pointer:coarse) {
+  .cst-ib { width:36px; height:34px; }
+  .cst-h { width:14px; height:14px; right:-18px; margin-top:-7px; }
+  .cst-h::after { inset:-12px; }
+  .cst-gr { width:22px; height:22px; right:-8px; bottom:-8px; }
+  .cst-gl { line-height:22px; top:-11px; }
+  .cst-lines g path.hit, .cst-ink path.inkhit { stroke-width:26; }
+}
 .cst-pw i { display:block; position:relative; border-radius:50%; background:currentColor; }
 .cst-fold { flex:none; padding:1px 5px; border:1px solid rgba(255,255,255,.35); border-radius:8px; font-family:var(--font-mono); font-size:9px; letter-spacing:.04em; color:#fff; text-shadow:none; cursor:pointer; }
 .cst-fold:hover { background:#fff; color:#000; }
@@ -8299,6 +8287,8 @@ textarea:focus-visible {
 @media (max-width:700px) {
   .cst-side { left:0; top:auto; width:auto; height:50%; border-left:0; border-top:1px solid rgba(255,255,255,.12); transform:translateY(100%); }
   .cst-side.open { transform:none; }
+  .cst-tools { flex-wrap:wrap; justify-content:center; row-gap:6px; width:calc(100% - 16px); }   /* two rows on a phone rather than running off the side */
+  .cst-hint { bottom:96px; }
   .cst-stage.side-open .cst-tools { bottom:calc(50% + 12px); }   /* above the bottom sheet */
   .cst-stage.side-open .cst-hint { display:none; }
 }

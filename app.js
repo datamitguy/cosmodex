@@ -487,8 +487,6 @@ function _showMainPanelPaint(name) {
   if (cstPanel) cstPanel.style.display = (name === 'constellation' || name === 'mindmap') ? 'flex' : 'none';
   const dnPanel = document.getElementById('panel-dailynotes');
   if (dnPanel) dnPanel.style.display = name === 'dailynotes' ? 'flex' : 'none';
-  const notesPanel = document.getElementById('panel-notes');
-  if (notesPanel) notesPanel.style.display = name === 'notes' ? 'flex' : 'none';
   const titles = { default:'Today', milestones:'Planning', archived:'Archived', lists:'Lists', alltasks:'Tasks', calendarx:'Calendar', focus:'Focus', habits:'Habits & Routines', insights:'Insights', consolidation:'Consolidation', drill:'Drill', timedrift:'Stillwater', orrery:'Orrery', constellation:'Constellation', mindmap:'Mind Map', notes:'Notes', dailynotes:'Daily notes' };
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = (name === 'timedrift' && _tdSessionOpen) ? 'Focus' : (titles[name] || 'Today');
@@ -516,7 +514,6 @@ function _showMainPanelPaint(name) {
   if (orbEl) orbEl.style.display = name === 'timedrift' ? 'none' : '';
   if (name === 'timedrift') { startTimedrift(); }
   else { stopTimedrift(); }
-  if (name === 'notes') { window.initNotesCanvas?.(); }
   if (name === 'dailynotes') { window.initDailyNotes?.(); }
 }
 
@@ -10057,14 +10054,6 @@ document.addEventListener('click', e => {
   }
 });
 
-// Header action buttons
-function openNotesPage() {
-  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-  document.getElementById('btn-notes')?.classList.add('active');
-  showMainPanel('notes');
-}
-window.openNotesPage = openNotesPage;
-document.getElementById('btn-notes')?.addEventListener('click', openNotesPage);
 /* Focus has no nav item of its own any more — it is a toggle on the dial.
    showMainPanel('focus') still works, so the calendar's play button, the commit
    ritual and the task hand-off all keep their entry points. */
@@ -10085,7 +10074,7 @@ const CMD_COMMANDS_BASE = [
   { label: 'Quick capture',    icon: '＋', action: () => openQuickCapture(), keys: '' },
   { label: 'Park a thought',   icon: '◌', action: () => openParkBar(), keys: '' },
   { label: 'Focus — Stillwater', icon: '◎', action: () => { showMainPanel('focus'); document.getElementById('left-nav')?.classList.add('collapsed'); }, keys: 'F' },
-  { label: 'Open Notes',       icon: '✎', action: () => openNotesPage(), keys: '' },
+  { label: 'Open Mind Map',       icon: '⬡', action: () => { document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active')); document.getElementById('btn-mindmap')?.classList.add('active'); showMainPanel('mindmap'); }, keys: '' },
   { label: 'Ask Cosmos',       icon: '✦', action: () => openOverlay('claude-panel'), keys: '' },
   { label: 'Insights',         icon: '◈', action: () => showMainPanel('insights'), keys: '' },
   { label: 'Habits',           icon: '◎', action: () => showMainPanel('habits'), keys: '' },
@@ -11164,124 +11153,6 @@ window.addEventListener('cdx-auth-ready', () => {
     //  anchor is now captured on the dashboard, so the startup prompt is redundant.)
   });
 }, { once: true });
-
-/* ─────────────────────────────────────────────────────────────
-   NOTES CANVAS
-───────────────────────────────────────────────────────────── */
-// Shared across Notes and Pomo scribble canvases
-const SCRIB_COLORS = ['#f5f0e8','#c9a227','#6b9fd4','#6b8f5e','#c45c2a','#d4913a','#1a1510'];
-const SCRIB_SIZES  = [1, 2, 4, 8, 16];
-(function() {
-  // SCRIB_COLORS and SCRIB_SIZES are global (defined above)
-  let _notesInited = false;
-
-  window.initNotesCanvas = function() {
-    const cv = document.getElementById('notes-canvas');
-    if (!cv) return;
-    const dpr = window.devicePixelRatio || 1;
-    function sizeCanvas() {
-      const rect = cv.getBoundingClientRect();
-      const w = rect.width || cv.offsetWidth || 700;
-      const h = rect.height || cv.offsetHeight || 440;
-      const tmp = document.createElement('canvas');
-      tmp.width = cv.width; tmp.height = cv.height;
-      tmp.getContext('2d').drawImage(cv, 0, 0);
-      cv.width  = Math.round(w * dpr);
-      cv.height = Math.round(h * dpr);
-      cv.style.width  = w + 'px';
-      cv.style.height = h + 'px';
-      const ctx = cv.getContext('2d');
-      ctx.scale(dpr, dpr);
-      ctx.drawImage(tmp, 0, 0, w, h);
-    }
-    if (!_notesInited) {
-      _notesInited = true;
-      requestAnimationFrame(sizeCanvas);
-
-      let color = SCRIB_COLORS[0], penSz = 2, eraser = false, drawing = false, lx = 0, ly = 0;
-
-      // Pen size bar
-      const penBar = document.getElementById('notes-pen-bar');
-      SCRIB_SIZES.forEach(sz => {
-        const b = document.createElement('button');
-        b.className = 'pen-size-btn' + (sz === 2 ? ' active' : '');
-        const dp = Math.min(sz + 4, 18);
-        b.innerHTML = `<span style="width:${dp}px;height:${dp}px;border-radius:50%;background:currentColor;display:inline-block"></span>`;
-        b.addEventListener('click', () => {
-          penSz = sz; eraser = false;
-          penBar.querySelectorAll('.pen-size-btn').forEach(x => x.classList.remove('active'));
-          b.classList.add('active');
-          document.getElementById('notes-eraser-btn').classList.remove('active');
-        });
-        penBar.appendChild(b);
-      });
-
-      // Color swatches
-      const colBar = document.getElementById('notes-color-bar');
-      SCRIB_COLORS.forEach(c => {
-        const s = document.createElement('div');
-        s.className = 'scribble-swatch' + (c === color ? ' active' : '');
-        s.style.background = c;
-        s.addEventListener('click', () => {
-          color = c; eraser = false;
-          colBar.querySelectorAll('.scribble-swatch').forEach(x => x.classList.remove('active'));
-          s.classList.add('active');
-          document.getElementById('notes-eraser-btn').classList.remove('active');
-        });
-        colBar.appendChild(s);
-      });
-
-      document.getElementById('notes-eraser-btn').addEventListener('click', function() {
-        eraser = !eraser; this.classList.toggle('active', eraser);
-      });
-      document.getElementById('notes-clear-btn').addEventListener('click', () => {
-        cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
-      });
-      document.getElementById('notes-save-btn').addEventListener('click', () => {
-        const link = document.createElement('a');
-        const today = localDateStr(new Date());
-        link.download = `cosmodex-notes-${today}.png`;
-        const tmp = document.createElement('canvas');
-        tmp.width = cv.width; tmp.height = cv.height;
-        const tc = tmp.getContext('2d');
-        tc.fillStyle = '#0e0c08';
-        tc.fillRect(0, 0, tmp.width, tmp.height);
-        tc.drawImage(cv, 0, 0);
-        link.href = tmp.toDataURL('image/png'); link.click();
-      });
-
-      function getPos(e) {
-        const r = cv.getBoundingClientRect();
-        const sx = cv.width / dpr / r.width, sy = cv.height / dpr / r.height;
-        return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy];
-      }
-      function startDraw(e) {
-        e.preventDefault(); drawing = true; [lx, ly] = getPos(e);
-        const ctx = cv.getContext('2d');
-        ctx.save();
-        if (eraser) { ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); ctx.arc(lx, ly, penSz * 3, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,1)'; ctx.fill(); }
-        else { ctx.beginPath(); ctx.arc(lx, ly, penSz / 2, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
-        ctx.restore();
-      }
-      function moveDraw(e) {
-        if (!drawing) return; e.preventDefault();
-        const [x, y] = getPos(e);
-        const ctx = cv.getContext('2d');
-        ctx.save();
-        if (eraser) { ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); ctx.arc(x, y, penSz * 3, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,1)'; ctx.fill(); }
-        else { ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(x, y); ctx.strokeStyle = color; ctx.lineWidth = penSz; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(); }
-        ctx.restore(); lx = x; ly = y;
-      }
-      function endDraw() { drawing = false; }
-      cv.addEventListener('pointerdown',  startDraw, { passive: false });
-      cv.addEventListener('pointermove',  moveDraw,  { passive: false });
-      cv.addEventListener('pointerup',    endDraw,   { passive: false });
-      cv.addEventListener('pointercancel',endDraw,   { passive: false });
-    } else {
-      requestAnimationFrame(sizeCanvas);
-    }
-  };
-})();
 
 /* ─────────────────────────────────────────────────────────────
    FOCUS / POMODORO
@@ -20910,6 +20781,10 @@ let _cstMulti = new Set();       // every selected node id; always holds _cstSel
 let _cstLine = null;             // a selected line: [idA, idB]
 let _cstSpace = false;           // Space held: drag pans whatever the tool
 let _cstBarSig = '';
+const _cstTouch = new Map();     // fingers on the map: pointerId → { x, y }
+let _cstPinch = null;            // two fingers down: what the view was when they landed
+let _cstTap = null;              // the last quick tap, to spot a double-tap
+let _cstLongAt = 0, _cstDblAt = 0;
 let _cstFocus = null;            // person node id whose links are lit
 let _cstSeen = null;             // ids drawn last render (null before the first)
 let _cstIn = null;               // the open text input: { wrap, input, picked, parentId, editId, x, y, done }
@@ -22592,6 +22467,26 @@ function _cstLinkDrag(e, n) {
   window.addEventListener('pointercancel', up);
 }
 
+/* ── Touch ───────────────────────────────────────────────────────────────── *
+   One finger does what the mouse does, except that on empty space it slides
+   the map. Two fingers pinch to zoom and slide at once. Press and hold opens
+   the menu a right-click would; a double-tap does what a double-click does. */
+function _cstPinchStart() {
+  // Whatever the first finger had begun (a drag, a pen stroke) is called off.
+  window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: -1 }));
+  _cstMenuClose();
+  const [p, q] = [..._cstTouch.values()], r = _cstEl.stage.getBoundingClientRect();
+  _cstPinch = { d: Math.hypot(p.x - q.x, p.y - q.y) || 1, mx: (p.x + q.x) / 2 - r.left, my: (p.y + q.y) / 2 - r.top, v: { ..._cstView } };
+}
+function _cstPinchMove() {
+  const [p, q] = [..._cstTouch.values()], g = _cstPinch, r = _cstEl.stage.getBoundingClientRect();
+  if (!p || !q || !g) return;
+  const z = _cstClamp(g.v.z * Math.hypot(p.x - q.x, p.y - q.y) / g.d), mx = (p.x + q.x) / 2 - r.left, my = (p.y + q.y) / 2 - r.top;
+  // The point of the map that was between the fingers stays between them.
+  _cstView = { z, x: mx - (g.mx - g.v.x) / g.v.z * z, y: my - (g.my - g.v.y) / g.v.z * z };
+  _cstApplyView();
+}
+
 /* ── Pointer and keys ────────────────────────────────────────────────────── *
    One press, three outcomes. On a node: drag it (and everything selected with
    it). On empty space with the Select tool: draw a box around what you want.
@@ -22599,6 +22494,11 @@ function _cstLinkDrag(e, n) {
 
 function _cstPointerDown(e) {
   if ((e.button !== 0 && e.button !== 1) || e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-find,.cst-ask,.cst-mapbtn,.cst-outline')) return;
+  if (e.pointerType === 'touch') {
+    _cstTouch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (_cstTouch.size === 2) { _cstPinchStart(); return; }
+    if (_cstTouch.size > 2) return;
+  }
   _cstMenuClose();
   const nodeEl = e.target.closest('.cst-node'), n = nodeEl && _cstById(nodeEl.dataset.id);
   if (e.button === 0 && !_cstSpace && _cstTool === 'pen') { _cstDraw(e); return; }
@@ -22612,13 +22512,20 @@ function _cstPointerDown(e) {
   const mode = pan ? 'pan' : n ? 'node' : 'box';
   if (e.button === 1) e.preventDefault();
   const sx = e.clientX, sy = e.clientY, vx = _cstView.x, vy = _cstView.y;
-  let moved = false, group = null, box = null;
+  let moved = false, group = null, box = null, held = false;
+  // Press and hold: the menu a right-click would open.
+  const hold = e.pointerType === 'touch' ? setTimeout(() => {
+    if (moved || _cstPinch) return;
+    held = true; _cstLongAt = Date.now();
+    _cstContextMenu({ preventDefault() {}, target: e.target, clientX: sx, clientY: sy });
+  }, 520) : null;
 
   const move = (ev) => {
     const dx = ev.clientX - sx, dy = ev.clientY - sy;
-    if (!moved && Math.hypot(dx, dy) < 5) return;
+    if (!moved && Math.hypot(dx, dy) < (e.pointerType === 'touch' ? 9 : 5)) return;
+    if (held) return;
     if (!moved) {
-      moved = true;
+      moved = true; clearTimeout(hold);
       if (mode === 'node') {
         // Dragging something outside the selection selects it first.
         if (!_cstMulti.has(n.id)) { if (add) _cstSelectMany([..._cstMulti, n.id]); else _cstSelect(n.id, true); }
@@ -22657,6 +22564,18 @@ function _cstPointerDown(e) {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
     window.removeEventListener('pointercancel', up);
+    clearTimeout(hold);
+    if (held) return;                                // the menu is up; lifting the finger does nothing more
+    if (!moved && ev.type === 'pointercancel') return;
+    if (!moved && e.pointerType === 'touch') {
+      const now = Date.now(), t = _cstTap;
+      _cstTap = { at: now, x: sx, y: sy };
+      if (t && now - t.at < 340 && Math.hypot(t.x - sx, t.y - sy) < 30) {
+        _cstTap = null; _cstDblAt = now;
+        _cstDblClick({ target: e.target, clientX: sx, clientY: sy, synthetic: true });
+        return;
+      }
+    }
     if (!moved) {
       if (n) { if (add) _cstToggleSel(n.id); else _cstSelect(n.id); }
       else if (lineEl) _cstSelectLine(lineEl.dataset.a, lineEl.dataset.b);
@@ -22697,6 +22616,7 @@ function _cstWheel(e) {
 }
 
 function _cstDblClick(e) {
+  if (!e.synthetic && Date.now() - _cstDblAt < 600) return;      // the double-tap was already handled as touch
   if (e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-bar,.cst-menu,.cst-inputwrap,.cst-h,.cst-fold,.cst-find,.cst-ask,.cst-mapbtn,.cst-outline')) return;
   const ln = e.target.closest('.cst-lines g');
   if (ln) { _cstSelectLine(ln.dataset.a, ln.dataset.b); _cstLabelEdit(ln.dataset.a, ln.dataset.b); return; }
@@ -22846,7 +22766,18 @@ function initConstellation() {
     const spaceUp = () => { _cstSpace = false; delete st.dataset.space; };
     document.addEventListener('keyup', e => { if (e.key === ' ') spaceUp(); });
     window.addEventListener('blur', spaceUp);
-    document.addEventListener('mousedown', e => { if (_cstMenu && !_cstMenu.el.contains(e.target)) _cstMenuClose(); }, true);
+    // After press-and-hold the browser sends a stand-in mouse press; it must not shut the menu that just opened.
+    document.addEventListener('mousedown', e => { if (_cstMenu && !_cstMenu.el.contains(e.target) && Date.now() - _cstLongAt > 700) _cstMenuClose(); }, true);
+    window.addEventListener('pointermove', e => {
+      if (!_cstTouch.has(e.pointerId)) return;
+      _cstTouch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (_cstPinch && _cstTouch.size >= 2) _cstPinchMove();
+    });
+    const lift = (e) => { if (_cstTouch.delete(e.pointerId) && _cstTouch.size < 2) _cstPinch = null; };
+    window.addEventListener('pointerup', lift);
+    window.addEventListener('pointercancel', lift);
+    if (window.matchMedia?.('(pointer: coarse)').matches)
+      _cstEl.hint.textContent = 'Double-tap to add · Press and hold for the menu · Pinch to zoom · Drag a thought\'s dot to link';
     // Leaving the page (display:none) must not strand the menu or the picker.
     new MutationObserver(() => {
       if (panel.style.display === 'none') { _cstMenuClose(); _cstInFlush(); }

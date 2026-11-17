@@ -20956,6 +20956,9 @@ function _cstSize(n) {
   return { w: el?.offsetWidth || Math.min(260, 28 + (n.text || '').length * 7), h: el?.offsetHeight || 30 };
 }
 
+const _cstClear = (x, y, boxes, w = 240, h = 40) =>
+  !boxes.some(b => Math.abs(b.x - x) < (b.w + w) / 2 + 12 && Math.abs(b.y - y) < (b.h + h) / 2 + 8);
+
 // A free spot near (px, py) for something `w` wide: tries a ring of twelve
 // directions, then wider rings, and takes the first ring with a spot whose
 // box touches nobody else's. Within a ring it prefers the emptiest side,
@@ -20969,7 +20972,7 @@ function _cstPlace(px, py, others, radius = 150, w = 240, h = 40) {
   let ax = px - cx, ay = py - cy;
   const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
   const boxes = others.map(n => ({ x: _cstX(n), y: _cstY(n), ..._cstSize(n) }));
-  const clear = (x, y) => !boxes.some(b => Math.abs(b.x - x) < (b.w + w) / 2 + 12 && Math.abs(b.y - y) < (b.h + h) / 2 + 8);
+  const clear = (x, y) => _cstClear(x, y, boxes, w, h);
   let best = null;
   for (let ring = 0; ring < 5 && !best?.ok; ring++) {
     const r = radius + ring * 90;
@@ -21402,7 +21405,7 @@ function _cstBar() {
     const b = (act, icon, label) => _cstIb(`data-bar="${act}"`, icon, label);
     let html;
     if (_cstLine) html = b('unlink', 'unlink', 'Remove this line (Delete)');
-    else if (one?.kind === 'thought') html = b('edit', 'edit', 'Edit (Enter)') + b('child', 'child', 'Add a linked thought (Tab)')
+    else if (one?.kind === 'thought') html = b('edit', 'edit', 'Edit (F2)') + b('child', 'child', 'Add a linked thought (Tab)')
       + '<span class="cst-tools-sep"></span>' + b('priority', 'flag', 'Priority') + b('person', 'person', 'Person') + b('commitment', 'target', 'Commitment')
       + b('task', 'task', _cstTaskFor(one) ? 'Open in Tasks' : 'Add to Tasks') + '<span class="cst-tools-sep"></span>' + b('delete', 'trash', 'Delete (Delete)');
     else if (one) html = b('delete', 'trash', 'Remove from map (Delete)');
@@ -21450,7 +21453,7 @@ function _cstBarClick(e) {
   }
   else if (!one || one.kind !== 'thought') return;
   else if (act === 'edit') _cstInOpen({ x: _cstX(one), y: _cstY(one), editId: one.id, text: one.text || '' });
-  else if (act === 'child') { const p = _cstPlace(_cstX(one), _cstY(one), NODES_CST); _cstInOpen({ x: p.x, y: p.y, parentId: one.id }); }
+  else if (act === 'child') _cstAddChild(one);
   else if (act === 'task') { if (_cstTaskFor(one)) _cstOpenTask(one.taskId); else _cstPromote(one.id); }
   else menu(_cstThoughtMenu(one.id)[act]);
 }
@@ -21512,6 +21515,69 @@ function _cstSide() {
     <div class="cst-side-f">${open} open in total</div>`;
 }
 
+/* ── Growing the map from the keyboard ───────────────────────────────────── *
+   Tab opens a thought hanging from the selected one. Enter opens one beside
+   it, hanging from the same thought it hangs from. Either key, pressed while
+   typing, saves what was typed and opens the next, so a branch or a list
+   grows without the mouse. */
+
+// The thought this one hangs from: the one it was made from, if they are
+// still linked; failing that its only linked thought.
+function _cstParent(n) {
+  const near = [..._cstNeighbours(n.id)].map(_cstById).filter(x => x?.kind === 'thought');
+  return near.find(x => x.id === n.parent) || (near.length === 1 ? near[0] : null);
+}
+
+function _cstAddChild(n) {
+  const p = _cstPlace(_cstX(n), _cstY(n), NODES_CST);
+  _cstInOpen({ x: p.x, y: p.y, parentId: n.id });
+}
+
+function _cstAddSibling(n) {
+  const boxes = NODES_CST.map(o => ({ x: _cstX(o), y: _cstY(o), ..._cstSize(o) }));
+  // Straight below reads as a list; if that is taken, the nearest free spot.
+  const below = { x: _cstX(n), y: Math.round(_cstY(n) + _cstSize(n).h / 2 + 34) };
+  const p = _cstClear(below.x, below.y, boxes) ? below : _cstPlace(_cstX(n), _cstY(n), NODES_CST, 90);
+  _cstInOpen({ x: p.x, y: p.y, parentId: _cstParent(n)?.id || null, free: true });
+}
+
+// Tab or Enter pressed while typing: save, then open the next one.
+async function _cstInThen(kind) {
+  const st = _cstIn; if (!st) return;
+  const typed = !!st.input.value.trim();
+  await _cstInCommit();
+  if (!typed) return;
+  for (let i = 0; i < 20 && !_cstById(_cstSel); i++) await new Promise(r => setTimeout(r, 25));   // the save comes back through the listener
+  const n = _cstById(_cstSel);
+  if (n?.kind === 'thought' && !_cstIn) (kind === 'child' ? _cstAddChild : _cstAddSibling)(n);
+}
+
+// Arrow keys: step to the nearest node in that direction. A node straight
+// ahead beats a nearer one off to the side.
+function _cstStep(dx, dy) {
+  const from = _cstById(_cstSel);
+  let best = null;
+  if (!from) {                                   // nothing selected: start from the middle of the view
+    const c = _cstToWorld(_cstEl.stage.getBoundingClientRect().left + _cstEl.stage.clientWidth / 2,
+      _cstEl.stage.getBoundingClientRect().top + _cstEl.stage.clientHeight / 2);
+    NODES_CST.forEach(n => { const d = Math.hypot(_cstX(n) - c.x, _cstY(n) - c.y); if (!best || d < best.d) best = { n, d }; });
+  } else NODES_CST.forEach(n => {
+    if (n.id === from.id) return;
+    const vx = _cstX(n) - _cstX(from), vy = _cstY(n) - _cstY(from);
+    const along = vx * dx + vy * dy, across = Math.abs(vx * dy) + Math.abs(vy * dx);
+    if (along <= 0 || across > along * 2) return;
+    const d = along + across * 2;
+    if (!best || d < best.d) best = { n, d };
+  });
+  if (!best) return;
+  _cstSelect(best.n.id);
+  // Slide the map only if the node is off screen or under the controls.
+  const v = _cstView, W = _cstEl.stage.clientWidth, H = _cstEl.stage.clientHeight;
+  const sx = _cstX(best.n) * v.z + v.x, sy = _cstY(best.n) * v.z + v.y;
+  const R = W - (_cstEl.side.classList.contains('open') && _cstEl.side.offsetWidth < W * 0.9 ? _cstEl.side.offsetWidth : 0);
+  if (sx < 80 || sx > R - 80 || sy < 70 || sy > H - 90) _cstPanTo(best.n.id);
+}
+
 /* ── Text input (new thought / edit) ─────────────────────────────────────── */
 
 // Anything that closes the input other than Esc keeps what was typed.
@@ -21560,9 +21626,9 @@ function _cstInOpen({ x, y, parentId = null, editId = null, text = '', free = fa
   });
   input.addEventListener('keydown', e => {
     e.stopPropagation();
-    if (e.key === 'Enter') { e.preventDefault(); _cstInCommit(); }
+    if (e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) _cstInThen('sibling'); else _cstInCommit(); }
     else if (e.key === 'Escape') { e.preventDefault(); _cstInClose(true); }
-    else if (e.key === 'Tab') e.preventDefault();
+    else if (e.key === 'Tab') { e.preventDefault(); _cstInThen('child'); }
   });
   input.addEventListener('blur', () => setTimeout(() => { if (!st.done) _cstInCommit(); }, 120));
   input.focus({ preventScroll: true });
@@ -21612,7 +21678,7 @@ async function _cstInCommit() {
     id = crypto.randomUUID();
     const parent = st.parentId && b.get(st.parentId);
     const pos = parent && !st.free ? _cstPlace(_cstX(parent), _cstY(parent), b.nodes()) : { x: st.x, y: st.y };
-    b.set(id, _cstDoc('thought', text, pos));
+    b.set(id, _cstDoc('thought', text, pos, parent ? { parent: parent.id } : {}));
     if (parent) b.link(id, parent.id);
   }
   st.picked.forEach(p => _cstAttachPerson(b, id, p));
@@ -22022,7 +22088,7 @@ function _cstKey(e) {
     if (el) { e.preventDefault(); const r = el.getBoundingClientRect(); _cstNodeMenu(n, r.left + r.width / 2, r.bottom); }
     return;
   }
-  if (fn && (e.key === 'Enter' || e.key === ' ')) {          // a node reached by keyboard: Enter/Space picks it; Enter again edits
+  if (fn && (e.key === 'Enter' || e.key === ' ')) {          // a node reached by keyboard: Enter/Space picks it; Enter again adds one beside it
     e.preventDefault();
     if (fn.id !== _cstSel) { _cstSelect(fn.id); return; }
     if (e.key === ' ') return;
@@ -22031,8 +22097,13 @@ function _cstKey(e) {
   if (e.key === 'f') { e.preventDefault(); _cstFit(); }
   else if (e.key === 'v' || e.key === 'h') { e.preventDefault(); _cstSetTool(e.key === 'v' ? 'move' : 'pan'); }
   else if (e.key === 'l' && _cstMulti.size === 2) { e.preventDefault(); const [a, c] = [..._cstMulti]; _cstToggleLink(a, c); }
-  else if (e.key === 'Tab' && sel) { e.preventDefault(); const p = _cstPlace(_cstX(sel), _cstY(sel), NODES_CST); _cstInOpen({ x: p.x, y: p.y, parentId: sel.id }); }
-  else if (e.key === 'Enter' && sel?.kind === 'thought') { e.preventDefault(); _cstInOpen({ x: _cstX(sel), y: _cstY(sel), editId: sel.id, text: sel.text || '' }); }
+  else if (e.key === 'Tab' && sel) { e.preventDefault(); _cstAddChild(sel); }
+  else if (e.key === 'Enter' && sel?.kind === 'thought') { e.preventDefault(); _cstAddSibling(sel); }
+  else if ((e.key === 'F2' || e.key === 'e') && sel?.kind === 'thought') { e.preventDefault(); _cstInOpen({ x: _cstX(sel), y: _cstY(sel), editId: sel.id, text: sel.text || '' }); }
+  else if (e.key.startsWith('Arrow') && !e.shiftKey) {
+    e.preventDefault();
+    _cstStep(e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0, e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0);
+  }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && (_cstMulti.size || _cstLine)) { e.preventDefault(); _cstDeleteSel(); }
 }
 

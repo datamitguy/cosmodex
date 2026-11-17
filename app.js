@@ -21250,6 +21250,8 @@ let _cstSeen = null;             // ids drawn last render (null before the first
 let _cstIn = null;               // the open text input: { wrap, input, picked, parentId, editId, x, y, done }
 let _cstMenu = null;             // { el, stack, anchor }
 let _cstEl = {};
+let _cstTool = 'move';           // 'move' | 'pan' | 'link'
+let _cstArm = null;              // LINK mode: first node clicked, waiting for the second
 let _cstViewTimer = null;
 
 const _CST_VIEW_KEY = 'cdx_cst_view';
@@ -21519,6 +21521,7 @@ function _cstPaint() {
     p.classList.toggle('hot', !!_cstSel && (a === _cstSel || c === _cstSel));
     p.classList.toggle('dim', !!_cstFocus && a !== _cstFocus && c !== _cstFocus);
   });
+  _cstEl.tools?.querySelector('[data-tool="delete"]')?.classList.toggle('off', !_cstSel);
 }
 
 function _cstAnimateNew() {
@@ -21809,13 +21812,47 @@ function _cstContextMenu(e) {
   }
 }
 
+/* ── Tool panel ──────────────────────────────────────────────────────────── */
+
+function _cstSetTool(t) {
+  _cstTool = t; _cstArm = null;
+  _cstEl.stage.dataset.tool = t;
+  _cstEl.tools.querySelectorAll('[data-tool]').forEach(b => {
+    const on = b.dataset.tool === t;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on);
+  });
+  _cstEl.hint.textContent = t === 'link' ? 'Click a thought, then another to link or unlink them · Esc to finish' : _cstEl.hintText;
+}
+
+// Two nodes picked in LINK mode: flip the line between them.
+async function _cstToggleLink(aId, bId) {
+  const A = _cstById(aId), B = _cstById(bId); if (!A || !B) return;
+  const th = A.kind === 'thought' ? A : B, pe = th === A ? B : A;
+  const person = pe.kind === 'person' && th.kind === 'thought' && (typeof PEOPLE !== 'undefined' ? PEOPLE : []).find(p => p.id === pe.personId);
+  if (person) return _cstTogglePerson(th.id, person);
+  const b = _cstBatch();
+  if (b.linked(aId, bId)) {
+    b.unlink(aId, bId);
+    [aId, bId].forEach(id => { if (b.get(id)?.kind === 'person' && !b.degree(id)) b.del(id); });
+  } else b.link(aId, bId);
+  await b.commit();
+}
+
+function _cstLinkClick(n) {
+  if (!_cstArm || !_cstById(_cstArm)) { _cstArm = n.id; _cstSelect(n.id, true); }
+  else if (_cstArm === n.id) { _cstArm = null; _cstSelect(null); }
+  else { const a = _cstArm; _cstArm = null; _cstSelect(n.id, true); _cstToggleLink(a, n.id); }
+}
+
 /* ── Pointer and keys ────────────────────────────────────────────────────── */
 
 function _cstPointerDown(e) {
-  if (e.button !== 0 || e.target.closest('.cst-side,.cst-ctl,.cst-menu,.cst-inputwrap')) return;
+  if (e.button !== 0 || e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-menu,.cst-inputwrap')) return;
   _cstMenuClose();
   const nodeEl = e.target.closest('.cst-node'), n = nodeEl && _cstById(nodeEl.dataset.id);
-  const g = { sx: e.clientX, sy: e.clientY, moved: false, node: n, el: nodeEl, vx: _cstView.x, vy: _cstView.y,
+  if (_cstTool === 'link' && n) { _cstLinkClick(n); return; }
+  const g = { sx: e.clientX, sy: e.clientY, moved: false, node: _cstTool === 'move' ? n : null, el: nodeEl, vx: _cstView.x, vy: _cstView.y,
     nx: n ? _cstX(n) : 0, ny: n ? _cstY(n) : 0 };
   const move = (ev) => {
     const dx = ev.clientX - g.sx, dy = ev.clientY - g.sy;
@@ -21838,7 +21875,7 @@ function _cstPointerDown(e) {
     window.removeEventListener('pointercancel', up);
     if (g.node && g.moved) _cstSaveNode(g.node.id, { x: g.node.x, y: g.node.y });
     else if (g.node) _cstSelect(g.node.id);
-    else if (!g.moved) _cstSelect(null);
+    else if (!g.moved) { _cstArm = null; _cstSelect(null); }
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
@@ -21856,7 +21893,7 @@ function _cstWheel(e) {
 }
 
 function _cstDblClick(e) {
-  if (e.target.closest('.cst-side,.cst-ctl,.cst-menu,.cst-inputwrap')) return;
+  if (e.target.closest('.cst-side,.cst-ctl,.cst-tools,.cst-menu,.cst-inputwrap')) return;
   const el = e.target.closest('.cst-node'), n = el && _cstById(el.dataset.id);
   if (n?.kind === 'thought') _cstInOpen({ x: _cstX(n), y: _cstY(n), editId: n.id, text: n.text || '' });
   else if (!n) { _cstSelect(null); _cstInOpen(_cstToWorld(e.clientX, e.clientY)); }
@@ -21869,11 +21906,13 @@ function _cstKey(e) {
   const sel = _cstSel && _cstById(_cstSel);
   if (e.key === 'Escape') {
     if (_cstMenu) _cstMenuClose();
+    else if (_cstTool === 'link') _cstSetTool('move');
     else { _cstFocus = null; _cstSelect(null); }
     return;
   }
   if (_cstMenu) return;
   if (e.key === 'f') { e.preventDefault(); _cstFit(); }
+  else if (e.key === 'v' || e.key === 'h' || e.key === 'l') { e.preventDefault(); _cstSetTool({ v: 'move', h: 'pan', l: 'link' }[e.key]); }
   else if (e.key === 'Tab' && sel) { e.preventDefault(); const p = _cstPlace(_cstX(sel), _cstY(sel), NODES_CST); _cstInOpen({ x: p.x, y: p.y, parentId: sel.id }); }
   else if (e.key === 'Enter' && sel?.kind === 'thought') { e.preventDefault(); _cstInOpen({ x: _cstX(sel), y: _cstY(sel), editId: sel.id, text: sel.text || '' }); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); _cstDelete(sel.id); }
@@ -21888,7 +21927,7 @@ function initConstellation() {
     _cstWired = true;
     const q = (s) => panel.querySelector(s);
     _cstEl = { panel, stage: q('.cst-stage'), world: q('.cst-world'), lines: q('.cst-lines'), layer: q('.cst-layer'),
-      eyebrow: q('.cst-eyebrow'), empty: q('.cst-empty'), side: q('.cst-side') };
+      eyebrow: q('.cst-eyebrow'), hint: q('.cst-hint'), tools: q('.cst-tools'), empty: q('.cst-empty'), side: q('.cst-side') };
     _cstLoadView();
     _cstApplyView();
     const st = _cstEl.stage;
@@ -21901,6 +21940,18 @@ function initConstellation() {
       const cx = st.clientWidth / 2, cy = st.clientHeight / 2;
       if (a === 'in') _cstZoomAt(1.25, cx, cy); else if (a === 'out') _cstZoomAt(0.8, cx, cy); else _cstFit();
     });
+    _cstEl.hintText = _cstEl.hint.textContent;
+    _cstEl.tools.addEventListener('click', e => {
+      const t = e.target.closest('[data-tool]')?.dataset.tool; if (!t) return;
+      if (t === 'add') { const r = st.getBoundingClientRect(); _cstSelect(null);
+        // The centre may already hold a thought: step to free space beside it.
+        let at = _cstToWorld(r.left + st.clientWidth / 2, r.top + st.clientHeight / 2);
+        if (NODES_CST.some(n => Math.hypot(_cstX(n) - at.x, _cstY(n) - at.y) < 90)) at = _cstPlace(at.x, at.y, NODES_CST);
+        _cstInOpen({ x: at.x, y: at.y }); }
+      else if (t === 'delete') { if (_cstSel && _cstById(_cstSel)) _cstDelete(_cstSel); else showToast('Select a thought first.'); }
+      else _cstSetTool(t);
+    });
+    _cstSetTool('move');
     _cstEl.side.addEventListener('click', e => {
       if (e.target.closest('[data-close]')) { _cstFocus = null; _cstSelect(null); return; }
       const th = e.target.closest('[data-thought]')?.dataset.thought;

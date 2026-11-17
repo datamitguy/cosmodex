@@ -8145,7 +8145,7 @@ textarea:focus-visible {
 }
 .cst-thought { font-family:var(--font-body); font-size:13px; }
 .cst-t { min-width:0; overflow:hidden; text-overflow:ellipsis; padding:6px 14px; margin:-6px -14px; }   /* the padding gives the glow room inside the clip */
-.cst-node.sel { white-space:normal; }
+.cst-node.sel { white-space:normal; width:max-content; }   /* max-content, capped by max-width: without it the node shrinks to one letter per line */
 .cst-node.sel .cst-t { overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }   /* a picked thought reads in full */
 .cst-thought.p-high { font-weight:500; text-shadow:0 0 16px rgba(255,255,255,.85), 0 0 5px rgba(255,255,255,.95), 0 0 2px #fff; }
 .cst-thought.p-low { opacity:.55; text-shadow:0 0 6px rgba(255,255,255,.3), 0 0 1px rgba(255,255,255,.5); }

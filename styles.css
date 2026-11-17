@@ -8138,13 +8138,15 @@ textarea:focus-visible {
 .cst-layer { position:absolute; left:0; top:0; }
 .cst-node {
   position:absolute; display:flex; align-items:center; gap:6px; padding:6px 10px;
-  transform:translate(-50%,-50%); max-width:260px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+  transform:translate(-50%,-50%); max-width:260px; white-space:nowrap;
   color:#fff; cursor:default; user-select:none; outline:none;
   text-shadow:0 0 10px rgba(255,255,255,.55), 0 0 2px rgba(255,255,255,.8);
   transition:opacity .25s, text-shadow .2s;
 }
 .cst-thought { font-family:var(--font-body); font-size:13px; }
-.cst-t { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.cst-t { min-width:0; overflow:hidden; text-overflow:ellipsis; padding:6px 14px; margin:-6px -14px; }   /* the padding gives the glow room inside the clip */
+.cst-node.sel { white-space:normal; }
+.cst-node.sel .cst-t { overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }   /* a picked thought reads in full */
 .cst-thought.p-high { font-weight:500; text-shadow:0 0 16px rgba(255,255,255,.85), 0 0 5px rgba(255,255,255,.95), 0 0 2px #fff; }
 .cst-thought.p-low { opacity:.55; text-shadow:0 0 6px rgba(255,255,255,.3), 0 0 1px rgba(255,255,255,.5); }
 .cst-thought.is-done { opacity:.4; }
@@ -8159,6 +8161,7 @@ textarea:focus-visible {
 .cst-node.sel { text-shadow:0 0 18px rgba(255,255,255,.95), 0 0 6px #fff, 0 0 2px #fff; }
 .cst-node.dim { opacity:.22; }
 .cst-node.cst-editing { visibility:hidden; }
+.cst-node:focus-visible { outline:1px solid rgba(255,255,255,.45); outline-offset:0; }
 .cst-inputwrap { position:absolute; transform:translate(-50%,-50%); width:240px; }
 .cst-input {
   width:100%; box-sizing:border-box; padding:4px 2px; border:0; border-bottom:1px solid rgba(255,255,255,.3);
@@ -8168,10 +8171,10 @@ textarea:focus-visible {
 }
 .cst-input::placeholder { color:var(--muted); text-shadow:none; }
 .cst-picked { margin-top:4px; text-align:center; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.08em; color:var(--muted); }
-.cst-eyebrow { position:absolute; left:20px; top:16px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; color:var(--muted); pointer-events:none; }
+.cst-eyebrow { position:absolute; left:20px; right:20px; top:16px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.14em; color:var(--muted); pointer-events:none; }
 .cst-hint { position:absolute; left:20px; bottom:52px; font-family:var(--font-mono); font-size:var(--fs-micro); letter-spacing:.06em; color:var(--muted); pointer-events:none; }
 .cst-empty { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-family:var(--font-display); font-size:var(--fs-body); color:var(--muted); pointer-events:none; text-align:center; }
-.cst-ctl { position:absolute; right:20px; bottom:16px; display:flex; gap:6px; cursor:default; }
+.cst-ctl { position:absolute; right:20px; bottom:16px; display:flex; gap:6px; cursor:default; transition:right .25s ease; }
 .cst-ctl .btn-ghost { padding:4px 10px; font-size:var(--fs-small); }
 .cst-tools { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); display:flex; gap:6px; cursor:default; z-index:2; }
 .cst-tools .btn-ghost { padding:4px 10px; font-size:var(--fs-micro); color:var(--muted); border-color:rgba(255,255,255,.12); }
@@ -8179,7 +8182,12 @@ textarea:focus-visible {
 .cst-tools .btn-ghost.off { opacity:.45; }
 .cst-stage[data-tool="pan"], .cst-stage[data-tool="pan"] .cst-node { cursor:grab; }
 .cst-stage[data-tool="link"], .cst-stage[data-tool="link"] .cst-node { cursor:crosshair; }
-@media (max-width:900px) { .cst-ctl { bottom:auto; top:12px; right:12px; } }
+@media (max-width:900px) {
+  .cst-ctl { bottom:auto; top:48px; right:12px; }   /* below the eyebrow, which may wrap to two lines */
+  .cst-eyebrow { white-space:normal; }
+  .cst-hint { right:20px; white-space:normal; }
+}
+@media (min-width:701px) { .cst-stage.side-open .cst-ctl { right:320px; bottom:52px; } .cst-stage.side-open .cst-tools { left:calc(50% - 150px); } .cst-stage.side-open .cst-hint { display:none; } }   /* clear of the open side panel */
 .cst-side {
   position:absolute; right:0; top:0; bottom:0; width:300px; box-sizing:border-box; padding:18px 18px 14px;
   overflow-y:auto; background:#000; border-left:1px solid rgba(255,255,255,.12); cursor:default;
@@ -8212,7 +8220,8 @@ textarea:focus-visible {
 @media (max-width:700px) {
   .cst-side { left:0; top:auto; width:auto; height:50%; border-left:0; border-top:1px solid rgba(255,255,255,.12); transform:translateY(100%); }
   .cst-side.open { transform:none; }
-  .cst-hint { right:20px; white-space:normal; }
+  .cst-stage.side-open .cst-tools { bottom:calc(50% + 12px); }   /* above the bottom sheet */
+  .cst-stage.side-open .cst-hint { display:none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .cst-node, .cst-lines path, .cst-side { transition:none; }

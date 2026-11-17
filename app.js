@@ -6395,6 +6395,7 @@ function initData() {
     window._orreryRefresh?.();        // the Orrery weighs plans by their tasks
     window._remindMirrorSchedule?.(); // mirror tasks to Apple Reminders (desktop app)
     window._chartSchedule?.();        // refresh the observation-log widget
+    window._cstRefresh?.();           // a done or deleted task changes the map
   });
 
   _calEventsUnsub = onSnapshot(query(_uc('calEvents'), orderBy('date', 'asc')), snap => {
@@ -6429,6 +6430,7 @@ function initData() {
     renderTasks(); // re-render task panel so commitment grouping updates
     renderCalendar(); // commitment colours drive the global milestone layer
     if (_mainPanel === 'archived') renderArchivedPage();
+    window._cstRefresh?.();
   });
 
   _msEventsUnsub = onSnapshot(query(_uc('milestoneEvents'), orderBy('date', 'asc')), snap => {
@@ -11091,6 +11093,7 @@ function cleanupAllListeners() {
   MILESTONE_PROJECTS = []; MILESTONE_EVENTS = []; MILESTONE_LISTS = [];
 
   _listView = null;
+  if (typeof _cstReset === 'function') _cstReset();   // Constellation's listener and map
 }
 
 window.addEventListener('cdx-auth-signout', () => {
@@ -11131,6 +11134,7 @@ window.addEventListener('cdx-auth-ready', () => {
             PEOPLE = data.people;
             localStorage.setItem('cdx_people', JSON.stringify(PEOPLE));
             renderSettingsPeople?.();
+            window._cstRefresh?.();
           }
         }
       }, err => console.warn('People snapshot error:', err));
@@ -21253,6 +21257,9 @@ let _cstEl = {};
 let _cstTool = 'move';           // 'move' | 'pan' | 'link'
 let _cstArm = null;              // LINK mode: first node clicked, waiting for the second
 let _cstViewTimer = null;
+let _cstDrag = false;            // a node is being dragged: a snapshot re-render waits
+let _cstDirty = false;           // …and runs once on release
+let _cstRefreshQ = 0;
 
 const _CST_VIEW_KEY = 'cdx_cst_view';
 const _cstReduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -21384,7 +21391,8 @@ function _cstDoc(kind, text, pos, extra = {}) {
 function _cstAttachPerson(b, thoughtId, person) {
   let pn = b.personNode(person.id);
   if (!pn) {
-    const t = b.get(thoughtId), id = crypto.randomUUID();
+    const t = b.get(thoughtId); if (!t) return;     // deleted while the input was open
+    const id = crypto.randomUUID();
     b.set(id, _cstDoc('person', person.name, _cstPlace(_cstX(t), _cstY(t), b.nodes()), { personId: person.id }));
     pn = b.get(id);
   }
@@ -21478,6 +21486,8 @@ function _cstNodeHtml(n, counts) {
 
 function _cstRender() {
   if (typeof _mainPanel === 'undefined' || _mainPanel !== 'constellation' || !_cstEl.layer) return;
+  if (_cstDrag) { _cstDirty = true; return; }   // the dragged element must survive until release
+  const kbd = document.activeElement?.closest?.('.cst-node')?.dataset.id;
   const counts = {};
   _cstEdges().forEach(([a, c]) => {
     const A = _cstById(a), C = _cstById(c);
@@ -21489,13 +21499,15 @@ function _cstRender() {
     const task = _cstTaskFor(n);
     const cls = n.kind === 'person' ? 'cst-person'
       : `cst-thought${n.priority ? ' p-' + n.priority : ''}${task?.done ? ' is-done' : ''}`;
-    return `<div class="cst-node ${cls}" data-id="${escAttr(n.id)}" style="left:${_cstX(n)}px;top:${_cstY(n)}px" title="${escAttr(n.text || '')}">${_cstNodeHtml(n, counts)}</div>`;
+    const who = n.kind === 'person' ? (PEOPLE.find(x => x.id === n.personId)?.name || n.text || '') : (n.text || '');
+    return `<div class="cst-node ${cls}" data-id="${escAttr(n.id)}" tabindex="0" role="button" aria-label="${escAttr(who)}" style="left:${_cstX(n)}px;top:${_cstY(n)}px" title="${escAttr(n.text || '')}">${_cstNodeHtml(n, counts)}</div>`;
   }).join('');
   _cstEl.lines.innerHTML = _cstEdges().map(([a, c]) =>
     `<path data-a="${escAttr(a)}" data-b="${escAttr(c)}" d="${_cstEdgePath(_cstById(a), _cstById(c))}"/>`).join('');
 
   const people = NODES_CST.filter(n => n.kind === 'person').length;
-  _cstEl.eyebrow.textContent = `CONSTELLATION · ${NODES_CST.length - people} THOUGHTS · ${people} PEOPLE`;
+  const th = NODES_CST.length - people;
+  _cstEl.eyebrow.textContent = `CONSTELLATION · ${th} ${th === 1 ? 'THOUGHT' : 'THOUGHTS'} · ${people} ${people === 1 ? 'PERSON' : 'PEOPLE'}`;
   _cstEl.empty.hidden = NODES_CST.length > 0 || !!_cstIn;
 
   if (_cstIn?.editId) _cstEl.layer.querySelector(`[data-id="${CSS.escape(_cstIn.editId)}"]`)?.classList.add('cst-editing');
@@ -21505,6 +21517,7 @@ function _cstRender() {
   if (_cstNeedFit && _cstEl.stage.clientWidth) { _cstFit(); _cstNeedFit = false; }
   _cstPaint();
   _cstSide();
+  if (kbd) _cstEl.layer.querySelector(`[data-id="${CSS.escape(kbd)}"]`)?.focus({ preventScroll: true });
   if (_cstSeen && !_cstReduced()) _cstAnimateNew();
   _cstSeen = new Set(NODES_CST.map(n => n.id));
 }
@@ -21521,7 +21534,9 @@ function _cstPaint() {
     p.classList.toggle('hot', !!_cstSel && (a === _cstSel || c === _cstSel));
     p.classList.toggle('dim', !!_cstFocus && a !== _cstFocus && c !== _cstFocus);
   });
-  _cstEl.tools?.querySelector('[data-tool="delete"]')?.classList.toggle('off', !_cstSel);
+  const del = _cstEl.tools?.querySelector('[data-tool="delete"]');
+  del?.classList.toggle('off', !_cstSel);
+  del?.setAttribute('aria-disabled', String(!_cstSel));
 }
 
 function _cstAnimateNew() {
@@ -21560,6 +21575,7 @@ function _cstOpenTask(taskId) {
 function _cstSide() {
   const side = _cstEl.side, pn = _cstFocus && _cstById(_cstFocus);
   side.classList.toggle('open', !!pn);
+  _cstEl.stage.classList.toggle('side-open', !!pn);
   if (!pn) return;
   const person = (typeof PEOPLE !== 'undefined' ? PEOPLE : []).find(p => p.id === pn.personId);
   const name = person ? person.name : (pn.text || '');
@@ -21591,8 +21607,29 @@ function _cstSide() {
 
 /* ── Text input (new thought / edit) ─────────────────────────────────────── */
 
+// Anything that closes the input other than Esc keeps what was typed.
+function _cstInFlush() {
+  const st = _cstIn; if (!st) return;
+  if (st.input.value.trim() || st.picked.length) _cstInCommit(); else _cstInClose(true);
+}
+
+// Pan just enough to bring the open input fully on stage (clear of the tools row and the side panel).
+function _cstInReveal() {
+  const st = _cstIn; if (!st) return;
+  const s = _cstEl.stage.getBoundingClientRect(), r = st.wrap.getBoundingClientRect(), M = 24;
+  let L = s.left + M, T = s.top + M, R = s.right - M, B = _cstEl.tools.getBoundingClientRect().top - 8;
+  if (_cstEl.side.classList.contains('open')) {
+    const pw = _cstEl.side.offsetWidth;
+    if (pw < _cstEl.stage.clientWidth * 0.9) R = Math.min(R, s.right - pw - M);
+    else B = Math.min(B, s.bottom - _cstEl.side.offsetHeight - 8);
+  }
+  const dx = r.left < L ? L - r.left : r.right > R ? R - r.right : 0;
+  const dy = r.top < T ? T - r.top : r.bottom > B ? B - r.bottom : 0;
+  if (dx || dy) { _cstView.x += dx; _cstView.y += dy; _cstApplyView(); }
+}
+
 function _cstInOpen({ x, y, parentId = null, editId = null, text = '' }) {
-  _cstInClose(true);
+  _cstInFlush();
   _cstMenuClose();
   const wrap = document.createElement('div');
   wrap.className = 'cst-inputwrap';
@@ -21620,8 +21657,9 @@ function _cstInOpen({ x, y, parentId = null, editId = null, text = '' }) {
     else if (e.key === 'Tab') e.preventDefault();
   });
   input.addEventListener('blur', () => setTimeout(() => { if (!st.done) _cstInCommit(); }, 120));
-  input.focus();
+  input.focus({ preventScroll: true });
   input.select();
+  _cstInReveal();
 }
 
 function _cstInClose(cancel) {
@@ -21640,6 +21678,7 @@ async function _cstInCommit() {
   if (!text && !st.picked.length) return;
   const b = _cstBatch();
   let id = st.editId;
+  if (id && !b.get(id)) return;            // the thought was deleted while it was open
   if (!text) {
     // Only a name was typed. With a thought open or a parent (Tab), the person
     // joins that thought; on empty canvas they are set down on their own.
@@ -21709,7 +21748,14 @@ function _cstMenuOpen(cx, cy, root) {
     if (!it) return;
     if (it.go) { _cstMenu.stack.push(it.go); _cstMenuDraw(true); }
     else if (it.back) _cstMenuBack();
-    else if (it.act) { const keep = it.keep; if (!keep) _cstMenuClose(); Promise.resolve(it.act()).then(() => { if (keep && _cstMenu) _cstMenuDraw(false); }); }
+    else if (it.act) {
+      const keep = it.keep; if (!keep) _cstMenuClose();
+      Promise.resolve(it.act()).then(() => {
+        if (!keep || !_cstMenu) return;
+        _cstMenuDraw(false);
+        _cstMenu.el.querySelector(`[data-i="${+i}"]`)?.focus();   // the redraw dropped focus: put it back on the same row
+      });
+    }
   });
   el.addEventListener('keydown', e => {
     const btns = [...el.querySelectorAll('button')], i = btns.indexOf(document.activeElement);
@@ -21802,12 +21848,24 @@ async function _cstTogglePerson(thoughtId, person) {
 
 async function _cstPromote(id) {
   const n = _cstById(id); if (!n) return;
-  const ids = [..._cstNeighbours(id)].map(_cstById).filter(x => x?.kind === 'person' && x.personId).map(x => x.personId);
+  const ids = [..._cstNeighbours(id)].map(_cstById).filter(x => x?.kind === 'person' && x.personId && PEOPLE.some(p => p.id === x.personId)).map(x => x.personId);
+  const prio = n.priority || 'med';
   try {
-    const ref = await CDX_FB.addDoc(_uc('tasks'), newTaskDoc({ title: n.text, priority: n.priority || 'med', projectId: n.projectId || null, people: ids.length ? ids : null }));
-    await CDX_FB.updateDoc(_ud('constellation', id), { taskId: ref.id });
+    const ref = await CDX_FB.addDoc(_uc('tasks'), newTaskDoc({ title: n.text, priority: prio, projectId: n.projectId || null, people: ids.length ? ids : null }));
+    // The thought's menu must agree with the task: a thought with no priority takes the task's 'med'.
+    if (_cstById(id)) await CDX_FB.updateDoc(_ud('constellation', id), n.priority ? { taskId: ref.id } : { taskId: ref.id, priority: prio });
     showToast('Added to Tasks');
   } catch (e) { console.error(e); showToast('Could not save — try again', 'error'); }
+}
+
+// The menu a node opens, from a right-click or from the keyboard.
+function _cstNodeMenu(n, cx, cy) {
+  _cstSelect(n.id);
+  if (n.kind === 'thought') _cstMenuOpen(cx, cy, _cstThoughtMenu(n.id));
+  else _cstMenuOpen(cx, cy, () => [
+    { label: 'Show links', act: () => _cstSelect(n.id) },
+    { label: 'Remove from map', act: () => _cstDelete(n.id) },
+  ]);
 }
 
 function _cstContextMenu(e) {
@@ -21815,13 +21873,8 @@ function _cstContextMenu(e) {
   if (e.target.closest('.cst-side,.cst-menu')) return;
   const nodeEl = e.target.closest('.cst-node'), at = _cstToWorld(e.clientX, e.clientY);
   const n = nodeEl && _cstById(nodeEl.dataset.id);
-  if (n?.kind === 'thought') { _cstSelect(n.id); _cstMenuOpen(e.clientX, e.clientY, _cstThoughtMenu(n.id)); }
-  else if (n) {
-    _cstSelect(n.id);
-    _cstMenuOpen(e.clientX, e.clientY, () => [
-      { label: 'Show links', act: () => _cstSelect(n.id) },
-      { label: 'Remove from map', act: () => _cstDelete(n.id) },
-    ]);
+  if (n) {
+    _cstNodeMenu(n, e.clientX, e.clientY);
   } else {
     _cstMenuOpen(e.clientX, e.clientY, () => [
       { label: 'New thought here', act: () => _cstInOpen(at) },
@@ -21909,6 +21962,7 @@ function _cstPointerDown(e) {
     if (!g.moved && Math.hypot(dx, dy) < 5) return;
     g.moved = true;
     if (g.node) {
+      _cstDrag = true;
       g.node.x = Math.round(g.nx + dx / _cstView.z); g.node.y = Math.round(g.ny + dy / _cstView.z);
       g.el.style.left = g.node.x + 'px'; g.el.style.top = g.node.y + 'px';
       _cstEl.lines.querySelectorAll(`path[data-a="${CSS.escape(g.node.id)}"],path[data-b="${CSS.escape(g.node.id)}"]`).forEach(p => {
@@ -21923,9 +21977,15 @@ function _cstPointerDown(e) {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
     window.removeEventListener('pointercancel', up);
-    if (g.node && g.moved) _cstSaveNode(g.node.id, { x: g.node.x, y: g.node.y });
+    if (g.node && g.moved) {
+      _cstSaveNode(g.node.id, { x: g.node.x, y: g.node.y });
+      const cur = _cstById(g.node.id);            // a snapshot may have replaced the object mid-drag
+      if (cur) { cur.x = g.node.x; cur.y = g.node.y; }
+    }
     else if (g.node) _cstSelect(g.node.id);
     else if (!g.moved) { _cstArm = null; _cstSelect(null); }
+    _cstDrag = false;
+    if (_cstDirty) { _cstDirty = false; _cstRender(); }
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
@@ -21933,6 +21993,7 @@ function _cstPointerDown(e) {
 }
 
 function _cstWheel(e) {
+  if (e.target.closest('.cst-side,.cst-menu')) return;   // let the panel's list scroll
   e.preventDefault();
   const r = _cstEl.stage.getBoundingClientRect();
   // ctrl = a trackpad pinch. A plain wheel notch (whole, large steps) also
@@ -21953,6 +22014,7 @@ function _cstKey(e) {
   if (typeof _mainPanel === 'undefined' || _mainPanel !== 'constellation') return;
   const t = e.target;
   if (t.closest?.('input,textarea,[contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (document.querySelector('.overlay.open')) return;      // a dialog is up: the map keeps out of it
   const sel = _cstSel && _cstById(_cstSel);
   if (e.key === 'Escape') {
     if (_cstMenu) _cstMenuClose();
@@ -21961,6 +22023,19 @@ function _cstKey(e) {
     return;
   }
   if (_cstMenu) return;
+  const nodeEl = t.closest?.('.cst-node');
+  if (!nodeEl && t.closest?.('button,a,[role="button"]')) return;   // a control has focus: its own keys
+  const fn = nodeEl && _cstById(nodeEl.dataset.id);
+  if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+    const n = fn || sel, el = n && _cstEl.layer.querySelector(`[data-id="${CSS.escape(n.id)}"]`);
+    if (el) { e.preventDefault(); const r = el.getBoundingClientRect(); _cstNodeMenu(n, r.left + r.width / 2, r.bottom); }
+    return;
+  }
+  if (fn && (e.key === 'Enter' || e.key === ' ')) {          // a node reached by keyboard: Enter/Space picks it; Enter again edits
+    e.preventDefault();
+    if (fn.id !== _cstSel) { _cstSelect(fn.id); return; }
+    if (e.key === ' ') return;
+  }
   if (e.key === 'f') { e.preventDefault(); _cstFit(); }
   else if (e.key === 'v' || e.key === 'h' || e.key === 'l') { e.preventDefault(); _cstSetTool({ v: 'move', h: 'pan', l: 'link' }[e.key]); }
   else if (e.key === 'Tab' && sel) { e.preventDefault(); const p = _cstPlace(_cstX(sel), _cstY(sel), NODES_CST); _cstInOpen({ x: p.x, y: p.y, parentId: sel.id }); }
@@ -21989,6 +22064,7 @@ function initConstellation() {
       const a = e.target.closest('[data-act]')?.dataset.act; if (!a) return;
       const cx = st.clientWidth / 2, cy = st.clientHeight / 2;
       if (a === 'in') _cstZoomAt(1.25, cx, cy); else if (a === 'out') _cstZoomAt(0.8, cx, cy); else _cstFit();
+      if (e.detail) e.target.closest('button')?.blur();   // a mouse click must not strand the map's keys on the button
     });
     _cstEl.hintText = _cstEl.hint.textContent;
     _cstEl.tools.addEventListener('click', e => {
@@ -21998,8 +22074,9 @@ function initConstellation() {
         let at = _cstToWorld(r.left + st.clientWidth / 2, r.top + st.clientHeight / 2);
         if (NODES_CST.some(n => Math.hypot(_cstX(n) - at.x, _cstY(n) - at.y) < 90)) at = _cstPlace(at.x, at.y, NODES_CST);
         _cstInOpen({ x: at.x, y: at.y }); }
-      else if (t === 'delete') { if (_cstSel && _cstById(_cstSel)) _cstDelete(_cstSel); else showToast('Select a thought first.'); }
+      else if (t === 'delete') { if (_cstSel && _cstById(_cstSel)) _cstDelete(_cstSel); else showToast('Select something first.'); }
       else _cstSetTool(t);
+      if (e.detail) e.target.closest('button')?.blur();
     });
     _cstSetTool('move');
     _cstEl.side.addEventListener('click', e => {
@@ -22013,7 +22090,7 @@ function initConstellation() {
     document.addEventListener('mousedown', e => { if (_cstMenu && !_cstMenu.el.contains(e.target)) _cstMenuClose(); }, true);
     // Leaving the page (display:none) must not strand the menu or the picker.
     new MutationObserver(() => {
-      if (panel.style.display === 'none') { _cstMenuClose(); _cstInClose(true); }
+      if (panel.style.display === 'none') { _cstMenuClose(); _cstInFlush(); }
     }).observe(panel, { attributes: true, attributeFilter: ['style'] });
   }
   if (!_cstUnsub) {
@@ -22026,4 +22103,16 @@ function initConstellation() {
   if (_cstLoaded) _cstRender();
 }
 window.initConstellation = initConstellation;
-window._cstRefresh = () => { if (_mainPanel === 'constellation') _cstRender(); };
+// Sign-out: drop the listener and everything it loaded so the next account starts empty.
+function _cstReset() {
+  if (_cstUnsub) { _cstUnsub(); _cstUnsub = null; }
+  _cstInClose(true); _cstMenuClose();
+  NODES_CST = []; _cstLoaded = false; _cstSeen = null;
+  _cstSel = null; _cstFocus = null; _cstArm = null;
+  if (_cstEl.layer) { _cstEl.layer.innerHTML = ''; _cstEl.lines.innerHTML = ''; _cstSide(); }
+}
+// TASKS, PEOPLE and commitments feed the map; a no-op until the page is showing.
+window._cstRefresh = () => {
+  if (_cstRefreshQ || !_cstEl.layer || _mainPanel !== 'constellation') return;
+  _cstRefreshQ = requestAnimationFrame(() => { _cstRefreshQ = 0; _cstRender(); });
+};
